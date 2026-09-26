@@ -30,6 +30,11 @@ lock-db:
 lock-check: lock
 	@test -z "$$(git status --porcelain -- services/*/requirements.lock db/requirements.lock)" \
 		|| { git status --short -- services/*/requirements.lock db/requirements.lock; echo "requirements.lock berubah atau belum di-commit; commit hasil 'make lock' di atas"; exit 1; }
+# Gerbang R6: tidak ada sisa NPWP di lingkup yang diperiksa. Lingkupnya penting -- lihat
+# scripts/check_no_npwp.py. `make check-npwp SCOPE=orchestrator` untuk satu service (gerbang R24).
+SCOPE ?= foundation
+check-npwp:
+	$(PY) scripts/check_no_npwp.py $(SCOPE)
 lint:
 	$(PY) -m ruff check .
 format:
@@ -85,4 +90,4 @@ logs-%:
 smoke:
 	$(PY) scripts/smoke_e2e.py
 
-.PHONY: dev test lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke
+.PHONY: dev test check-npwp lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke

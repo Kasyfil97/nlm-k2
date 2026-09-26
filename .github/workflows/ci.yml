@@ -77,7 +77,7 @@ jobs:
 
           async def main():
               connection = await asyncpg.connect(os.environ["DATABASE_URL"].replace("+asyncpg", ""))
-              await connection.execute("DROP TABLE ocr_npwp_alembic_version")
+              await connection.execute("DROP TABLE ocr_kk_alembic_version")
               await connection.close()
 
 

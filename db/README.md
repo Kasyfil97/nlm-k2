@@ -1,7 +1,14 @@
 # Database
 
-Satu database PostgreSQL dipakai bersama oleh repo ini **dan** oleh service orkestrasi
-(`bribrain_ocr_kk` di Cloud SQL). Karena itu penting jelas: tabel mana milik siapa.
+Satu database PostgreSQL dipakai bersama oleh repo ini **dan** oleh Orkestrasi pusat
+(`bribrain_ocr_kk` di Cloud SQL), di **instans tersendiri** — bukan instans yang dipakai nilam.
+Dua alasan: PII Kartu Keluarga tidak masuk ke instans yang daftar aksesnya disusun untuk dokumen
+pajak,
+dan matriks hak di bawah baru bisa ditegakkan di instans yang tidak punya peran lintas-database
+milik tim lain.
+
+Karena databasenya dibagi, penting jelas dua hal: tabel mana milik siapa, dan siapa boleh
+membaca apa.
 
 ## Peta tabel
 
@@ -10,15 +17,59 @@ Satu database PostgreSQL dipakai bersama oleh repo ini **dan** oleh service orke
 | `ocr_jobs`, `ocr_results` | **repo ini** | ekstraksi | ekstraksi (`GET /v1/ekstraksi/jobs/{request_id}`), orchestrator lewat API itu | status dan hasil tahap OCR |
 | `structuring_jobs`, `structuring_results` | **repo ini** | structuring | structuring lewat API-nya (orchestrator) | status dan field hasil structuring |
 | `scoring_jobs`, `scoring_results` | **repo ini** | scoring | scoring lewat API-nya (orchestrator) | status dan skor trust model |
-| `ocr_npwp_requests` | — | tidak ada | tidak ada | tabel kontrak lama sinkron (`generate-request-id` → `extract-ocr` → `get-ocr-result`) yang sudah dihapus dari ekstraksi; **dihapus oleh migrasi `0007_drop_ocr_npwp_requests`**. Jumlah barisnya dicatat di log job migrasi sebelum di-drop; `downgrade` membuat ulang tabel kosong, isinya tidak kembali |
 | `pipeline_outbox` | **repo ini** | ketiga tahap (dalam transaksi job), relay | relay tiap service, `GET /v1/<tahap>/outbox` | callback dan handoff yang belum terkirim (`PIPELINE_OUTBOX`). Baris dihapus setelah terkirim; yang gagal permanen (4xx, atau 5xx lebih lama dari `PIPELINE_OUTBOX_MAX_AGE_SECONDS`) tetap ada sebagai dead letter dengan `failed_at` + `last_error`, tidak pernah diambil lagi oleh relay, dan dilepas manual dengan `failed_at = NULL, next_attempt_at = now()`. `ds` dipakai untuk membersihkan dead letter lama |
-| `testing_ocr_jobs`/`_results`, `testing_structuring_jobs`/`_results`, `testing_scoring_jobs`/`_results`, `testing_pipeline_outbox` | **repo ini** | ketiga tahap lewat endpoint `-test` (`TESTING_ENDPOINTS`) | tahap itu sendiri, orchestrator lewat `GET /v1/<tahap>/jobs-test/{request_id}` | salinan persis tabel tahap dan outbox untuk load test tim ML (migrasi `0006`). Tidak pernah dibaca Orkestrasi; boleh di-`TRUNCATE` kapan saja setelah tes. Lihat README, "Endpoint Testing" |
-| `ocr_npwp_alembic_version` | **repo ini** | Alembic | Alembic | versi migrasi repo ini; namanya sengaja tidak `alembic_version` supaya tidak bentrok dengan migrasi tim lain |
+| `testing_ocr_jobs`/`_results`, `testing_structuring_jobs`/`_results`, `testing_scoring_jobs`/`_results`, `testing_pipeline_outbox` | **repo ini** | ketiga tahap lewat endpoint `-test` (`TESTING_ENDPOINTS`) | tahap itu sendiri, orchestrator lewat `GET /v1/<tahap>/jobs-test/{request_id}` | salinan persis tabel tahap dan outbox untuk load test tim ML (baseline `0001`). Tidak pernah dibaca Orkestrasi; boleh di-`TRUNCATE` kapan saja setelah tes. Lihat README, "Endpoint Testing" |
+| `ocr_kk_alembic_version` | **repo ini** | Alembic | Alembic | versi migrasi repo ini; namanya sengaja tidak `alembic_version` supaya tidak bentrok dengan migrasi tim lain di instans yang sama |
 | `ocr.orchestration_api_events` | **orkestrasi** | orkestrasi; ketiga tahap menambah baris keadaan akhir kalau `ORCHESTRATION_API_EVENTS_TABLE` diisi | orkestrasi | log API orkestrasi, append-only. Lihat bagian di bawah tabel ini |
-| `orchestration_*` lainnya, `auth_*`, `datahub_lookup_log` (schema `ocr`) | **orkestrasi** | orkestrasi | orkestrasi | di luar repo ini. Migrasi di sini tidak pernah membuat atau mengubahnya |
-| `ocr.*`, `structuring.*`, `scoring.*` (schema terpisah) | — | tidak ada | tidak ada | sisa desain lama sebelum tabel pindah ke schema `public`; **dihapus oleh migrasi `0005_drop_legacy_schemas`**. Migrasi itu hanya membuang schema yang isinya persis `jobs` + `results`; kalau ada tabel atau view lain di dalamnya, migrasi berhenti dengan pesan supaya diperiksa dulu. Jumlah baris yang dibuang dicatat di log Alembic |
+| `orchestration_extract_ocr` | **Orkestrasi pusat** | ketiga tahap (dalam transaksi job) kalau `ORCHESTRATION_OUTCOME_TABLE` diisi | Orkestrasi pusat | **kanal hasil yang sesungguhnya.** Satu baris per `request_id`; kontraknya kolom `downstream_status`. Barisnya **monoton di `completed`**: penulisan terlambat dari relay yang menyerah atau eksekusi kembar ditolak, dicatat WARNING, dan dihitung `pipeline_outcome_writes_suppressed_total`. Migrasi di sini tidak pernah membuat atau mengubahnya |
+| `orchestration_*` lainnya, `auth_*`, `datahub_lookup_log` (schema `ocr`) | **Orkestrasi pusat** | orkestrasi | orkestrasi | di luar repo ini. Migrasi di sini tidak pernah membuat atau mengubahnya |
 
 Orchestrator dan guardrails tidak punya tabel: orchestrator membaca status tahap lewat API, bukan lewat database.
+
+## Hak akses (R28)
+
+Hibah dibatasi **di kedua arah**, bukan hanya untuk service nlm-k2. Kalau hanya satu sisi yang
+dibatasi, peran Orkestrasi pusat di database yang sama tetap bisa membaca setiap kartu.
+
+| Peran | `ocr_*` | `structuring_*` | `scoring_*` | `pipeline_outbox` | tabel outcome |
+|---|---|---|---|---|---|
+| ekstraksi | SELECT, INSERT, UPDATE | — | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
+| structuring | SELECT (baca hasil hulu) | SELECT, INSERT, UPDATE | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
+| scoring | SELECT | SELECT | SELECT, INSERT, UPDATE | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
+| **Orkestrasi pusat** | **—** | **—** | **—** | **—** | miliknya sendiri |
+| migrasi (Alembic) | DDL | DDL | DDL | DDL | — |
+
+Tidak ada peran tahap yang mendapat DDL atas tabelnya sendiri: itu milik peran migrasi.
+
+Orkestrasi pusat tidak mendapat `SELECT` pada tabel tahap. Satu-satunya yang mereka butuhkan dari
+sini adalah tabel outcome, sementara `ocr_results` memuat teks OCR **seluruh** kartu dan
+`structuring_results` memuat 26 field internal (alamat, tanggal lahir, agama, nama orang tua).
+
+Tabel `testing_*` adalah salinan persis dan mewarisi baris yang sama persis.
+
+**Terbuka, dan bukan keputusan sepihak nlm-k2:** apakah Orkestrasi pusat terhubung dengan peran yang
+bisa kita batasi, atau dengan peran pemilik yang tidak bisa. Kalau yang kedua, tabel ini jadi
+kesepakatan lintas tim, bukan sesuatu yang bisa ditegakkan baseline.
+
+### Inventaris data sensitif
+
+| Tempat | Isi |
+|---|---|
+| `ocr_results.result` | teks OCR seluruh kartu — setiap NIK, nama, alamat yang terbaca |
+| `structuring_results.result` | 11 field dokumen + 15 per anggota |
+| `scoring_results.result` | skor saja, tetapi `payload` menyimpan fitur yang diskor |
+| tabel outcome `result_data` | sembilan field kontrak, termasuk NIK tiap anggota |
+| **`ocr_jobs.input`** | presigned URL — **setara kredensial pembawa** ke gambar KK itu sendiri |
+
+`ocr_jobs.input` dikosongkan di transaksi `complete()`/`fail()` milik job, bukan lewat sapuan
+retensi `ds`: §3.1 menjanjikan job terlantar bisa dijalankan ulang dari URL itu, dan janji itu hanya
+berlaku selagi job masih `PROCESSING`.
+
+### Retensi
+
+Setiap tabel punya kolom `ds` (`YYYYMMDD`) justru untuk ini. Jendela retensinya belum ditetapkan dan
+perlu disepakati dengan pemilik data; yang sudah pasti, pembersihannya digantung pada `ds` dan
+dijalankan di luar service (job terjadwal), bukan oleh pipeline.
 
 Ketiga tahap juga bisa menulis status request ke `orchestration_extract_ocr` di transaksi
 yang sama dengan penyimpanan hasilnya, kalau `ORCHESTRATION_OUTCOME_TABLE` diisi (default
@@ -44,8 +95,9 @@ baris di transaksi yang sama dengan tabel job-nya sendiri (double write), hanya 
 
 `result_data` mengikuti bentuk baris polling orkestrasi sendiri: `{result, status, document_type,
 error_code, error_message, created_at, updated_at}`. `result` berisi data kontrak `extract-ocr`
-(`nomor_npwp`, `nama`) plus `document_type` dan `guardrails`, dan kosong kalau gagal atau ditolak.
-Untuk penolakan, `error_message` adalah alasan dari aturan ML (bahasa Indonesia). Tabel ini tidak punya kunci unik per `request_id`, jadi request yang dijalankan ulang
+(sembilan field: `no_kk`, `nama_kepala_keluarga`, dan `anggota_keluarga[]`) plus `document_type`
+dan `guardrails`, dan kosong kalau gagal atau ditolak. Untuk penolakan, `error_message` adalah
+alasan dari gerbang validitas KK (bahasa Indonesia). Tabel ini tidak punya kunci unik per `request_id`, jadi request yang dijalankan ulang
 mendapat baris baru; **baris terbaru per `request_id` adalah keadaannya**. Kalau tabel ini gagal
 ditulis, penulisan job ikut dibatalkan. DDL tiruannya ada di
 [external/orchestration_api_events.sql](external/orchestration_api_events.sql).
