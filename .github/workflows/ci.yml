@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            services/*/requirements.txt
+            libs/ocr_common/pyproject.toml
+      - name: Lock files are in sync with requirements.txt and ocr_common's dependencies
+        run: make lock-check
+      - run: python -m pip install -r requirements-dev.txt
+      - run: make lint
+      - run: python -m ruff format --check .
+      - run: make typecheck
+      - run: make test
+
+  migrations:
+    name: Database migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: bribrain_ocr_nilam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/bribrain_ocr_nilam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: db/requirements.txt
+      - run: python -m pip install -r db/requirements.txt ./libs/ocr_common
+      - name: Migrate an empty database
+        run: python -m alembic -c db/alembic.ini upgrade head
+      - name: Table definitions in the code and the migrations agree
+        run: python -m alembic -c db/alembic.ini check
+      - name: Adopt a database that already has the tables
+        run: |
+          python - <<'PY'
+          import asyncio
+          import os
+
+          import asyncpg
+
+
+          async def main():
+              connection = await asyncpg.connect(os.environ["DATABASE_URL"].replace("+asyncpg", ""))
+              await connection.execute("DROP TABLE ocr_npwp_alembic_version")
+              await connection.close()
+
+
+          asyncio.run(main())
+          PY
+          python -m alembic -c db/alembic.ini upgrade head
+          python -m alembic -c db/alembic.ini check
+      - name: The migration image builds
+        run: docker build -f db/Dockerfile -t ci/migrate .
+
+  image:
+    name: Image ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: orchestrator
+            port: 8034
+            env: ""
+          - service: guardrails
+            port: 8031
+            env: -e GUARDRAILS_BACKEND=mock
+          - service: ekstraksi
+            port: 8030
+            env: -e EKSTRAKSI_BACKEND=mock
+          - service: structuring
+            port: 8032
+            env: ""
+          - service: scoring
+            port: 8033
+            env: ""
+    steps:
+      - uses: actions/checkout@v4
+      - name: Placeholder weights (the checkpoint is not in git; this image is never pushed)
+        if: matrix.service == 'guardrails'
+        run: touch services/guardrails/weights/best_model.pt
+      - name: Build (hashes in requirements.lock are verified by pip --require-hashes)
+        run: docker build -f services/${{ matrix.service }}/Dockerfile -t ci/${{ matrix.service }} .
+      - name: Starts, then stops gracefully on SIGTERM
+        run: |
+          cid=$(docker run -d -e API_KEY=ci -e ENVIRONMENT=local ${{ matrix.env }} ci/${{ matrix.service }})
+          healthy=""
+          for _ in $(seq 1 60); do
+            if docker exec "$cid" python -c "import urllib.request; urllib.request.urlopen('http://localhost:${{ matrix.port }}/health', timeout=2)"; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$healthy" ]; then docker logs "$cid"; exit 1; fi
+          docker stop -t 20 "$cid"
+          docker logs "$cid" 2>&1 | tail -5
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$cid")
+          if [ "$code" != 0 ]; then echo "exit code $code: SIGTERM did not reach uvicorn"; exit 1; fi

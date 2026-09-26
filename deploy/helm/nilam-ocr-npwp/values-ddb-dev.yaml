@@ -1,0 +1,44 @@
+environment: production
+
+image:
+  # Tag global terakhir yang di-deploy manual sebelum ada lock file dan larangan build dari
+  # working tree kotor. deploy.sh menimpanya per service dengan SHA commit bersih
+  # (services.<nama>.image.tag); ganti nilai ini ke SHA yang sama setelah deploy `all` berikutnya.
+  tag: 4d02eba-dirty
+
+existingSecret: nilam-ocr-npwp-secrets
+
+orchestration:
+  # Callback hasil ke Orkestrasi (endpoint dari tim Orkestrasi, 24 Sep 2026): satu POST per request
+  # saat selesai, dengan X-Callback-Key = ORCHESTRATION_CALLBACK_KEY di Secret nilam-ocr-npwp-secrets.
+  # Key itu WAJIB ada di Secret sebelum deploy: tanpa key, ekstraksi/structuring/scoring menolak start.
+  url: http://ocr-orchestration.ocr-dev.svc.cluster.local
+  callbackPath: /v1/ocr-callback
+  callbackFormat: result
+
+commonEnv:
+  # Double write: selain tabel job kita sendiri, keadaan akhir tiap request (COMPLETED dari scoring,
+  # FAILED dari tahap mana pun) ditambahkan sebagai baris GET_OCR_RESULT di log API Orkestrasi,
+  # karena Orkestrasi membaca hasil dari tabel itu, bukan dari GET /v1/scoring/jobs/{request_id}.
+  ORCHESTRATION_API_EVENTS_TABLE: ocr.orchestration_api_events
+  # Outbox transaksional: hand-off dan callback ditulis ke pipeline_outbox bersama hasil job, lalu dikirim
+  # relay dengan backoff (sampai 5 menit sekali, selama 24 jam), jadi tidak hilang saat pod restart atau
+  # penerima down. Dinyalakan di cluster 24 Sep 2026.
+  PIPELINE_OUTBOX: "true"
+  # Load test tim ML lewat kubectl port-forward ke orchestrator, /v1/extract-ocr-test. Butuh migrasi 0006
+  # (tabel testing_*). Lihat README, "Endpoint testing".
+  TESTING_ENDPOINTS: "true"
+
+networkPolicy:
+  # Namespace Orkestrasi di cluster dev. Cluster ini memakai LEGACY_DATAPATH tanpa
+  # network policy enforcement, jadi policy hanya terpasang, belum ditegakkan.
+  clientNamespaces: [ocr-dev]
+
+services:
+  orchestrator:
+    env:
+      # Dev: Orkestrasi pusat boleh melewati model guardrails per request (skip_guardrails=true).
+      GUARDRAILS_SKIP_ALLOWED: "true"
+  ekstraksi:
+    env:
+      EKSTRAKSI_OCR_URL: http://10.213.128.67:8070

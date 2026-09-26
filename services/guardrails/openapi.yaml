@@ -1,0 +1,627 @@
+openapi: 3.1.0
+info:
+  title: OCR NPWP Guardrails API
+  description: 'The guardrails model of the OCR NPWP pipeline, internal: the orchestrator NPWP calls `POST
+    /v1/guardrails/check` for every document it receives, and hands a document that passes to the OCR
+    stage itself. The check classifies every page of the document (image or PDF) as accepted / reject
+    and aggregates a document verdict. The model runs in this process (`efficientnet`) or in the ML team''s
+    model service (`remote`). All endpoints except /health, /ready and /metrics require an X-API-Key header.
+
+
+    ## Conventions (the same for every nilam-ocr service)
+
+
+    **Authentication.** Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.
+
+    A missing or wrong key answers `401`. The services are reachable only from inside the cluster.
+
+
+    **Envelope.** Every JSON response, success or error, has the same shape:
+
+    `{status_code, status_desc, message, data, errors, request_id}`. `status_code` always equals the HTTP
+
+    status. On success `errors` is null; on error `data` is null.
+
+
+    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+
+    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+
+    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+
+    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+
+    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+
+
+    **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
+    has
+
+    no request_id of its own, the `X-Request-ID` request header is used (and echoed in the response header);
+
+    without it the service generates one.
+
+
+    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+
+    .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
+    a
+
+    callback to the central orchestrator (see *Webhooks*), and can be read at any time with
+
+    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+
+    over the three stages. Submitting the same request_id again is idempotent:
+
+    `202` with `duplicate: true`, the work is not repeated, unless the earlier attempt `FAILED` or has
+    been
+
+    `PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default: the
+
+    process running it died). A job still running when the service shuts down is reported `FAILED`. Because
+
+    the request was already answered `202`, a problem with the document itself (unreadable file, no text,
+
+    unsupported document type) shows up as a `FAILED` job and callback, not as a `4xx`.
+
+    '
+  version: 1.0.0
+servers:
+- url: /
+  description: This host (where this page is served)
+- url: http://nilam-ocr-npwp-guardrails.{namespace}.svc.cluster.local:8031
+  description: GKE, from inside the release's namespace (the other services of this pipeline)
+  variables:
+    namespace:
+      default: nilam-ocr-npwp
+      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nilam-ocr-npwp)'
+- url: http://guardrails:8031
+  description: The Docker Compose network
+- url: http://127.0.0.1:8031
+  description: Local development
+paths:
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Liveness probe
+      description: Says the process is alive and which implementations are active. Never touches a dependency.
+        Does not require an API key.
+      operationId: getHealth
+      responses:
+        '200':
+          description: The process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: Healthy
+                  value:
+                    status: healthy
+                    version: 1.0.0
+                    device: cpu
+                    backends:
+                      guardrails: efficientnet
+  /ready:
+    get:
+      tags:
+      - Health
+      summary: Readiness probe
+      description: 'Liveness vs readiness: /health only says the process is alive and never touches a
+        dependency (a database blip must not make Kubernetes restart every pod). /ready says whether this
+        pod can do its job right now: 200 when every REQUIRED dependency of this service answers, 503
+        otherwise, so the pod is taken out of the Service until it recovers. Downstream stages and model
+        services are deliberately not checked: their outage is reported per job, not by refusing traffic.
+        Does not require an API key.'
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Every required dependency answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              examples:
+                ready:
+                  summary: Ready
+                  value:
+                    status: ready
+                    checks: {}
+        '503':
+          description: A required dependency is unavailable; the pod is taken out of the Service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: not_ready
+                checks: {}
+  /metrics:
+    get:
+      tags:
+      - Health
+      summary: Prometheus metrics
+      description: 'Prometheus text exposition of this process: `http_requests_total` and `http_request_duration_seconds`
+        per route template, and for the pipeline stages `pipeline_jobs_total` (by outcome), `pipeline_job_duration_seconds`,
+        `pipeline_stale_jobs_reclaimed_total`, `pipeline_outbox_deliveries_total` and the outbox backlog
+        gauges (`pipeline_outbox_pending`, `_retrying`, `_dead_letters`, `_oldest_pending_seconds`). Scraped
+        inside the cluster; does not require an API key.'
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Metrics in the Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/guardrails/check:
+    post:
+      tags:
+      - Guardrails
+      summary: 'Judge a document (internal: called by the orchestrator NPWP)'
+      description: 'Runs the guardrails model on each page (a PDF is rendered page by page; an image is
+        one page) and aggregates a document verdict, **without** starting anything: no OCR job, no callback.
+        The model is either in this process (`efficientnet`) or the ML team''s model service (`remote`,
+        POST /v1/predict/json); the report is the same either way. The orchestrator NPWP calls it for
+        every `extract-ocr` and hands `data` on to the OCR stage when `passed`. Always 200 when the document
+        was judged: read `data.passed`. Only the model judges here: the type, size (`MAX_UPLOAD_BYTES`)
+        and page count (`MAX_DOCUMENT_PAGES`) of the document are checked by the orchestrator NPWP before
+        it calls this endpoint. A file the model cannot read (not an image, an unreadable PDF) is 400.'
+      operationId: checkDocument
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_checkDocument'
+      responses:
+        '200':
+          description: The document was judged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuardrailReportResponse'
+              examples:
+                accepted:
+                  summary: Accepted
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OK
+                    data:
+                      passed: true
+                      document:
+                        verdict: accepted
+                        confidence: 0.9821
+                        n_pages: 1
+                        n_approve: 1
+                        n_reject: 0
+                        reject_threshold: 0.5
+                      pages:
+                      - page_index: 0
+                        proba_approve: 0.9821
+                        proba_reject: 0.0179
+                        verdict: accepted
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                rejected:
+                  summary: Rejected
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OK
+                    data:
+                      passed: false
+                      reason: 'Document rejected by guardrails: 1/1 page(s) rejected (confidence 0.88)'
+                      document:
+                        verdict: reject
+                        confidence: 0.8821
+                        n_pages: 1
+                        n_approve: 0
+                        n_reject: 1
+                        reject_threshold: 0.5
+                      pages:
+                      - page_index: 0
+                        proba_approve: 0.1179
+                        proba_reject: 0.8821
+                        verdict: reject
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: A file the model cannot read, or bad intake
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: Uploaded file is not a readable image
+                errors: Uploaded file is not a readable image
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.file: Field required'
+                errors: VALIDATION_ERROR
+        '500':
+          description: The guardrails model failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 500
+                status_desc: Internal Server Error
+                message: guardrails model returned an unexpected response
+                errors: guardrails model returned an unexpected response
+        '503':
+          description: The guardrails model service (`remote`) is unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 503
+                status_desc: Service Unavailable
+                message: guardrails model is unavailable
+                errors: guardrails model is unavailable
+        '504':
+          description: The guardrails model service (`remote`) did not answer in time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 504
+                status_desc: Gateway Timeout
+                message: guardrails model timed out after 30.0s
+                errors: guardrails model timed out after 30.0s
+      security:
+      - APIKeyHeader: []
+components:
+  schemas:
+    Body_checkDocument:
+      properties:
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Echoed in the response; optional
+          examples:
+          - OCR_9cb01af2-493d-446d-b191-af120333f6d0
+        file:
+          anyOf:
+          - type: string
+            format: binary
+          - type: string
+          - type: 'null'
+          title: File
+          description: Document image (JPEG/PNG/PDF). Omit when sending file_url.
+        file_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Url
+          description: URL this service fetches the document image from (e.g. a presigned MinIO GET).
+            Omit when uploading file. The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`,
+            or resolve to a public address when that is empty; redirects are not followed.
+      type: object
+      title: Body_checkDocument
+    DocumentResult:
+      properties:
+        verdict:
+          type: string
+          enum:
+          - accepted
+          - reject
+          title: Verdict
+          description: 'Document verdict. Default policy `all`: accepted only when every page is accepted'
+          examples:
+          - accepted
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          description: Confidence in the verdict. accepted -> the lowest `proba_approve` over the pages
+            (the weakest page decides); reject -> the highest `proba_reject` among the rejected pages
+          examples:
+          - 0.9821
+        n_pages:
+          type: integer
+          minimum: 0.0
+          title: N Pages
+          description: Pages judged (a PDF is capped at 20)
+          examples:
+          - 2
+        n_approve:
+          type: integer
+          minimum: 0.0
+          title: N Approve
+          description: Pages with verdict `accepted`
+          examples:
+          - 2
+        n_reject:
+          type: integer
+          minimum: 0.0
+          title: N Reject
+          description: Pages with verdict `reject`
+          examples:
+          - 0
+        reject_threshold:
+          anyOf:
+          - type: number
+            exclusiveMaximum: 1.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Reject Threshold
+          description: 'The reject threshold the pages were judged with: the central orchestrator''s (`GUARDRAILS_THRESHOLD_URL`),
+            else the default (`GUARDRAILS_REJECT_THRESHOLD`, else the checkpoint''s 0.5). Null with the
+            `remote` backend, which applies its own'
+          examples:
+          - 0.5
+      type: object
+      required:
+      - verdict
+      - confidence
+      - n_pages
+      - n_approve
+      - n_reject
+      title: DocumentResult
+    ErrorResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          examples:
+          - 400
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          examples:
+          - Bad Request
+        message:
+          type: string
+          title: Message
+          description: Human-readable cause; safe to log
+          examples:
+          - Uploaded file is empty
+        data:
+          type: 'null'
+          title: Data
+          description: Always null on error
+        errors:
+          type: string
+          title: Errors
+          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
+            names a different field every time); for every other status it repeats `message`
+          examples:
+          - Uploaded file is empty
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Present when the error is tied to a known request_id
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+      type: object
+      required:
+      - status_code
+      - status_desc
+      - message
+      - errors
+      title: ErrorResponse
+      description: Every error response.
+    GuardrailReport:
+      properties:
+        passed:
+          type: boolean
+          title: Passed
+          description: 'true: the document may go on to the OCR stage. false: stop, and answer the client
+            with `reason`'
+          examples:
+          - true
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: Why the document was rejected; null when `passed`. The model is a binary classifier,
+            so the reason can only state how many pages were rejected and how confidently, not *what*
+            is wrong with them
+          examples:
+          - null
+        document:
+          $ref: '#/components/schemas/DocumentResult'
+        pages:
+          items:
+            $ref: '#/components/schemas/PageResult'
+          type: array
+          title: Pages
+          description: One entry per page, in page order
+      type: object
+      required:
+      - passed
+      - document
+      - pages
+      title: GuardrailReport
+    GuardrailReportResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: OK
+          examples:
+          - OK
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/GuardrailReport'
+      type: object
+      required:
+      - data
+      title: GuardrailReportResponse
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Always `healthy` while the process is alive
+          examples:
+          - healthy
+        version:
+          type: string
+          title: Version
+          description: Service version
+          examples:
+          - 1.0.0
+        device:
+          type: string
+          title: Device
+          description: Where this service computes
+          examples:
+          - cpu
+        backends:
+          additionalProperties:
+            type: string
+          type: object
+          title: Backends
+          description: Active implementation per concern (model backend, storage). Useful to confirm a
+            deployment
+          examples:
+          - ekstraksi: paddle
+            storage: postgres
+      type: object
+      required:
+      - status
+      - version
+      - device
+      - backends
+      title: HealthResponse
+      description: '`GET /health`.'
+    PageResult:
+      properties:
+        page_index:
+          type: integer
+          minimum: 0.0
+          title: Page Index
+          description: 0-based page number; an image is always page 0
+          examples:
+          - 0
+        proba_approve:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Proba Approve
+          description: Model probability of `accepted`
+          examples:
+          - 0.9821
+        proba_reject:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Proba Reject
+          description: Model probability of `reject`; `proba_approve + proba_reject = 1`
+          examples:
+          - 0.0179
+        verdict:
+          type: string
+          enum:
+          - accepted
+          - reject
+          title: Verdict
+          description: '`reject` when `proba_reject` reaches the reject threshold (`document.reject_threshold`)'
+          examples:
+          - accepted
+      type: object
+      required:
+      - page_index
+      - proba_approve
+      - proba_reject
+      - verdict
+      title: PageResult
+    ReadyResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+          description: '`ready` (HTTP 200) when every check is `ok`, else `not_ready` (HTTP 503)'
+          examples:
+          - ready
+        checks:
+          additionalProperties:
+            type: string
+            enum:
+            - ok
+            - failed
+          type: object
+          title: Checks
+          description: One entry per REQUIRED dependency of this service; empty when it has none
+          examples:
+          - database: ok
+      type: object
+      required:
+      - status
+      - checks
+      title: ReadyResponse
+      description: '`GET /ready`.'
+  securitySchemes:
+    APIKeyHeader:
+      type: apiKey
+      description: API key for this service
+      in: header
+      name: X-API-Key
+tags:
+- name: Guardrails
+  description: 'The guardrails check (internal: called by the orchestrator NPWP)'
+- name: Health
+  description: Liveness and readiness probes; no API key

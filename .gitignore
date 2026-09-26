@@ -1,0 +1,38 @@
+.env
+*.env
+!.env.example
+
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+weights/*
+!weights/.gitkeep
+
+.DS_Store
+.vscode/
+.idea/
+
+*.egg-info/
+
+services/*/weights/*
+!services/*/weights/.gitkeep
+!services/scoring/weights/trust_model.joblib
+
+# Data rujukan internal aturan structuring (daftar nama): dipasang saat deploy, bukan lewat git.
+services/structuring/app/vendor/npwp_rules/data/*.xlsx
+
+docs/
+
+# Keluaran lokal tools: log port-forward tracker dan hasil run k6.
+tools/tracker/.port-forward.log
+tools/load-tester/out/*
+!tools/load-tester/out/.gitkeep
+
+# Unggahan dari tracker (load test): bisa dokumen nasabah asli, tidak pernah ikut repo.
+tools/load-tester/assets/

@@ -1,0 +1,126 @@
+import pytest
+from pydantic import ValidationError
+
+from ocr_common.config import BaseServiceSettings, PipelineSettings
+
+DB = "postgresql+asyncpg://u:p@10.0.0.5:5432/db"
+ORCH = "http://orkestrasi:8000"
+
+
+def base(**overrides) -> BaseServiceSettings:
+    return BaseServiceSettings(api_key="k", _env_file=None, **overrides)
+
+
+def pipeline(**overrides) -> PipelineSettings:
+    return PipelineSettings(api_key="k", _env_file=None, **overrides)
+
+
+def test_environment_defaults_to_production(monkeypatch):
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    assert base().environment == "production"
+    assert base().is_local is False
+
+
+def test_dev_is_a_deployed_environment_not_the_laptop_mode():
+    assert base(environment="dev").is_local is False
+    with pytest.raises(ValidationError, match="DATABASE_URL must be set when ENVIRONMENT=dev"):
+        pipeline(environment="dev")
+
+
+def test_unknown_environment_is_rejected():
+    with pytest.raises(ValidationError):
+        base(environment="prod")
+
+
+@pytest.mark.parametrize("environment", ["dev", "staging", "production"])
+def test_auth_disabled_is_refused_outside_local(environment):
+    with pytest.raises(ValidationError, match="AUTH_DISABLED=true is only allowed with ENVIRONMENT=local"):
+        base(environment=environment, auth_disabled=True)
+
+
+def test_auth_disabled_is_allowed_locally():
+    assert base(environment="local", auth_disabled=True).auth_disabled is True
+
+
+def test_pipeline_locally_needs_nothing():
+    settings = pipeline(environment="local")
+    assert settings.database_url is None and settings.orchestration_url is None
+
+
+def test_pipeline_outside_local_requires_database_and_a_way_to_report_the_outcome():
+    with pytest.raises(ValidationError, match="DATABASE_URL must be set when ENVIRONMENT=production"):
+        pipeline(environment="production")
+    with pytest.raises(
+        ValidationError,
+        match="ORCHESTRATION_URL, ORCHESTRATION_OUTCOME_TABLE or ORCHESTRATION_API_EVENTS_TABLE must be set",
+    ):
+        pipeline(environment="staging", database_url=DB)
+    assert pipeline(environment="production", database_url=DB, orchestration_url=ORCH).callbacks_enabled is True
+    table_only = pipeline(environment="production", database_url=DB, orchestration_outcome_table="orchestration_x")
+    assert table_only.callbacks_enabled is False
+    events_only = pipeline(
+        environment="production", database_url=DB, orchestration_api_events_table="ocr.orchestration_api_events"
+    )
+    assert events_only.callbacks_enabled is False
+
+
+def test_empty_string_counts_as_missing():
+    with pytest.raises(ValidationError, match="DATABASE_URL must be set"):
+        pipeline(environment="production", database_url="", orchestration_url=ORCH)
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8090", "http://localhost:8090", "http://[::1]:8090"])
+def test_localhost_service_address_is_refused_outside_local(url):
+    with pytest.raises(ValidationError, match="ORCHESTRATION_URL points to localhost"):
+        pipeline(environment="production", database_url=DB, orchestration_url=url)
+
+
+def test_localhost_database_is_allowed_for_the_sql_auth_proxy_sidecar():
+    sidecar = "postgresql+asyncpg://u:p@127.0.0.1:5432/db"
+    assert pipeline(environment="production", database_url=sidecar, orchestration_url=ORCH).database_url == sidecar
+
+
+def test_file_url_policy_is_public_only_by_default_and_open_locally():
+    assert base().file_url_policy.allowed_hosts == ()
+    assert base().file_url_policy.allow_private is False
+    assert base(environment="local").file_url_policy.allow_private is True
+
+
+def test_file_url_allowed_hosts_is_a_comma_separated_list():
+    policy = base(file_url_allowed_hosts=" MinIO.internal , .bri.co.id ,").file_url_policy
+    assert policy.allowed_hosts == ("minio.internal", ".bri.co.id")
+
+
+def test_job_lease_must_be_positive():
+    assert pipeline(environment="local").pipeline_job_lease_seconds == 300.0
+    with pytest.raises(ValidationError, match="pipeline_job_lease_seconds"):
+        pipeline(environment="local", pipeline_job_lease_seconds=0)
+
+
+def test_mock_backend_guard():
+    settings = base(environment="production")
+    with pytest.raises(ValueError, match="GUARDRAILS_BACKEND=mock fabricates results"):
+        settings.reject_mock_backend_outside_local(guardrails_backend="mock")
+    settings.reject_mock_backend_outside_local(guardrails_backend="efficientnet")
+    base(environment="local").reject_mock_backend_outside_local(guardrails_backend="mock")
+
+
+def test_handoff_by_reference_needs_the_shared_database():
+    with pytest.raises(ValueError, match="PIPELINE_HANDOFF_BY_REFERENCE=true needs DATABASE_URL"):
+        PipelineSettings(api_key="x", environment="local", pipeline_handoff_by_reference=True, _env_file=None)
+    settings = PipelineSettings(
+        api_key="x",
+        environment="local",
+        pipeline_handoff_by_reference=True,
+        database_url="postgresql+asyncpg://u:p@h/db",
+        _env_file=None,
+    )
+    assert settings.pipeline_handoff_by_reference
+
+
+def test_stale_job_reaper_is_on_by_default_with_sane_bounds():
+    settings = pipeline(environment="local")
+    assert settings.pipeline_stale_jobs is True
+    assert settings.pipeline_stale_job_interval_seconds == 30.0
+    with pytest.raises(ValidationError):
+        pipeline(environment="local", pipeline_stale_job_batch=0)

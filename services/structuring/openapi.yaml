@@ -1,0 +1,1765 @@
+openapi: 3.1.0
+info:
+  title: OCR NPWP Structuring API
+  description: 'Pipeline step 3 for Indonesian NPWP documents: turns raw OCR text lines into named fields
+    (nomor_npwp, nama, nama_badan) with per-field confidence. **Async pipeline:** the OCR service POSTs
+    /v1/structuring/jobs and gets 202; this service structures in the background, stores the result, POSTs
+    a stage callback to the orchestrator, and hands the job to the scoring service. /v1/structuring/structure
+    is the same work, synchronous. All endpoints except /health require an X-API-Key header.
+
+
+    ## Conventions (the same for every nilam-ocr service)
+
+
+    **Authentication.** Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.
+
+    A missing or wrong key answers `401`. The services are reachable only from inside the cluster.
+
+
+    **Envelope.** Every JSON response, success or error, has the same shape:
+
+    `{status_code, status_desc, message, data, errors, request_id}`. `status_code` always equals the HTTP
+
+    status. On success `errors` is null; on error `data` is null.
+
+
+    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+
+    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+
+    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+
+    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+
+    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+
+
+    **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
+    has
+
+    no request_id of its own, the `X-Request-ID` request header is used (and echoed in the response header);
+
+    without it the service generates one.
+
+
+    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+
+    .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
+    a
+
+    callback to the central orchestrator (see *Webhooks*), and can be read at any time with
+
+    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+
+    over the three stages. Submitting the same request_id again is idempotent:
+
+    `202` with `duplicate: true`, the work is not repeated, unless the earlier attempt `FAILED` or has
+    been
+
+    `PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default: the
+
+    process running it died). A job still running when the service shuts down is reported `FAILED`. Because
+
+    the request was already answered `202`, a problem with the document itself (unreadable file, no text,
+
+    unsupported document type) shows up as a `FAILED` job and callback, not as a `4xx`.
+
+    '
+  version: 1.0.0
+servers:
+- url: /
+  description: This host (where this page is served)
+- url: http://nilam-ocr-npwp-structuring.{namespace}.svc.cluster.local:8032
+  description: GKE, from inside the release's namespace (the other services of this pipeline)
+  variables:
+    namespace:
+      default: nilam-ocr-npwp
+      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nilam-ocr-npwp)'
+- url: http://structuring:8032
+  description: The Docker Compose network
+- url: http://127.0.0.1:8032
+  description: Local development
+paths:
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Liveness probe
+      description: Says the process is alive and which implementations are active. Never touches a dependency.
+        Does not require an API key.
+      operationId: getHealth
+      responses:
+        '200':
+          description: The process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: Healthy
+                  value:
+                    status: healthy
+                    version: 1.0.0
+                    device: cpu
+                    backends:
+                      structuring: npwp_rules
+                      storage: postgres
+  /ready:
+    get:
+      tags:
+      - Health
+      summary: Readiness probe
+      description: 'Liveness vs readiness: /health only says the process is alive and never touches a
+        dependency (a database blip must not make Kubernetes restart every pod). /ready says whether this
+        pod can do its job right now: 200 when every REQUIRED dependency of this service answers, 503
+        otherwise, so the pod is taken out of the Service until it recovers. Downstream stages and model
+        services are deliberately not checked: their outage is reported per job, not by refusing traffic.
+        Does not require an API key.'
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Every required dependency answers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              examples:
+                ready:
+                  summary: Ready
+                  value:
+                    status: ready
+                    checks:
+                      database: ok
+        '503':
+          description: A required dependency is unavailable; the pod is taken out of the Service
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              example:
+                status: not_ready
+                checks:
+                  database: failed
+  /metrics:
+    get:
+      tags:
+      - Health
+      summary: Prometheus metrics
+      description: 'Prometheus text exposition of this process: `http_requests_total` and `http_request_duration_seconds`
+        per route template, and for the pipeline stages `pipeline_jobs_total` (by outcome), `pipeline_job_duration_seconds`,
+        `pipeline_stale_jobs_reclaimed_total`, `pipeline_outbox_deliveries_total` and the outbox backlog
+        gauges (`pipeline_outbox_pending`, `_retrying`, `_dead_letters`, `_oldest_pending_seconds`). Scraped
+        inside the cluster; does not require an API key.'
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Metrics in the Prometheus text format
+          content:
+            text/plain:
+              schema:
+                type: string
+  /v1/structuring/jobs:
+    post:
+      tags:
+      - Pipeline
+      summary: Hand OCR output to the structuring stage
+      description: '**Step 3 of the pipeline, asynchronous. Called by the OCR service, not by the orchestrator.**
+
+
+        Records the job (`structuring_jobs`, idempotent per request_id), answers **202 immediately**,
+        then in the background: turns the OCR lines into named fields, stores the result (`structuring_results`),
+        POSTs the `STRUCTURING` callback, and hands the job (guardrails + OCR + structuring results) to
+        the scoring service.
+
+
+        A document that is not a lone NPWP card fails the job with a reason: an upload that also contains
+        a KTP / KK / marriage certificate, a CAPTCHA page, a screenshot of the DJP NPWP lookup, more than
+        2 pages, or no text at all.'
+      operationId: submitStructuringJob
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StructuringJobRequest'
+        required: true
+      responses:
+        '202':
+          description: The job was accepted (or already existed)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobAcceptedResponse'
+              examples:
+                accepted:
+                  summary: New job
+                  value:
+                    status_code: 202
+                    status_desc: Accepted
+                    message: Accepted
+                    data:
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      stage: STRUCTURING
+                      status: PROCESSING
+                      duplicate: false
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                duplicate:
+                  summary: 'Same request_id sent again: nothing is re-run'
+                  value:
+                    status_code: 202
+                    status_desc: Accepted
+                    message: Accepted
+                    data:
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      stage: STRUCTURING
+                      status: DONE
+                      duplicate: true
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.request_id: Field required'
+                errors: VALIDATION_ERROR
+      security:
+      - APIKeyHeader: []
+  /v1/structuring/jobs/{request_id}:
+    get:
+      tags:
+      - Pipeline
+      summary: Status and result of the structuring stage
+      description: 'Status of this stage only, and its structured fields once `DONE`. Internal: the orchestrator
+        NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and it helps to
+        debug.'
+      operationId: getStructuringJob
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      responses:
+        '200':
+          description: The job exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuringJobStatusResponse'
+              examples:
+                done:
+                  summary: Finished
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      stage: STRUCTURING
+                      created_at: '2026-09-18T04:00:01+00:00'
+                      status: DONE
+                      result:
+                        document_type: npwp
+                        fields:
+                          nomor_npwp:
+                            value: 12.345.678.9-012.345
+                            confidence: 0.9992
+                            source: 'NPWP : 12.345.678.9-012.345'
+                            signals:
+                              candidate_count: 1
+                              has_homoglyph: false
+                              invalid_province_prefix: false
+                              invalid_kecamatan_prefix: false
+                              invalid_birthdate: false
+                              invalid_kpp_prefix: false
+                          nama:
+                            value: BUDI SANTOSO
+                            confidence: 0.9773
+                            source: BUDI SANTOSO
+                            signals:
+                              name_base: BUDI SANTOSO
+                              corrected: false
+                          nama_badan:
+                            confidence: 0.0
+                        flag: false
+                      updated_at: '2026-09-18T04:00:01+00:00'
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                failed:
+                  summary: 'Failed: the upload was not a lone NPWP card'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      stage: STRUCTURING
+                      created_at: '2026-09-18T04:00:01+00:00'
+                      status: FAILED
+                      error_message: Upload contains another document (KARTU TANDA PENDUDUK); send the
+                        NPWP card only
+                      updated_at: '2026-09-18T04:00:01+00:00'
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No structuring job for this request_id
+          content:
+            application/json:
+              example:
+                status_code: 404
+                status_desc: Not Found
+                message: 'No STRUCTURING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                errors: 'No STRUCTURING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'path.request_id: Field required'
+                errors: VALIDATION_ERROR
+                request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/structuring/outbox:
+    get:
+      tags:
+      - Pipeline
+      summary: Backlog of this stage's undelivered callbacks and hand-offs
+      description: 'Operational view of the transactional outbox (`PIPELINE_OUTBOX`): how many callbacks
+        and hand-offs of this stage are still to be delivered, how old the oldest one is, and how many
+        were given up on (dead letters). No other service watches the `pipeline_outbox` table, so this
+        is where a monitor should look; the relay also logs a warning when the backlog is older than `PIPELINE_OUTBOX_STALE_AFTER_SECONDS`
+        or a dead letter is waiting.'
+      operationId: getStructuringOutboxStatus
+      responses:
+        '200':
+          description: The backlog of this stage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxStatusResponse'
+              examples:
+                idle:
+                  summary: Nothing waiting
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      enabled: true
+                      stage: STRUCTURING
+                      pending: 0
+                      retrying: 0
+                      dead_letters: 0
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                backlog:
+                  summary: The orchestrator has been down for a while
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      enabled: true
+                      stage: STRUCTURING
+                      pending: 12
+                      retrying: 12
+                      oldest_pending_seconds: 754.3
+                      dead_letters: 1
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                disabled:
+                  summary: '`PIPELINE_OUTBOX` is off'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      enabled: false
+                      stage: STRUCTURING
+                      pending: 0
+                      retrying: 0
+                      dead_letters: 0
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+      security:
+      - APIKeyHeader: []
+  /v1/structuring/outbox/release:
+    post:
+      tags:
+      - Pipeline
+      summary: Send this stage's dead letters again
+      description: 'Puts the dead letters of this stage back in the outbox queue, due immediately, so
+        the relay delivers them again: use it after the receiver was fixed (for example the orchestrator''s
+        callback contract, or a next stage that was answering 4xx). Optional query `request_id` limits
+        it to one request. A message that fails again goes through the same retry and dead-letter rules.
+        `409` when `PIPELINE_OUTBOX` is off on this service.'
+      operationId: releaseStructuringOutbox
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: request_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+      responses:
+        '200':
+          description: Dead letters released
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutboxReleaseResponse'
+              examples:
+                released:
+                  summary: One request
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      stage: STRUCTURING
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      released: 1
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                nothing:
+                  summary: Nothing to release
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      stage: STRUCTURING
+                      released: 0
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: The outbox is off on this service
+          content:
+            application/json:
+              example:
+                status_code: 409
+                status_desc: Conflict
+                message: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+                errors: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'query.request_id: Input should be a valid string'
+                errors: VALIDATION_ERROR
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/structuring/structure:
+    post:
+      tags:
+      - Structuring
+      summary: Turn OCR lines into named fields, synchronous (no job, no callback)
+      description: 'Maps raw text lines (e.g. from the ekstraksi service) to named document fields with
+        per-field confidence, using the ML team''s rules (`npwp_rules`). Nothing is rejected on content:
+        a bundled second document, a CAPTCHA or lookup screenshot, a missing or single-word name, a letter
+        in the number, an invalid Kode Wilayah / birthdate / KPP code or more than 2 pages set `flag`
+        and `flag_reason` for the reviewer and lower the trust model''s confidence.'
+      operationId: structureLines
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StructureRequest'
+        required: true
+      responses:
+        '200':
+          description: The fields found in the lines
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructureResponse'
+              examples:
+                person:
+                  summary: A person's card
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      document_type: npwp
+                      fields:
+                        nomor_npwp:
+                          value: 12.345.678.9-012.345
+                          confidence: 0.9992
+                          source: 'NPWP : 12.345.678.9-012.345'
+                          signals:
+                            candidate_count: 1
+                            has_homoglyph: false
+                            invalid_province_prefix: false
+                            invalid_kecamatan_prefix: false
+                            invalid_birthdate: false
+                            invalid_kpp_prefix: false
+                        nama:
+                          value: BUDI SANTOSO
+                          confidence: 0.9773
+                          source: BUDI SANTOSO
+                          signals:
+                            name_base: BUDI SANTOSO
+                            corrected: false
+                        nama_badan:
+                          confidence: 0.0
+                      flag: false
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                flagged:
+                  summary: 'A single-word name: returned, but flagged for review'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      document_type: npwp
+                      fields:
+                        nomor_npwp:
+                          value: 12.345.678.9-012.345
+                          confidence: 0.9992
+                          source: 'NPWP : 12.345.678.9-012.345'
+                          signals:
+                            candidate_count: 1
+                            has_homoglyph: false
+                            invalid_province_prefix: false
+                            invalid_kecamatan_prefix: false
+                            invalid_birthdate: false
+                            invalid_kpp_prefix: false
+                        nama:
+                          value: SUKIRMAN
+                          confidence: 0.9611
+                          source: SUKIRMAN
+                          signals:
+                            name_base: SUKIRMAN
+                            corrected: false
+                        nama_badan:
+                          confidence: 0.0
+                      flag: true
+                      flag_reason: Nama hanya terdiri dari 1 kata, mohon dicek kembali
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: No usable text in `lines`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: No text lines to structure
+                errors: No text lines to structure
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.lines: Field required'
+                errors: VALIDATION_ERROR
+      security:
+      - APIKeyHeader: []
+webhooks:
+  stageCallback:
+    post:
+      tags:
+      - Callbacks
+      summary: Stage status callback (implemented by the orchestrator / gateway)
+      description: '**This is a request this service SENDS, not one it accepts.** The orchestrator must
+        expose it.
+
+
+        `POST {ORCHESTRATION_URL}{ORCHESTRATION_CALLBACK_PATH}` (default path `/v1/callbacks/stage`),
+        `Content-Type: application/json`.
+
+
+        **When.** Once per job of `POST /v1/structuring/jobs`: `stage: STRUCTURING` with `status: DONE`
+        once the fields are stored, or `status: FAILED` with `error_message` when the upload is not a
+        lone NPWP card or has no text (the chain stops there). Additionally `stage: SCORING`, `status:
+        FAILED` when structuring succeeded but the scoring service could not be reached after retries.
+        Without `PIPELINE_OUTBOX` the `STRUCTURING` callback is sent before the hand-off to scoring; with
+        it the hand-off goes first, so the `SCORING` callback may arrive before this one.
+
+
+        **Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are
+        retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A callback
+        that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the orchestrator
+        can reconcile with the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` and should time
+        a request out on its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction
+        as the result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
+        (24 h by default); a `4xx`, or that age, makes it a dead letter that stays in the table and is
+        counted by `GET .../outbox`.
+
+
+        **What the receiver must tolerate.** The same callback may arrive more than once (treat it as
+        idempotent), and callbacks of different stages come from different services, so they may arrive
+        out of order: only ever move a request''s status forward. Reject callbacks whose `X-API-Key` is
+        wrong.'
+      operationId: stageCallback
+      parameters:
+      - description: '`ORCHESTRATION_API_KEY` of the sending service; when unset, that service''s own
+          `API_KEY`'
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key
+          description: '`ORCHESTRATION_API_KEY` of the sending service; when unset, that service''s own
+            `API_KEY`'
+        name: x-api-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StageCallback'
+        required: true
+      responses:
+        '200':
+          description: Acknowledged. Any 2xx is accepted and the body is ignored.
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    BoundingBox:
+      properties:
+        x1:
+          type: number
+          title: X1
+          description: Left
+          examples:
+          - 35
+        y1:
+          type: number
+          title: Y1
+          description: Top
+          examples:
+          - 389
+        x2:
+          type: number
+          title: X2
+          description: Right
+          examples:
+          - 637
+        y2:
+          type: number
+          title: Y2
+          description: Bottom
+          examples:
+          - 437
+      type: object
+      required:
+      - x1
+      - y1
+      - x2
+      - y2
+      title: BoundingBox
+    BoundingBoxPayload:
+      properties:
+        x1:
+          type: number
+          title: X1
+          description: Left edge, pixels
+          examples:
+          - 271
+        y1:
+          type: number
+          title: Y1
+          description: Top edge, pixels
+          examples:
+          - 358
+        x2:
+          type: number
+          title: X2
+          description: Right edge, pixels
+          examples:
+          - 1347
+        y2:
+          type: number
+          title: Y2
+          description: Bottom edge, pixels
+          examples:
+          - 511
+      additionalProperties: true
+      type: object
+      required:
+      - x1
+      - y1
+      - x2
+      - y2
+      title: BoundingBoxPayload
+      description: Upright box around a text line.
+    ErrorResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          examples:
+          - 400
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          examples:
+          - Bad Request
+        message:
+          type: string
+          title: Message
+          description: Human-readable cause; safe to log
+          examples:
+          - Uploaded file is empty
+        data:
+          type: 'null'
+          title: Data
+          description: Always null on error
+        errors:
+          type: string
+          title: Errors
+          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
+            names a different field every time); for every other status it repeats `message`
+          examples:
+          - Uploaded file is empty
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Present when the error is tied to a known request_id
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+      type: object
+      required:
+      - status_code
+      - status_desc
+      - message
+      - errors
+      title: ErrorResponse
+      description: Every error response.
+    GuardrailsDocument:
+      properties:
+        verdict:
+          anyOf:
+          - type: string
+            enum:
+            - accepted
+            - reject
+          - type: 'null'
+          title: Verdict
+          description: Document verdict
+          examples:
+          - accepted
+        confidence:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Confidence
+          description: 'Confidence in the verdict: accepted -> lowest `proba_approve` over the pages.
+            Sent to the scoring model as `guardrail_probability`'
+          examples:
+          - 0.9821
+        n_pages:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: N Pages
+          description: Pages that were checked
+          examples:
+          - 1
+        n_approve:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: N Approve
+          description: Pages with verdict `accepted`
+          examples:
+          - 1
+        n_reject:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: N Reject
+          description: Pages with verdict `rejected`
+          examples:
+          - 0
+      additionalProperties: true
+      type: object
+      title: GuardrailsDocument
+      description: The guardrails verdict for the whole document.
+    GuardrailsPage:
+      properties:
+        page_index:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Page Index
+          description: 0-based page number
+          examples:
+          - 0
+        proba_approve:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Proba Approve
+          description: Probability that this page is an acceptable document
+          examples:
+          - 0.9821
+        proba_reject:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Proba Reject
+          description: 1 - `proba_approve`
+          examples:
+          - 0.0179
+        verdict:
+          anyOf:
+          - type: string
+            enum:
+            - accepted
+            - reject
+          - type: 'null'
+          title: Verdict
+          description: Verdict for this page alone
+          examples:
+          - accepted
+      additionalProperties: true
+      type: object
+      title: GuardrailsPage
+      description: One page of the guardrails report.
+    GuardrailsResult:
+      properties:
+        passed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Passed
+          description: 'true: the document may proceed to OCR'
+          examples:
+          - true
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: Why it was rejected; null when passed
+          examples:
+          - null
+        document:
+          anyOf:
+          - $ref: '#/components/schemas/GuardrailsDocument'
+          - type: 'null'
+          description: Verdict for the document as a whole
+        pages:
+          items:
+            $ref: '#/components/schemas/GuardrailsPage'
+          type: array
+          title: Pages
+          description: One entry per page, in page order
+      additionalProperties: true
+      type: object
+      title: GuardrailsResult
+      description: The guardrails report (`data` of the guardrails service's POST /v1/guardrails/check,
+        sent on by the orchestrator), forwarded unchanged down the pipeline.
+    HealthResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+          description: Always `healthy` while the process is alive
+          examples:
+          - healthy
+        version:
+          type: string
+          title: Version
+          description: Service version
+          examples:
+          - 1.0.0
+        device:
+          type: string
+          title: Device
+          description: Where this service computes
+          examples:
+          - cpu
+        backends:
+          additionalProperties:
+            type: string
+          type: object
+          title: Backends
+          description: Active implementation per concern (model backend, storage). Useful to confirm a
+            deployment
+          examples:
+          - ekstraksi: paddle
+            storage: postgres
+      type: object
+      required:
+      - status
+      - version
+      - device
+      - backends
+      title: HealthResponse
+      description: '`GET /health`.'
+    JobAccepted:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: Echo of the submitted request_id
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        stage:
+          type: string
+          enum:
+          - OCR
+          - STRUCTURING
+          - SCORING
+          title: Stage
+          description: Pipeline stage that accepted the job
+          examples:
+          - OCR
+        status:
+          type: string
+          enum:
+          - PROCESSING
+          - DONE
+          - FAILED
+          title: Status
+          description: '`PROCESSING` for a newly accepted job. When `duplicate` is true: the current status
+            of the job that already exists for this request_id'
+          examples:
+          - PROCESSING
+        duplicate:
+          type: boolean
+          title: Duplicate
+          description: 'true: this request_id was already accepted before and the work is NOT run again
+            (idempotent). Exception: a job whose status is `FAILED` is re-claimed and run again, and answers
+            `duplicate: false`'
+          default: false
+          examples:
+          - false
+      type: object
+      required:
+      - request_id
+      - stage
+      - status
+      title: JobAccepted
+      description: '`data` of `POST /v1/<stage>/jobs`.'
+    JobAcceptedResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 202
+          examples:
+          - 202
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: Accepted
+          examples:
+          - Accepted
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Accepted
+          examples:
+          - Accepted
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/JobAccepted'
+      type: object
+      required:
+      - data
+      title: JobAcceptedResponse
+      description: Envelope of `POST /v1/<stage>/jobs`.
+    OcrBlockPayload:
+      properties:
+        text:
+          type: string
+          title: Text
+          description: One OCR text line
+          examples:
+          - 12.345.678.9-012.345
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          description: Recognition score of this line
+          default: 1.0
+          examples:
+          - 0.9999
+        bbox:
+          anyOf:
+          - $ref: '#/components/schemas/BoundingBoxPayload'
+          - type: 'null'
+          description: Upright box around the line, in pixels of the ORIENTATION-CORRECTED image the OCR
+            model worked on (not of the uploaded photo). Structuring finds the name by its distance to
+            the NPWP number
+        page:
+          type: integer
+          minimum: 0.0
+          title: Page
+          description: 0-based page number
+          default: 0
+          examples:
+          - 0
+      additionalProperties: true
+      type: object
+      required:
+      - text
+      title: OcrBlockPayload
+      description: One OCR text line.
+    OcrPayload:
+      properties:
+        engine:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Engine
+          description: OCR backend that produced the blocks
+          examples:
+          - paddle
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+          description: Model identity reported by the OCR model service
+          examples:
+          - PP-OCRv6_medium_det+PP-OCRv6_medium_rec
+        elapsed_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Elapsed Ms
+          description: Time spent in the OCR model
+          examples:
+          - 412.5
+        full_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Full Text
+          description: All blocks joined by newline
+        blocks:
+          items:
+            $ref: '#/components/schemas/OcrBlockPayload'
+          type: array
+          title: Blocks
+          description: Text lines in reading order (top to bottom)
+      additionalProperties: true
+      type: object
+      required:
+      - blocks
+      title: OcrPayload
+      description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
+    OutboxRelease:
+      properties:
+        stage:
+          type: string
+          enum:
+          - OCR
+          - STRUCTURING
+          - SCORING
+          title: Stage
+          description: The stage whose dead letters were released
+          examples:
+          - OCR
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Only this request's dead letters were released; null = every dead letter of the
+            stage
+        released:
+          type: integer
+          title: Released
+          description: Dead letters put back in the queue, due immediately
+          examples:
+          - 1
+      type: object
+      required:
+      - stage
+      - released
+      title: OutboxRelease
+      description: The `data` of `POST /v1/<stage>/outbox/release`.
+    OutboxReleaseResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/OutboxRelease'
+      type: object
+      required:
+      - data
+      title: OutboxReleaseResponse
+      description: Envelope of `POST /v1/<stage>/outbox/release`.
+    OutboxStatus:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+          description: 'false when `PIPELINE_OUTBOX` is off: callbacks are sent directly and nothing is
+            queued'
+        stage:
+          type: string
+          enum:
+          - OCR
+          - STRUCTURING
+          - SCORING
+          title: Stage
+          description: The stage whose messages this service's relay delivers
+          examples:
+          - OCR
+        pending:
+          type: integer
+          title: Pending
+          description: Messages not yet delivered, including the ones a relay is sending right now
+          examples:
+          - 0
+        retrying:
+          type: integer
+          title: Retrying
+          description: 'Of `pending`: messages that already failed at least once'
+          examples:
+          - 0
+        oldest_pending_seconds:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Oldest Pending Seconds
+          description: Age of the oldest pending message; null when nothing is pending. Growing past `PIPELINE_OUTBOX_STALE_AFTER_SECONDS`
+            means the orchestrator or the next stage is not taking messages
+          examples:
+          - null
+        dead_letters:
+          type: integer
+          title: Dead Letters
+          description: Messages given up on (a 4xx from the receiver, or 5xx for longer than `PIPELINE_OUTBOX_MAX_AGE_SECONDS`).
+            They stay in `pipeline_outbox` with `failed_at` and `last_error` for inspection and are never
+            retried; anything above 0 needs a human
+          examples:
+          - 0
+      type: object
+      required:
+      - enabled
+      - stage
+      - pending
+      - retrying
+      - dead_letters
+      title: OutboxStatus
+      description: The `data` of `GET /v1/<stage>/outbox`.
+    OutboxStatusResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/OutboxStatus'
+      type: object
+      required:
+      - data
+      title: OutboxStatusResponse
+      description: Envelope of `GET /v1/<stage>/outbox`.
+    ReadyResponse:
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+          - not_ready
+          title: Status
+          description: '`ready` (HTTP 200) when every check is `ok`, else `not_ready` (HTTP 503)'
+          examples:
+          - ready
+        checks:
+          additionalProperties:
+            type: string
+            enum:
+            - ok
+            - failed
+          type: object
+          title: Checks
+          description: One entry per REQUIRED dependency of this service; empty when it has none
+          examples:
+          - database: ok
+      type: object
+      required:
+      - status
+      - checks
+      title: ReadyResponse
+      description: '`GET /ready`.'
+    StageCallback:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: The request_id you submitted with `POST /v1/ekstraksi/jobs`
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        stage:
+          type: string
+          enum:
+          - OCR
+          - STRUCTURING
+          - SCORING
+          title: Stage
+          description: 'Stage the status is about. Usually the sender''s own stage; when the hand-off
+            to the NEXT stage fails after retries, the sender reports `status: FAILED` with the next stage''s
+            name, because that stage never received the job and cannot report for itself'
+          examples:
+          - OCR
+        status:
+          type: string
+          enum:
+          - DONE
+          - FAILED
+          title: Status
+          description: Outcome of the stage. `FAILED` of any stage ends the request
+          examples:
+          - DONE
+        result:
+          type: 'null'
+          title: Result
+          description: Always null for OCR and STRUCTURING; read the stage result from GET .../jobs/{request_id}
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+          description: Why it failed; null when `status` is `DONE`
+          examples:
+          - null
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the stage rejected the
+            document (a rejecting check of the structuring rules; `error_message` is the Indonesian reason).
+            Absent when a stage broke'
+          examples:
+          - null
+      type: object
+      required:
+      - request_id
+      - stage
+      - status
+      title: StageCallback
+      description: Body of the callback a stage POSTs to the orchestrator when it finishes.
+    StructureRequest:
+      properties:
+        lines:
+          items:
+            $ref: '#/components/schemas/TextLine'
+          type: array
+          minItems: 1
+          title: Lines
+          description: OCR text lines in reading order (top to bottom)
+      type: object
+      required:
+      - lines
+      title: StructureRequest
+    StructureResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/StructuredDocument'
+      type: object
+      required:
+      - data
+      title: StructureResponse
+    StructuredDocument:
+      properties:
+        document_type:
+          type: string
+          title: Document Type
+          description: Document type the fields were read as
+          examples:
+          - npwp
+        fields:
+          additionalProperties:
+            $ref: '#/components/schemas/StructuredField'
+          type: object
+          title: Fields
+          description: 'Always `nomor_npwp`, `nama`, `nama_badan`; a field that was not found has `value:
+            null`. A person''s card fills `nama`, a company''s (PT, CV, ...) fills `nama_badan`. A 15-digit
+            number is formatted `XX.XXX.XXX.X-XXX.XXX`; a 16-digit NIK-based number is 16 plain digits,
+            and wins when a card prints both'
+          examples:
+          - nama:
+              confidence: 0.9773
+              signals:
+                corrected: false
+                name_base: BUDI SANTOSO
+              source: BUDI SANTOSO
+              value: BUDI SANTOSO
+            nama_badan:
+              confidence: 0.0
+            nomor_npwp:
+              confidence: 0.9992
+              signals:
+                candidate_count: 1
+                has_homoglyph: false
+              source: 'NPWP : 12.345.678.9-012.345'
+              value: 12.345.678.9-012.345
+        flag:
+          type: boolean
+          title: Flag
+          description: 'Flag of the ML team''s rules, a feature of the trust model. True when: another
+            document is bundled in (KTP, KK, Akta), the page is a CAPTCHA or a screenshot of the DJP lookup,
+            the number or the name was not found, the name is a single word, the number contains a letter,
+            its province / kecamatan / birthdate / KPP code is invalid, or the upload has more than 2
+            pages'
+          examples:
+          - false
+        flag_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Flag Reason
+          description: The first reason `flag` is true, in Indonesian; null when not flagged
+          examples:
+          - null
+        reject_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reject Reason
+          description: The first reason that rejects the document, in Indonesian; null when the document
+            is accepted. Every check rejects except a single-word name and a letter in the number, which
+            only raise `flag`. In the pipeline a rejected document stops here (no scoring) and the client
+            gets a 400 with this message
+          examples:
+          - null
+      type: object
+      required:
+      - document_type
+      - fields
+      - flag
+      title: StructuredDocument
+    StructuredField:
+      properties:
+        value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Value
+          description: null when the field was not found
+          examples:
+          - 12.345.678.9-012.345
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          description: OCR score of the line the value came from; 0 when not found
+          examples:
+          - 0.9992
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+          description: Raw OCR line the value came from
+          examples:
+          - 'NPWP : 12.345.678.9-012.345'
+        signals:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Signals
+          description: 'Inputs for the scoring model and review signals (backend `npwp_rules` only; null
+            otherwise). nomor_npwp: `candidate_count` (NPWP-shaped numbers found in the document), `has_homoglyph`
+            (OCR read a letter where a digit belongs; the letter is dropped, not corrected), `invalid_province_prefix`
+            / `invalid_kecamatan_prefix` / `invalid_birthdate` (a 16-digit NIK-based number fails the
+            Kode Wilayah or birthdate check), `invalid_kpp_prefix` (a 15-digit number''s KPP office code
+            is unknown). nama / nama_badan: `name_base` (the read before any normalisation; the trust
+            model measures the name on this), `corrected` (`value` differs from `name_base`)'
+          examples:
+          - candidate_count: 1
+            has_homoglyph: false
+      type: object
+      required:
+      - confidence
+      title: StructuredField
+    StructuringJobRequest:
+      properties:
+        request_id:
+          type: string
+          minLength: 1
+          title: Request Id
+          description: request_id of the pipeline run
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        document_type:
+          type: string
+          title: Document Type
+          description: Only `npwp` is supported
+          default: npwp
+          examples:
+          - npwp
+        guardrails:
+          anyOf:
+          - $ref: '#/components/schemas/GuardrailsResult'
+          - type: 'null'
+          description: Guardrails result submitted with the OCR job; only forwarded to the next stage
+        ocr:
+          anyOf:
+          - $ref: '#/components/schemas/OcrPayload'
+          - type: 'null'
+          description: 'Result of the OCR stage. Left out when the OCR service hands off by reference
+            (`PIPELINE_HANDOFF_BY_REFERENCE`): this service then reads `ocr_results` of the shared database'
+      type: object
+      required:
+      - request_id
+      title: StructuringJobRequest
+    StructuringJobStatus:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: request_id of the pipeline run
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        stage:
+          type: string
+          const: STRUCTURING
+          title: Stage
+          description: Always `STRUCTURING` on this service
+          default: STRUCTURING
+          examples:
+          - STRUCTURING
+        status:
+          type: string
+          enum:
+          - PROCESSING
+          - DONE
+          - FAILED
+          title: Status
+          description: '`PROCESSING` -> `DONE` | `FAILED`. A `FAILED` job may go back to `PROCESSING`
+            when resubmitted'
+          examples:
+          - DONE
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+          description: Why the stage failed; null unless `status` is `FAILED`. Same text as the FAILED
+            callback
+          examples:
+          - null
+        created_at:
+          type: string
+          title: Created At
+          description: When the job was first accepted (ISO 8601, UTC)
+          examples:
+          - '2026-09-18T04:00:00+00:00'
+        updated_at:
+          type: string
+          title: Updated At
+          description: Last status change (ISO 8601, UTC)
+          examples:
+          - '2026-09-18T04:00:01+00:00'
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/StructuredDocument'
+          - type: 'null'
+          description: Structured fields once `status` is `DONE`; null otherwise
+      type: object
+      required:
+      - request_id
+      - status
+      - created_at
+      - updated_at
+      title: StructuringJobStatus
+    StructuringJobStatusResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/StructuringJobStatus'
+      type: object
+      required:
+      - data
+      title: StructuringJobStatusResponse
+    TextLine:
+      properties:
+        text:
+          type: string
+          title: Text
+          description: One OCR text line
+          examples:
+          - 'NPWP : 12.345.678.9-012.345'
+        confidence:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Confidence
+          description: Recognition score of this line
+          default: 1.0
+          examples:
+          - 0.9992
+        bbox:
+          anyOf:
+          - $ref: '#/components/schemas/BoundingBox'
+          - type: 'null'
+          description: Position of the line (`blocks[].bbox` of the OCR result). The `npwp_rules` backend
+            finds the name by its distance to the NPWP number, because real cards print the name without
+            a label. Without `bbox` the position is derived from the order of the lines
+        page:
+          type: integer
+          minimum: 0.0
+          title: Page
+          description: 0-based page number
+          default: 0
+          examples:
+          - 0
+      type: object
+      required:
+      - text
+      title: TextLine
+  securitySchemes:
+    APIKeyHeader:
+      type: apiKey
+      description: API key for this service
+      in: header
+      name: X-API-Key
+tags:
+- name: Pipeline
+  description: 'Asynchronous pipeline stage: 202, background work, callback, hand-off'
+- name: Callbacks
+  description: Requests this service SENDS to the orchestrator (see Webhooks)
+- name: Structuring
+  description: Raw text -> named fields, synchronous
+- name: Health
+  description: Liveness and readiness probes; no API key
