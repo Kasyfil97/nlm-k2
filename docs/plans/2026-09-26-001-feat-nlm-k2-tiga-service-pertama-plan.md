@@ -560,7 +560,7 @@ bisa dirujuk gerbang R6.
 
 ---
 
-- [ ] **Unit 5: Stub structuring dan scoring**
+- [x] **Unit 5: Stub structuring dan scoring** — selesai
 
 **Goal:** Dua tahap terakhir menjawab dalam bentuk kontrak dengan data yang bervariasi, sehingga
 seluruh siklus bisa diuji.
@@ -636,7 +636,7 @@ tersisa di kedua service.
 
 ---
 
-- [ ] **Unit 6: Isolasi paralel**
+- [x] **Unit 6: Isolasi paralel** — selesai
 
 **Goal:** Tiga agen bisa memenuhi definisi selesainya sendiri tanpa menulis berkas milik agen lain.
 
@@ -657,6 +657,10 @@ tersisa di kedua service.
 - Create: `docs/decisions/unfreeze-procedure.md`
 
 **Approach:**
+- *Koreksi saat pelaksanaan:* premis tentang `make lint` tidak berlaku. Dengan worktree per agen
+  (diputuskan di Unit 1), pohon satu agen tidak memuat pekerjaan agen lain yang belum di-commit,
+  jadi lint lintas-repo tidak terganggu. `LINT_PATH` tetap ditambahkan sebagai pemendek putaran,
+  bukan pengganti. Yang tetap nyata adalah lock, di bawah ini.
 - Hari ini `lock-check: lock` meregenerasi kelima lock lalu memeriksa
   `services/*/requirements.lock db/requirements.lock` — sehingga definisi selesai agen A menulis
   lock milik structuring, scoring, dan `db/`. Itu membuat R21 dan R24 saling bertentangan, dan
@@ -684,7 +688,13 @@ tersisa di kedua service.
   karena `test -z` atas stdout kosong.
 - Edge case: `make lint` berlingkup pohon agen A tetap hijau saat pohon agen B memuat galat sintaks.
 
-**Verification:** Ketiga definisi selesai R24 dapat dipenuhi bersamaan di satu host.
+**Verification:** Ketiga definisi selesai R24 dapat dipenuhi bersamaan di satu host. Dibuktikan
+dengan `docker compose config` atas dua proyek: nol `container_name` eksplisit, port host terpisah
+(8040–8044 dan 8140–8144), dan volume terpisah (`nlm-k2-a_postgres-data` vs `nlm-k2-b_…`).
+
+**Ditemukan saat membuktikannya:** `make up` gagal dengan "env file not found" sebelum satu
+container pun dibangun, karena `services/<nama>/.env` di-gitignore dan harus disalin manual dari
+contohnya. Ditambah target `make env`.
 
 ---
 
