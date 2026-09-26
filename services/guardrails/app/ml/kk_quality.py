@@ -135,8 +135,8 @@ def _load_runtime() -> None:
 # --- decoding and validation ----------------------------------------------------------------
 #
 # Every failure below is an `UnassessableImage`, which becomes verdict `unassessable` and HTTP 200
-# (R14a). K2Quality raised `ImageValidationError` / `ImageLoadError` here and the NPWP service that
-# this one replaces turned the same conditions into a 400, which §5.2 forbids.
+# (R14a). K2Quality raised `ImageValidationError` / `ImageLoadError` here, and the service this one
+# replaces turned the same conditions into a 400, which §5.2 forbids.
 
 
 def _validate_bytes(content: bytes) -> None:
@@ -562,8 +562,8 @@ class KKQualityModel:
 
         meta = _read_json(base / BLUR_CNN_META)
         aggregation = str(meta.get("aggregation_type", "attention"))
-        # The same class of guard the NPWP checkpoint needed for its `class_names`: read what the
-        # artifact says it is, refuse anything else, and never assume a default. A silently wrong
+        # The same class of guard the inherited checkpoint needed for its `class_names`: read what
+        # the artifact says it is, refuse anything else, and never assume a default. A silently wrong
         # head here does not crash -- it produces a plausible number for the wrong computation.
         if aggregation != "attention":
             raise RuntimeError(
