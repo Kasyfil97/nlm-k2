@@ -1,1 +1,5 @@
-*.sh text eol=lf
+# Seluruh berkas teks disimpan dan di-checkout dengan LF, apa pun core.autocrlf di mesin
+# pengembang. Tanpa ini, checkout di Windows (autocrlf=true adalah bawaan Git for Windows)
+# menulis CRLF ke working tree, dan working tree itulah build context Docker — Makefile dan
+# skrip ber-CRLF gagal di dalam container Linux.
+* text=auto eol=lf
