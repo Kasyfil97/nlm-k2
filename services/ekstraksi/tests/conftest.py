@@ -4,7 +4,20 @@ import pytest
 
 from ocr_common.testing import auth_headers, set_test_env
 
-set_test_env(EKSTRAKSI_BACKEND="mock", DATABASE_URL="", ORCHESTRATION_URL="", AUTH_DISABLED="false")
+# Setiap kunci pipeline yang uji ini mengandaikan MATI dimatikan di sini, bukan hanya dua yang
+# pertama. `set_test_env` menulis ke os.environ, yang mengalahkan `.env` -- tetapi kunci yang tidak
+# disebut tetap dibaca dari `.env` pengembang. Sebuah `.env` yang menyalakan
+# PIPELINE_HANDOFF_BY_REFERENCE (mis. untuk `make smoke`) dulu membuat seluruh suite gagal saat
+# impor conftest, dengan pesan validasi yang tidak menyebut-nyebut uji.
+set_test_env(
+    PIPELINE_HANDOFF_BY_REFERENCE="false",
+    PIPELINE_OUTBOX="false",
+    ORCHESTRATION_OUTCOME_TABLE="",
+    EKSTRAKSI_BACKEND="mock",
+    DATABASE_URL="",
+    ORCHESTRATION_URL="",
+    AUTH_DISABLED="false",
+)
 
 from fastapi.testclient import TestClient  # noqa: E402
 

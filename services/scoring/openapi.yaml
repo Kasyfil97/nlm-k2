@@ -105,7 +105,6 @@ paths:
                     device: cpu
                     backends:
                       scoring: trust_model
-                      legacy_score: heuristic
                       storage: postgres
   /ready:
     get:

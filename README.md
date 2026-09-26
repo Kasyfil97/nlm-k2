@@ -36,6 +36,35 @@ make smoke        # uji ujung ke ujung
 
 `make up` saja tidak menyalakan database; tahap-tahapnya butuh `make up-db`.
 
+### Smoke test ujung ke ujung
+
+`make smoke` menjalankan delapan jalur kontrak terhadap stack compose lokal. Ia **menolak jalan**
+di luar `ENVIRONMENT=local` atau terhadap alamat non-lokal (R25a): ia membuat baris dan
+menghapusnya lagi, termasuk di tabel outcome yang di produksi dimiliki Orkestrasi pusat.
+
+Yang perlu disiapkan sekali, di ketiga `services/{ekstraksi,structuring,scoring}/.env`:
+
+```sh
+ORCHESTRATION_OUTCOME_TABLE=orchestration_extract_ocr
+PIPELINE_OUTBOX=true
+PIPELINE_HANDOFF_BY_REFERENCE=true
+```
+
+lalu `make db-external` untuk membuat tabel tiruannya (DDL-nya di `db/external/`; tabel itu bukan
+milik repo ini dan tidak disentuh migrasi Alembic).
+
+Dua variabel opsional:
+
+| Variabel | Untuk apa |
+|---|---|
+| `SMOKE_DATABASE_URL` | jalur tabel outcome dan pembersihan barisnya. Tanpa ini keduanya **dilewati**, bukan lulus |
+| `SMOKE_DELAY_SECONDS` | lama tunda jalur 202; harus di atas `PIPELINE_WAIT_SECONDS` (bawaan 30) |
+
+Jalur dead letter tidak bisa memicu keadaannya sendiri: ia butuh stack yang dijalankan dengan
+`PIPELINE_OUTBOX_MAX_AGE_SECONDS` kecil dan tahap penerima dimatikan. R8 melarang menambahkan hook
+baru ke `ocr_common` untuk itu, jadi jalurnya memeriksa keadaan yang ada dan melewati diri sendiri
+kalau tidak ada.
+
 ## Database
 
 nlm-k2 memakai database PostgreSQL sendiri di **instans tersendiri**, tidak berbagi instans dengan

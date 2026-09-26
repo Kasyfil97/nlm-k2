@@ -1,0 +1,1394 @@
+openapi: 3.1.0
+info:
+  title: 'nlm-k2 OCR Kartu Keluarga: gateway integration API'
+  version: 1.0.0
+  description: "Everything the central orchestrator / gateway needs to integrate the KK OCR pipeline,\
+    \ merged from the\nservices' own specs. Each service also serves its full Swagger UI at `/docs`.\n\
+    \n## The flow\n\n1. **`POST /v1/extract-ocr`** on the *orchestrator* service (port `8040`) with your\
+    \ `request_id` and the\n   document (`file` or `file_url`, optional `params`). It answers in the central\
+    \ orchestrator's\n   `extract-ocr` contract (`job_status`, `data`, `guardrails`, `params`):\n   -\
+    \ rejected by the guardrails model -> **400**, `errors: DOWNSTREAM_VALIDATION_ERROR`, `guardrails:\
+    \ 1`;\n     nothing runs and no callback follows.\n   - passed -> the document goes on to the OCR\
+    \ stage and the service waits for the pipeline for up to\n     `PIPELINE_WAIT_SECONDS` (30 s by default,\
+    \ counted from the request's arrival). Finished in time ->\n     **200**, `job_status: completed`,\
+    \ `data` = `no_kk`, `nama_kepala_keluarga` and `anggota_keluarga[]`\n     with seven fields per member,\
+    \ each `{value, confidence}` and confidence 0/1; a stage failed ->\n     **422** `OCR_FAILED` / `STRUCTURING_FAILED`\
+    \ / `SCORING_FAILED`; still\n     running -> **202**, `job_status: processing`. Give this call an\
+    \ HTTP timeout well above the wait.\n2. **Receive callbacks** (see *Webhooks*), sent by the pipeline\
+    \ stages themselves after a hand-off. The\n   `SCORING` / `DONE` callback carries the **final result**\
+    \ (richer than `data`: OCR scores, trust\n   probabilities, the guardrails report). A `FAILED` callback\
+    \ of any stage ends the request.\n3. **Read the status when needed** with `GET /v1/extract-ocr/{request_id}`\
+    \ on the same service: the same\n   contract, without waiting.\n\nTime a request out on your side:\
+    \ a stage that crashes mid-job cannot send its callback.\n\n## What the result is, and is not\n\n\
+    `data` carries **nine** fields: `no_kk`, `nama_kepala_keluarga`, and one object per household member\n\
+    with `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,\n\
+    `ayah`, `ibu`. Structuring reads eleven document fields and fifteen per member; the rest stay behind\n\
+    `GET /v1/structuring/jobs/{request_id}` rather than travelling to you. `value` is `\"\"` when a field\n\
+    was not found, never null, and the object is never replaced by null.\n\n`confidence` is 0 or 1: the\
+    \ ML team's trust model gives each field a probability of being correct,\nand 1 means it reached `FIELD_CONFIDENCE_THRESHOLD`.\
+    \ There is **no document-level score and no\napprove / reject decision**; thresholds are yours. A\
+    \ member array is positional — member *n* in\n`data` is member *n* on the card.\n\n## Addresses\n\n\
+    The orchestrator is the only service you call. From another namespace in GKE:\n`http://nlm-k2.nlm-k2.svc.cluster.local:8040`\
+    \ (the release's entry Service). The\nguardrails and pipeline stage services are internal. Nothing\
+    \ is exposed outside the cluster.\n\n\n## Conventions (the same for every nlm-k2 service)\n\n**Authentication.**\
+    \ Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.\nA missing\
+    \ or wrong key answers `401`. The services are reachable only from inside the cluster.\n\n**Envelope.**\
+    \ Every JSON response, success or error, has the same shape:\n`{status_code, status_desc, message,\
+    \ data, errors, request_id}`. `status_code` always equals the HTTP\nstatus. On success `errors` is\
+    \ null; on error `data` is null.\n\n**Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for\
+    \ `422`, otherwise the same text as\n`message`. `400` = the request or the document is unusable (do\
+    \ not retry unchanged). `401` = API key.\n`404` = unknown request_id. `409` = request_id already processed\
+    \ (legacy contract only). `422` = a\nfield is missing or has the wrong type. `500` = this service\
+    \ or its model failed. `503` = a\ndependency is unreachable, `504` = it did not answer in time (both\
+    \ are safe to retry).\n\n**request_id.** Minted by the central orchestrator and carried through every\
+    \ stage. Where an endpoint has\nno request_id of its own, the `X-Request-ID` request header is used\
+    \ (and echoed in the response header);\nwithout it the service generates one.\n\n**Asynchronous stages**\
+    \ (internal: only the orchestrator and the previous stage call them). `POST\n.../jobs` answers `202`\
+    \ immediately and does the work in the background. The outcome is reported by a\ncallback to the central\
+    \ orchestrator (see *Webhooks*), and can be read at any time with\n`GET .../jobs/{request_id}`, which\
+    \ the orchestrator's `GET /v1/extract-ocr/{request_id}` combines\nover the three stages. Submitting\
+    \ the same request_id again is idempotent:\n`202` with `duplicate: true`, the work is not repeated,\
+    \ unless the earlier attempt `FAILED` or has been\n`PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`,\
+    \ 5 minutes by default: the\nprocess running it died). A job still running when the service shuts\
+    \ down is reported `FAILED`. Because\nthe request was already answered `202`, a problem with the document\
+    \ itself (unreadable file, no text,\nunsupported document type) shows up as a `FAILED` job and callback,\
+    \ not as a `4xx`.\n"
+tags:
+- name: 1. Start the pipeline
+  description: 'The call you make: guardrails check, then OCR -> structuring -> scoring, waited on for
+    up to PIPELINE_WAIT_SECONDS; answers in the central orchestrator''s extract-ocr contract. 200: `completed`
+    with the fields. 202: still `processing`, the result arrives by callback. 400: rejected. 422: a stage
+    failed.'
+- name: 2. Callbacks (you implement this)
+  description: 'Listed under **Webhooks**: the request each stage sends to you when it finishes.'
+- name: 3. Status
+  description: 'Where a request is now, in the same contract, without waiting: e.g. after a 202 whose
+    callback did not arrive.'
+paths:
+  /v1/extract-ocr:
+    post:
+      tags:
+      - 1. Start the pipeline
+      summary: Judge a document, run the pipeline, answer with the OCR result or 202
+      description: '**The call the central orchestrator makes.** Checks the file, has the guardrails service
+        judge it, hands it to the OCR stage when it passes, then waits for OCR -> structuring -> scoring
+        for up to `PIPELINE_WAIT_SECONDS` (30 s by default), counted from when this request arrived. The
+        response follows the central orchestrator''s `extract-ocr` contract ("Finished" meaning finished
+        within the wait):
+
+
+        | Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |
+
+        |---|---|---|---|---|---|
+
+        | Finished | 200 | `completed` | the fields | `0` | null |
+
+        | Still running | 202 | `processing` | null | null | null |
+
+        | Rejected by the guardrails model | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        |
+
+        | Rejected by the KK validity gate | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        |
+
+        | A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
+        |
+
+
+        `data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven
+        per member. Structuring extracts 11 document fields and 15 per member; only these leave, and the
+        rest stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is `{value, confidence}`,
+        where `value` is `""` when not found -- never null -- and `confidence` is `1` when the trust model
+        gives it a probability of at least `FIELD_CONFIDENCE_THRESHOLD` (0.5 by default), else `0`. `params`
+        is returned as sent.
+
+
+        **Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring.
+        Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member
+        with both a NIK and a name. `message` is the gate''s Indonesian reason. A rejected document is
+        still a `DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.
+
+
+        **Refused before anything runs** (plain error envelope, no `job_status`): a document above `MAX_UPLOAD_BYTES`
+        (5 MB by default) answers `413`, and -- only with `PDF_ENABLED`, which is off by default -- a
+        PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message`
+        the client can show as is. With the switch off a PDF is simply an unsupported content type.
+
+
+        **Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request,
+        when this service allows it (`GUARDRAILS_SKIP_ALLOWED`; otherwise `403` `GUARDRAILS_SKIP_NOT_ALLOWED`
+        and nothing runs). The file checks above still run, and the KK validity gate still rejects, so
+        `guardrails: 1` can then only come from it. The trust model gets no guardrails probability and
+        works with that input missing.
+
+
+        On 202 the result arrives by callback (sent by the pipeline stages), and can be read with `GET
+        /v1/extract-ocr/{request_id}`. Give this call an HTTP timeout well above `PIPELINE_WAIT_SECONDS`
+        (e.g. +15 s) to cover a slow guardrails check or hand-off.
+
+
+        Send `request_id` plus the document as `file`, or as `file_url`; exactly one of the two. A `file_url`
+        is downloaded here for the guardrails check, and the URL itself (not the bytes) is handed to the
+        OCR stage, which downloads it again, also when it re-runs a job left behind by a dead process:
+        the URL must stay valid for longer than the job lease. The raw guardrails report (`probability_bad`
+        and the threshold it was compared against) is not part of this response: it travels down the pipeline
+        and comes back in the SCORING callback.
+
+
+        **Idempotency.** The same request_id again re-runs the guardrails check, but the pipeline does
+        not run twice unless the earlier OCR attempt `FAILED` or outlived the job lease (`PIPELINE_JOB_LEASE_SECONDS`);
+        a request_id that already finished answers again with its stored outcome.'
+      operationId: extractOcr
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_extractOcr'
+        required: true
+      responses:
+        '200':
+          description: Accepted and finished within the wait
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              examples:
+                completed:
+                  summary: The OCR result
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OCR extraction completed successfully
+                    data:
+                      no_kk:
+                        value: '9901012609260001'
+                        confidence: 1
+                      nama_kepala_keluarga:
+                        value: BUDI SANTOSO
+                        confidence: 1
+                      anggota_keluarga:
+                      - nama_lengkap:
+                          value: BUDI SANTOSO
+                          confidence: 1
+                        nik:
+                          value: '9901011203850001'
+                          confidence: 1
+                        pendidikan:
+                          value: S1
+                          confidence: 1
+                        jenis_pekerjaan:
+                          value: KARYAWAN SWASTA
+                          confidence: 1
+                        status_hubungan_dalam_rumah_tangga:
+                          value: KEPALA KELUARGA
+                          confidence: 1
+                        ayah:
+                          value: SUTRISNO
+                          confidence: 1
+                        ibu:
+                          value: SITI AMINAH
+                          confidence: 1
+                      - nama_lengkap:
+                          value: SITI NURHALIZA
+                          confidence: 1
+                        nik:
+                          value: '9901015506880002'
+                          confidence: 1
+                        pendidikan:
+                          value: SLTA/SEDERAJAT
+                          confidence: 1
+                        jenis_pekerjaan:
+                          value: MENGURUS RUMAH TANGGA
+                          confidence: 0
+                        status_hubungan_dalam_rumah_tangga:
+                          value: ISTRI
+                          confidence: 1
+                        ayah:
+                          value: AHMAD DAHLAN
+                          confidence: 1
+                        ibu:
+                          value: RATNA SARI
+                          confidence: 1
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                    document_type: kk
+                    job_status: completed
+                    guardrails: 0
+                    params:
+                      nik: '9901011203850001'
+                      refno: PK19039Y8U
+        '202':
+          description: 'Accepted, but still running when the wait ran out: the result follows by callback'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              examples:
+                processing:
+                  summary: Still processing
+                  value:
+                    status_code: 202
+                    status_desc: Accepted
+                    message: OCR job accepted; still processing
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                    document_type: kk
+                    job_status: processing
+                    params:
+                      nik: '9901011203850001'
+                      refno: PK19039Y8U
+        '400':
+          description: 'Rejected by the guardrails model or by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`,
+            `guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above `MAX_DOCUMENT_PAGES`
+            pages while `PDF_ENABLED` is on (`Jumlah halaman melebihi batas, pastikan hanya mengunggah
+            foto Kartu Keluarga`), or a bad file / intake (empty, unsupported type, unreadable, `file_url`
+            refused)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga
+                errors: DOWNSTREAM_VALIDATION_ERROR
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                job_status: failed
+                guardrails: 1
+                params:
+                  nik: '9901011203850001'
+                  refno: PK19039Y8U
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+        '429':
+          description: The caller went over `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`. `Retry-After`
+            says how many seconds to wait. The limit is counted per API key, per process
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 429
+                status_desc: Too Many Requests
+                message: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                errors: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+        '403':
+          description: '`skip_guardrails=true` while `GUARDRAILS_SKIP_ALLOWED` is off (`GUARDRAILS_SKIP_NOT_ALLOWED`);
+            nothing was started'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              example:
+                status_code: 403
+                status_desc: Forbidden
+                message: 'skip_guardrails is not allowed here: GUARDRAILS_SKIP_ALLOWED is off'
+                errors: GUARDRAILS_SKIP_NOT_ALLOWED
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+        '413':
+          description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default); nothing was started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 413
+                status_desc: Payload Too Large
+                message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                errors: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+        '422':
+          description: A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`;
+            `message` says why), `params` is not valid JSON (`INVALID_PARAMS`), or a required field is
+            missing (`VALIDATION_ERROR`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'structuring stage failed: parser raised on an unexpected layout'
+                errors: STRUCTURING_FAILED
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                job_status: failed
+                guardrails: 0
+                params:
+                  nik: '9901011203850001'
+                  refno: PK19039Y8U
+        '500':
+          description: The guardrails or ekstraksi service failed, or answered in an unexpected shape
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 500
+                status_desc: Internal Server Error
+                message: guardrails service returned an unexpected response
+                errors: guardrails service returned an unexpected response
+        '503':
+          description: The guardrails service, its model, or the ekstraksi service is unreachable; nothing
+            was started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 503
+                status_desc: Service Unavailable
+                message: ekstraksi service is unavailable
+                errors: ekstraksi service is unavailable
+        '504':
+          description: The guardrails service, its model, or the ekstraksi service did not answer in time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 504
+                status_desc: Gateway Timeout
+                message: ekstraksi service timed out after 10.0s
+                errors: ekstraksi service timed out after 10.0s
+      security:
+      - APIKeyHeader: []
+      servers: &id001
+      - url: http://nlm-k2.{namespace}.svc.cluster.local:8040
+        description: 'GKE, from another namespace: the entry Service (the central orchestrator / gateway)'
+        variables:
+          namespace:
+            default: nlm-k2
+            description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nlm-k2)'
+      - url: http://nlm-k2-orchestrator.{namespace}.svc.cluster.local:8040
+        description: GKE, from inside the release's namespace (the other services of this pipeline)
+        variables:
+          namespace:
+            default: nlm-k2
+            description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nlm-k2)'
+      - url: http://orchestrator:8040
+        description: The Docker Compose network
+      - url: http://127.0.0.1:8040
+        description: Local development
+  /v1/extract-ocr/{request_id}:
+    get:
+      tags:
+      - 3. Status
+      summary: 'Where a request is now: the extract-ocr answer, without waiting'
+      description: 'Reads the OCR, structuring and scoring jobs of `request_id` once each, in pipeline
+        order, and answers in the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished
+        by now):
+
+
+        | Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |
+
+        |---|---|---|---|---|---|
+
+        | Finished | 200 | `completed` | the fields | `0` | null |
+
+        | Still running | 202 | `processing` | null | null | null |
+
+        | Rejected by the guardrails model | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        |
+
+        | Rejected by the KK validity gate | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        |
+
+        | A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
+        |
+
+
+        Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is
+        always null here (it is not stored) and `document_type` is `kk`.
+
+
+        **404** means no stage has a job for this request_id: it was refused or rejected by the guardrails
+        model (the `400` of the POST is its final answer), refused before the check, or its POST is still
+        being judged by guardrails.
+
+
+        **Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it
+        became a dead letter in the outbox) leaves the next stage without a job, so this endpoint keeps
+        answering `202` for it. The `FAILED` callback and the central orchestrator''s own tables carry
+        that final state; this endpoint only reads the stages'' jobs.'
+      operationId: getExtractOcr
+      security:
+      - APIKeyHeader: []
+      parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Request Id
+      responses:
+        '200':
+          description: Finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+              examples:
+                completed:
+                  summary: The OCR result
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OCR extraction completed successfully
+                    data:
+                      no_kk:
+                        value: '9901012609260001'
+                        confidence: 1
+                      nama_kepala_keluarga:
+                        value: BUDI SANTOSO
+                        confidence: 1
+                      anggota_keluarga:
+                      - nama_lengkap:
+                          value: BUDI SANTOSO
+                          confidence: 1
+                        nik:
+                          value: '9901011203850001'
+                          confidence: 1
+                        pendidikan:
+                          value: S1
+                          confidence: 1
+                        jenis_pekerjaan:
+                          value: KARYAWAN SWASTA
+                          confidence: 1
+                        status_hubungan_dalam_rumah_tangga:
+                          value: KEPALA KELUARGA
+                          confidence: 1
+                        ayah:
+                          value: SUTRISNO
+                          confidence: 1
+                        ibu:
+                          value: SITI AMINAH
+                          confidence: 1
+                      - nama_lengkap:
+                          value: SITI NURHALIZA
+                          confidence: 1
+                        nik:
+                          value: '9901015506880002'
+                          confidence: 1
+                        pendidikan:
+                          value: SLTA/SEDERAJAT
+                          confidence: 1
+                        jenis_pekerjaan:
+                          value: MENGURUS RUMAH TANGGA
+                          confidence: 0
+                        status_hubungan_dalam_rumah_tangga:
+                          value: ISTRI
+                          confidence: 1
+                        ayah:
+                          value: AHMAD DAHLAN
+                          confidence: 1
+                        ibu:
+                          value: RATNA SARI
+                          confidence: 1
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                    document_type: kk
+                    job_status: completed
+                    guardrails: 0
+        '202':
+          description: Still running
+          content:
+            application/json:
+              examples:
+                processing:
+                  summary: Still processing
+                  value:
+                    status_code: 202
+                    status_desc: Accepted
+                    message: OCR job accepted; still processing
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                    document_type: kk
+                    job_status: processing
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+        '400':
+          description: 'Rejected by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails:
+            1`)'
+          content:
+            application/json:
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap
+                errors: DOWNSTREAM_VALIDATION_ERROR
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                job_status: failed
+                guardrails: 1
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: The caller went over `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`. `Retry-After`
+            says how many seconds to wait. The limit is counted per API key, per process
+          content:
+            application/json:
+              example:
+                status_code: 429
+                status_desc: Too Many Requests
+                message: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                errors: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: No stage has a job for this request_id (rejected by the guardrails model, or not
+            submitted yet)
+          content:
+            application/json:
+              example:
+                status_code: 404
+                status_desc: Not Found
+                message: No request found for request_id OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                errors: No request found for request_id OCR_9cb01af2-493d-446d-b191-af120333f6d0
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: A pipeline stage failed (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`)
+          content:
+            application/json:
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'structuring stage failed: parser raised on an unexpected layout'
+                errors: STRUCTURING_FAILED
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                job_status: failed
+                guardrails: 0
+              schema:
+                $ref: '#/components/schemas/ExtractOcrResponse'
+        '500':
+          description: A stage answered in an unexpected shape, or refused this service (e.g. a wrong
+            API key)
+          content:
+            application/json:
+              example:
+                status_code: 500
+                status_desc: Internal Server Error
+                message: 'structuring service error (401): Invalid or missing API key'
+                errors: 'structuring service error (401): Invalid or missing API key'
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: A stage service is unreachable
+          content:
+            application/json:
+              example:
+                status_code: 503
+                status_desc: Service Unavailable
+                message: structuring service is unavailable
+                errors: structuring service is unavailable
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: A stage service did not answer in time
+          content:
+            application/json:
+              example:
+                status_code: 504
+                status_desc: Gateway Timeout
+                message: structuring service timed out after 10.0s
+                errors: structuring service timed out after 10.0s
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      servers: *id001
+webhooks:
+  stageCallback:
+    post:
+      tags:
+      - 2. Callbacks (you implement this)
+      summary: Stage status callback (implemented by the orchestrator / gateway)
+      description: '**This is a request this service SENDS, not one it accepts.** The orchestrator must
+        expose it.
+
+
+        `POST {ORCHESTRATION_URL}{ORCHESTRATION_CALLBACK_PATH}` (default path `/v1/callbacks/stage`),
+        `Content-Type: application/json`.
+
+
+        **When.** Once per stage, from the service that ran it:
+
+
+        - **ekstraksi**: Once per job of `POST /v1/ekstraksi/jobs`: `stage: OCR` with `status: DONE` once
+        the OCR result is stored, or `status: FAILED` with `error_message` when the document could not
+        be read (the chain stops there). An image with no readable text is `DONE`, not `FAILED`: it is
+        rejected by the structuring rules. Additionally `stage: STRUCTURING`, `status: FAILED` when OCR
+        succeeded but the structuring service could not be reached after retries. Without `PIPELINE_OUTBOX`
+        the `OCR` callback is sent before the hand-off to structuring; with it the hand-off goes first,
+        so the `STRUCTURING` callback may arrive before this one.
+
+        - **structuring**: Once per job of `POST /v1/structuring/jobs`: `stage: STRUCTURING` with `status:
+        DONE` once the fields are stored, or `status: FAILED` with `error_message` when the upload is
+        not a lone KK card or has no text (the chain stops there). Additionally `stage: SCORING`, `status:
+        FAILED` when structuring succeeded but the scoring service could not be reached after retries.
+        Without `PIPELINE_OUTBOX` the `STRUCTURING` callback is sent before the hand-off to scoring; with
+        it the hand-off goes first, so the `SCORING` callback may arrive before this one.
+
+        - **scoring**: Once per job of `POST /v1/scoring/jobs`, the last callback of a request: `stage:
+        SCORING` with `status: DONE` and `result` = the **final result** (fields, per-field confidences,
+        and the guardrails result that was submitted), or `status: FAILED` with `error_message` and `result:
+        null`.
+
+
+        **Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are
+        retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A callback
+        that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the orchestrator
+        can reconcile with its own `GET /v1/extract-ocr/{request_id}` and should time a request out on
+        its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the
+        result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
+        (24 h by default); a `4xx`, or that age, makes it a dead letter that stays in the table and is
+        counted by `GET .../outbox`.
+
+
+        **What the receiver must tolerate.** The same callback may arrive more than once (treat it as
+        idempotent), and callbacks of different stages come from different services, so they may arrive
+        out of order: only ever move a request''s status forward. Reject callbacks whose `X-API-Key` is
+        wrong.'
+      operationId: stageCallback
+      parameters:
+      - description: '`ORCHESTRATION_API_KEY` of the sending service; when unset, that service''s own
+          `API_KEY`'
+        required: true
+        schema:
+          type: string
+          title: X-Api-Key
+          description: '`ORCHESTRATION_API_KEY` of the sending service; when unset, that service''s own
+            `API_KEY`'
+        name: x-api-key
+        in: header
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - $ref: '#/components/schemas/StageCallback'
+              - $ref: '#/components/schemas/ScoringStageCallback'
+              description: '`stage: SCORING` carries the final result in `result`; for the other stages
+                `result` is null.'
+        required: true
+      responses:
+        '200':
+          description: Acknowledged. Any 2xx is accepted and the body is ignored.
+          content:
+            application/json:
+              schema: {}
+components:
+  schemas:
+    Body_extractOcr:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: request_id minted by the central orchestrator
+          examples:
+          - OCR_9cb01af2-493d-446d-b191-af120333f6d0
+        document_type:
+          type: string
+          title: Document Type
+          description: Document type chosen by the client. Only `kk` is supported
+          default: kk
+          examples:
+          - kk
+        params:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Params
+          description: 'Client metadata as JSON: an object, or a quoted string. Not interpreted; returned
+            unchanged in `params`'
+          examples:
+          - '{"nik": "9901011203850001", "refno": "PK19039Y8U"}'
+        file:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: string
+          - type: 'null'
+          title: File
+          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+        file_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Url
+          description: 'URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when
+            uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
+            list denies every URL rather than allowing public ones. https only, redirects are not followed,
+            and a host that resolves to a private or loopback address is refused even when it is listed.'
+        skip_guardrails:
+          type: boolean
+          title: Skip Guardrails
+          description: '`true` leaves the guardrails model out for this request; only when this service
+            allows it (`GUARDRAILS_SKIP_ALLOWED`), else `403` `GUARDRAILS_SKIP_NOT_ALLOWED`. The file
+            checks still run and the structuring rules still reject'
+          default: false
+      type: object
+      required:
+      - request_id
+      title: Body_extractOcr
+    ContractField:
+      properties:
+        value:
+          type: string
+          title: Value
+          description: The value read; `""` when the field was not found -- never null, and the object
+            itself is never replaced by null
+          default: ''
+          examples:
+          - '3273012345678901'
+        confidence:
+          type: integer
+          enum:
+          - 0
+          - 1
+          title: Confidence
+          description: 1 when the trust model gives this value a probability of being correct of at least
+            `FIELD_CONFIDENCE_THRESHOLD` (0.5 by default); 0 when it is lower, or when there is no value
+          examples:
+          - 1
+      type: object
+      required:
+      - confidence
+      title: ContractField
+    ErrorResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          examples:
+          - 400
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          examples:
+          - Bad Request
+        message:
+          type: string
+          title: Message
+          description: Human-readable cause; safe to log
+          examples:
+          - Uploaded file is empty
+        data:
+          type: 'null'
+          title: Data
+          description: Always null on error
+        errors:
+          type: string
+          title: Errors
+          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
+            names a different field every time); for every other status it repeats `message`
+          examples:
+          - Uploaded file is empty
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Present when the error is tied to a known request_id
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+      type: object
+      required:
+      - status_code
+      - status_desc
+      - message
+      - errors
+      title: ErrorResponse
+      description: Every error response.
+    ExtractOcrResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable; its wording may change, so branch on `errors` instead
+          examples:
+          - OCR extraction completed successfully
+        data:
+          anyOf:
+          - $ref: '#/components/schemas/KkData'
+          - type: 'null'
+          description: The OCR fields when `job_status` is `completed`; null otherwise
+        errors:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Errors
+          description: Failure code when the request failed or was refused; null otherwise
+          examples:
+          - null
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: The request_id this response belongs to
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Document type of the request
+          examples:
+          - kk
+        job_status:
+          anyOf:
+          - type: string
+            enum:
+            - pending
+            - processing
+            - completed
+            - failed
+          - type: 'null'
+          title: Job Status
+          description: '`completed` (200), `processing` (202), or `failed`; null when the request was
+            refused before anything was processed'
+          examples:
+          - completed
+        guardrails:
+          anyOf:
+          - type: integer
+            enum:
+            - 0
+            - 1
+          - type: 'null'
+          title: Guardrails
+          description: '0: the document passed the guardrails model (and the pipeline ran); 1: it was
+            rejected by the guardrails model or by the KK validity gate. Null on 202, and when the request
+            was refused before the check'
+          examples:
+          - 0
+        params:
+          title: Params
+          description: The `params` sent with `POST /v1/extract-ocr`, returned unchanged; null when not
+            sent. Not stored, so always null on `GET /v1/extract-ocr/{request_id}`
+          examples:
+          - nik: '9901011203850001'
+            refno: PK19039Y8U
+      type: object
+      required:
+      - status_code
+      - status_desc
+      - message
+      title: ExtractOcrResponse
+    FinalResult:
+      properties:
+        document_type:
+          type: string
+          title: Document Type
+          description: Document type the fields were read as
+          examples:
+          - kk
+        structuring:
+          $ref: '#/components/schemas/StructuringPayload'
+          description: 'The structuring result whole: all 11 document fields and 15 per member'
+        scoring:
+          $ref: '#/components/schemas/ScoringPayload'
+          description: 'Per-field trust for the nine contract fields. There is NO document-level score
+            and NO approve / reject decision: thresholds belong to the caller'
+        guardrails:
+          anyOf:
+          - $ref: '#/components/schemas/GuardrailsResult'
+          - type: 'null'
+          description: The guardrails result that was submitted with the job, returned unchanged
+      additionalProperties: true
+      type: object
+      required:
+      - document_type
+      - structuring
+      - scoring
+      title: FinalResult
+      description: What the pipeline produced for one request_id. Carried by the SCORING / DONE callback.
+    GuardrailsDocument:
+      properties:
+        verdict:
+          anyOf:
+          - type: string
+            enum:
+            - accepted
+            - reject
+            - unassessable
+          - type: 'null'
+          title: Verdict
+          description: Document verdict
+          examples:
+          - accepted
+        confidence:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Confidence
+          description: 'Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad`
+            when accepted. Null when the image could not be assessed'
+          examples:
+          - 0.9713
+        probability_bad:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability Bad
+          description: Raw model output. Travels unchanged to scoring as the `guardrail_probability` feature.
+            Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number
+          examples:
+          - 0.0287
+        threshold_used:
+          anyOf:
+          - type: number
+            exclusiveMaximum: 1.0
+            exclusiveMinimum: 0.0
+          - type: 'null'
+          title: Threshold Used
+          description: The threshold in force at the moment of the judgement. Echoed because it can be
+            changed at the central orchestrator without a deploy here, so the verdict records the one
+            it actually used
+          examples:
+          - 0.5
+      additionalProperties: true
+      type: object
+      title: GuardrailsDocument
+      description: 'The guardrails verdict. A Kartu Keluarga is always a single image, so there is no
+        page
+
+        concept here and no aggregation across pages.'
+    GuardrailsResult:
+      properties:
+        passed:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Passed
+          description: 'true: the document may proceed to OCR'
+          examples:
+          - true
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+          description: Why it was rejected, in Indonesian; null when passed
+          examples:
+          - null
+        document:
+          anyOf:
+          - $ref: '#/components/schemas/GuardrailsDocument'
+          - type: 'null'
+          description: The verdict and its numbers
+      additionalProperties: true
+      type: object
+      title: GuardrailsResult
+      description: The guardrails report (`data` of the guardrails service's POST /v1/guardrails/check,
+        sent on by the orchestrator), forwarded unchanged down the pipeline.
+    KkData:
+      properties:
+        no_kk:
+          $ref: '#/components/schemas/ContractField'
+          description: The 16-digit KK number
+        nama_kepala_keluarga:
+          $ref: '#/components/schemas/ContractField'
+          description: Name of the head of the household
+        anggota_keluarga:
+          items:
+            $ref: '#/components/schemas/KkMember'
+          type: array
+          title: Anggota Keluarga
+          description: One entry per member, in the order printed on the card; may be empty
+      type: object
+      required:
+      - no_kk
+      - nama_kepala_keluarga
+      - anggota_keluarga
+      title: KkData
+      description: '`data` of a completed request: nine fields, and nothing else.
+
+
+        Structuring extracts 11 document fields and 15 per member; only these leave. The rest stay in
+
+        `structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.'
+    KkMember:
+      properties:
+        nama_lengkap:
+          $ref: '#/components/schemas/ContractField'
+        nik:
+          $ref: '#/components/schemas/ContractField'
+        pendidikan:
+          $ref: '#/components/schemas/ContractField'
+        jenis_pekerjaan:
+          $ref: '#/components/schemas/ContractField'
+        status_hubungan_dalam_rumah_tangga:
+          $ref: '#/components/schemas/ContractField'
+          description: The card itself prints STATUS HUBUNGAN DALAM KELUARGA; this contract says `...dalam_rumah_tangga`
+            because the consumer asked for it. Internally the field keeps the card's name -- one of only
+            two keys the projection renames
+        ayah:
+          $ref: '#/components/schemas/ContractField'
+        ibu:
+          $ref: '#/components/schemas/ContractField'
+      type: object
+      required:
+      - nama_lengkap
+      - nik
+      - pendidikan
+      - jenis_pekerjaan
+      - status_hubungan_dalam_rumah_tangga
+      - ayah
+      - ibu
+      title: KkMember
+      description: One row of `anggota_keluarga`. All seven keys are always present.
+    ScoringPayload:
+      properties:
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Document type the fields were read as
+          examples:
+          - kk
+        fields:
+          additionalProperties:
+            anyOf:
+            - type: number
+            - type: 'null'
+          type: object
+          title: Fields
+          description: '`nomor_kk` and `nama_kepala_keluarga`. Null for a field whose value is empty'
+          examples:
+          - nama_kepala_keluarga: 0.8871
+            nomor_kk: 0.9412
+        anggota_keluarga:
+          items:
+            additionalProperties:
+              anyOf:
+              - type: number
+              - type: 'null'
+            type: object
+          type: array
+          title: Anggota Keluarga
+          description: Seven scores per member, positionally aligned with the structuring result. A length
+            mismatch is a defect in this pipeline, not a property of the document, and is rejected rather
+            than truncated
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+          description: Identity of the trust model
+          examples:
+          - kk-trust-isotonic-v1
+        payload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Payload
+          description: Exactly what was scored, as an audit trail, so the numbers can be reproduced
+      additionalProperties: true
+      type: object
+      title: ScoringPayload
+      description: 'Trust model output: P(each extracted field is correct), fused and calibrated.'
+    ScoringStageCallback:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: The request_id you submitted with `POST /v1/ekstraksi/jobs`
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        stage:
+          type: string
+          const: SCORING
+          title: Stage
+          description: 'Always `SCORING`: the last stage'
+          default: SCORING
+          examples:
+          - SCORING
+        status:
+          type: string
+          enum:
+          - DONE
+          - FAILED
+          title: Status
+          description: Outcome of the stage. `FAILED` of any stage ends the request
+          examples:
+          - DONE
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/FinalResult'
+          - type: 'null'
+          description: The final result of the request when `status` is `DONE`; null when `FAILED`
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+          description: Why it failed; null when `status` is `DONE`
+          examples:
+          - null
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected
+            the document (`error_message` is the Indonesian reason). Absent when a stage broke'
+          examples:
+          - null
+      type: object
+      required:
+      - request_id
+      - status
+      title: ScoringStageCallback
+      description: Body of the callback a stage POSTs to the orchestrator when it finishes.
+    StageCallback:
+      properties:
+        request_id:
+          type: string
+          title: Request Id
+          description: The request_id you submitted with `POST /v1/ekstraksi/jobs`
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        stage:
+          type: string
+          enum:
+          - OCR
+          - STRUCTURING
+          - SCORING
+          title: Stage
+          description: 'Stage the status is about. Usually the sender''s own stage; when the hand-off
+            to the NEXT stage fails after retries, the sender reports `status: FAILED` with the next stage''s
+            name, because that stage never received the job and cannot report for itself'
+          examples:
+          - OCR
+        status:
+          type: string
+          enum:
+          - DONE
+          - FAILED
+          title: Status
+          description: Outcome of the stage. `FAILED` of any stage ends the request
+          examples:
+          - DONE
+        result:
+          type: 'null'
+          title: Result
+          description: Always null for OCR and STRUCTURING; read the stage result from GET .../jobs/{request_id}
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+          description: Why it failed; null when `status` is `DONE`
+          examples:
+          - null
+        error_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Code
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected
+            the document (`error_message` is the Indonesian reason). Absent when a stage broke'
+          examples:
+          - null
+      type: object
+      required:
+      - request_id
+      - stage
+      - status
+      title: StageCallback
+      description: Body of the callback a stage POSTs to the orchestrator when it finishes.
+    StructuredFieldPayload:
+      properties:
+        value:
+          type: string
+          title: Value
+          description: The value; `""` when not found -- never null
+          default: ''
+          examples:
+          - '3273012345678901'
+        ocr_conf:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Ocr Conf
+          description: Lowest recognition score among the OCR boxes that formed this value; null when
+            not found
+          examples:
+          - 0.9991
+        crf_conf:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Crf Conf
+          description: Forward-backward marginal of the column placement. ALWAYS null for document fields,
+            which are found by regex or position and never pass through Viterbi, and null for member cells
+            Viterbi did not place
+          examples:
+          - null
+      additionalProperties: true
+      type: object
+      title: StructuredFieldPayload
+      description: One named field read by structuring, carrying two scores that are deliberately not
+        fused.
+    StructuredMemberPayload:
+      properties:
+        nama_lengkap:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        nik:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_kelamin:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tempat_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        agama:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        pendidikan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_pekerjaan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        golongan_darah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_hubungan_dalam_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kewarganegaraan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ayah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ibu:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+      additionalProperties: true
+      type: object
+      required:
+      - nama_lengkap
+      - nik
+      - jenis_kelamin
+      - tempat_lahir
+      - tanggal_lahir
+      - agama
+      - pendidikan
+      - jenis_pekerjaan
+      - golongan_darah
+      - status_perkawinan
+      - tanggal_perkawinan
+      - status_hubungan_dalam_keluarga
+      - kewarganegaraan
+      - ayah
+      - ibu
+      title: StructuredMemberPayload
+      description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
+    StructuringPayload:
+      properties:
+        nomor_kk:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator'
+        nama_kepala_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        alamat:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        desa_kelurahan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        rt:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'Shares one `ocr_conf` with `rw`: both are cut from the same OCR box'
+        rw:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kecamatan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kabupaten_kota:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        provinsi:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kode_pos:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_dikeluarkan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        anggota_keluarga:
+          items:
+            $ref: '#/components/schemas/StructuredMemberPayload'
+          type: array
+          title: Anggota Keluarga
+          description: One entry per row on the card, in card order. May be empty, which the validity
+            gate rejects
+        reject_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reject Reason
+          description: The first rejecting rule of the KK validity gate, in Indonesian; null when accepted.
+            It lives in this payload rather than only in the outcome row because the orchestrator is stateless
+            and reads stages through their API -- a reason kept elsewhere could never become the client's
+            400
+          examples:
+          - null
+      additionalProperties: true
+      type: object
+      required:
+      - nomor_kk
+      - nama_kepala_keluarga
+      - alamat
+      - desa_kelurahan
+      - rt
+      - rw
+      - kecamatan
+      - kabupaten_kota
+      - provinsi
+      - kode_pos
+      - tanggal_dikeluarkan
+      title: StructuringPayload
+      description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
+  securitySchemes:
+    APIKeyHeader:
+      type: apiKey
+      description: API key for this service
+      in: header
+      name: X-API-Key

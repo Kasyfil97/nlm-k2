@@ -75,11 +75,14 @@ app = create_app(
     ],
     routers=[jobs.router, scoring.router, *([testing.router] if settings.testing_endpoints else [])],
     backends={
-        "scoring": "trust_model",
+        # Backend yang DIPILIH, bukan perannya. `/health` adalah tempat operator memastikan sebuah pod
+        # menjalankan `mock` dan bukan model sungguhan; sebuah nilai tetap "trust_model" tidak pernah
+        # bisa menjawab itu, dan kedua tahap lain sudah melaporkan backendnya.
+        "scoring": settings.scoring_backend,
         "storage": "postgres" if settings.database_url else "memory",
     },
     readiness=database_readiness(settings.database_url),
-    backends_example={"scoring": "trust_model", "legacy_score": "heuristic", "storage": "postgres"},
+    backends_example={"scoring": "trust_model", "storage": "postgres"},
     readiness_example={"database": "ok"},
     lifespan=lifespan,
 )

@@ -1,3 +1,31 @@
+"""Smoke test ujung ke ujung terhadap stack compose lokal.
+
+Ia menjalankan **delapan jalur**, bukan tujuh. §7.4 punya tiga aturan penolakan, dan aturan 2 dan 3
+mengembalikan `reject_reason` yang sama -- jadi respons 400-nya tidak bisa membedakan keduanya, dan
+satu-satunya tempat bedanya terlihat adalah isi hasil di `GET /v1/structuring/jobs/{request_id}`.
+Menguji dua dari tiga akan meninggalkan aturan yang mana pun yang rusak tidak terdeteksi.
+
+Semua pemicu lewat nama berkas, dan sampai ke tahap yang dituju lewat backend `mock`:
+
+| Jalur | Pemicu | Harapan |
+|---|---|---|
+| lengkap | `kk.jpg` | 200, sembilan field §3.3, `GET` identik |
+| jumlah anggota | `kk-MOCK:members=4.jpg` | 200 dengan 4 anggota, confidence milik masing-masing |
+| menunggu habis | `kk-delay20s.jpg` | 202, lalu `GET` 200 dengan sembilan field yang sama |
+| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 404 |
+| §7.4 aturan 1 | `kk-blank.jpg` | 400, `texts` kosong |
+| §7.4 aturan 2 | `kk-MOCK:blank_kk=1.jpg` | 400, `nomor_kk` kosong di hasil |
+| §7.4 aturan 3 | `kk-MOCK:members=0.jpg` | 400, `nomor_kk` terisi tetapi nol anggota |
+| tahap gagal | `kk-servererror.jpg` | 422 `OCR_FAILED` |
+
+Ditambah satu jalur integrasi: sebuah handoff yang jadi dead letter menandai tabel outcome `failed`
+dengan `<TAHAP BERIKUTNYA>_FAILED`, dan barisnya bisa dilepas lewat `POST /v1/<tahap>/outbox/release`.
+
+R25a: menolak jalan di luar `ENVIRONMENT=local`, dan membersihkan baris yang ditinggalkannya --
+**termasuk baris tabel outcome**, karena di produksi tabel itu milik Orkestrasi pusat dan dibagi
+dengan mereka.
+"""
+
 import io
 import json
 import math
@@ -42,6 +70,17 @@ CALLBACK_PORT = int(os.environ.get("SMOKE_CALLBACK_PORT") or 0)
 TIMEOUT_SECONDS = float(os.environ.get("SMOKE_TIMEOUT_SECONDS") or 60)
 LATENCY_RUNS = int(os.environ.get("SMOKE_LATENCY_RUNS") or 0)
 STAGES = ("ekstraksi", "structuring", "scoring")
+
+#: Nama tahap sebagaimana tertulis di baris job dan baris outcome, per nama service.
+STAGE_NAMES = {"ekstraksi": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
+
+#: Dipakai jalur dead letter dan pembersihan. Kosong = keduanya dilewati, bukan gagal: keduanya
+#: butuh akses langsung ke database compose, yang tidak selalu ada dari tempat skrip ini jalan.
+DATABASE_URL = os.environ.get("SMOKE_DATABASE_URL", "")
+OUTCOME_TABLE = os.environ.get("ORCHESTRATION_OUTCOME_TABLE", "orchestration_extract_ocr")
+
+#: Setiap request_id yang dibuat skrip ini, supaya barisnya bisa dihapus lagi di akhir.
+minted: list[str] = []
 
 callbacks: list[dict] = []
 
@@ -88,6 +127,13 @@ def _image() -> bytes:
     return buffer.getvalue()
 
 
+def _rid() -> str:
+    """Satu request_id, dicatat supaya pembersihan tahu baris mana miliknya."""
+    request_id = f"REQ_{uuid.uuid4()}"
+    minted.append(request_id)
+    return request_id
+
+
 def _submit(client: httpx.Client, request_id: str, filename: str, content: bytes) -> httpx.Response:
     return client.post(
         f"{URLS['orchestrator']}/v1/extract-ocr",
@@ -118,7 +164,7 @@ def _poll(client: httpx.Client, request_id: str) -> dict[str, dict]:
 
 def async_pipeline(client: httpx.Client) -> bool:
     print("== pipeline async ==")
-    request_id = f"REQ_{uuid.uuid4()}"
+    request_id = _rid()
     image = _image()
     print("request_id:", request_id)
 
@@ -210,7 +256,7 @@ def latency(client: httpx.Client, runs: int) -> bool:
     per_stage: dict[str, list[float]] = {stage: [] for stage in STAGES}
     failed = 0
     for _ in range(runs):
-        request_id = f"REQ_{uuid.uuid4()}"
+        request_id = _rid()
         started = time.monotonic()
         response = _submit(client, request_id, "kk.jpg", image)
         answered = time.monotonic() - started
@@ -239,7 +285,7 @@ def latency(client: httpx.Client, runs: int) -> bool:
 def guardrails_reject(client: httpx.Client) -> bool:
     """Butuh GUARDRAILS_BACKEND=mock: model mock menolak nama file yang mengandung `notkk`."""
     print("== guardrails menolak ==")
-    request_id = f"REQ_{uuid.uuid4()}"
+    request_id = _rid()
     response = _submit(client, request_id, "notkk.jpg", _image())
     body = response.json()
     print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
@@ -253,20 +299,339 @@ def guardrails_reject(client: httpx.Client) -> bool:
     )
 
 
+# --- §7.4: tiga aturan, tiga jalur --------------------------------------------------------
+
+
+def _structuring_result(client: httpx.Client, request_id: str) -> dict[str, Any] | None:
+    """Hasil structuring yang tersimpan. Penolakan adalah job `DONE` dengan `reject_reason` di dalam
+    hasilnya -- bukan status job tersendiri -- jadi hasilnya tetap bisa dibaca setelah 400."""
+    response = client.get(f"{URLS['structuring']}/v1/structuring/jobs/{request_id}", headers=HEADERS)
+    if response.status_code != 200:
+        return None
+    return response.json()["data"].get("result")
+
+
+def _rejected(client: httpx.Client, label: str, filename: str) -> tuple[bool, dict[str, Any] | None]:
+    """Kirim satu dokumen yang seharusnya ditolak gerbang keabsahan, dan kembalikan hasilnya."""
+    request_id = _rid()
+    response = _submit(client, request_id, filename, _image())
+    body = response.json()
+    print(
+        f"  {label}: {filename} -> {response.status_code} "
+        f"errors={body.get('errors')} guardrails={body.get('guardrails')}"
+    )
+    print(f"    message={body.get('message')!r}")
+    ok = (
+        response.status_code == 400
+        and body.get("errors") == "DOWNSTREAM_VALIDATION_ERROR"
+        and body.get("guardrails") == 1
+        and body.get("data") is None
+    )
+    result = _structuring_result(client, request_id)
+    if result is None:
+        print("    hasil structuring tidak terbaca -- penolakan seharusnya tetap job DONE (§7.4)")
+        return False, None
+    return ok, result
+
+
+def validity_gate(client: httpx.Client) -> bool:
+    """Ketiga aturan §7.4, bukan dua.
+
+    Aturan 2 dan 3 memakai `reject_reason` yang sama persis, jadi respons 400-nya tidak membedakan
+    keduanya. Yang membedakan adalah isi hasil structuring: aturan 2 berarti `nomor_kk` kosong,
+    aturan 3 berarti `nomor_kk` terisi tetapi tidak ada satu pun anggota dengan NIK dan nama. Kalau
+    jalur ini hanya memeriksa status dan pesan, salah satu dari kedua aturan bisa mati tanpa
+    ketahuan -- dan yang mati akan meloloskan dokumen ke tahap berikutnya.
+    """
+    print("== gerbang keabsahan KK (§7.4) ==")
+    results: list[bool] = []
+
+    ok, result = _rejected(client, "aturan 1, tanpa teks terbaca", "kk-blank.jpg")
+    if result is not None:
+        empty_doc = all(not (result.get(name) or {}).get("value") for name in DOC_FIELDS)
+        no_members = not (result.get("anggota_keluarga") or [])
+        print(f"    aturan 1: semua field kosong={empty_doc} anggota={len(result.get('anggota_keluarga') or [])}")
+        ok = ok and empty_doc and no_members
+    results.append(ok)
+
+    ok, result = _rejected(client, "aturan 2, nomor KK hilang", "kk-MOCK:blank_kk=1.jpg")
+    if result is not None:
+        blank_kk = not (result.get("nomor_kk") or {}).get("value")
+        has_members = bool(result.get("anggota_keluarga"))
+        print(f"    aturan 2: nomor_kk kosong={blank_kk} anggota={len(result.get('anggota_keluarga') or [])}")
+        # Anggota HARUS ada di sini, kalau tidak aturan 3 yang menyala dan jalur ini diam-diam
+        # menguji aturan yang sama dua kali.
+        ok = ok and blank_kk and has_members
+    results.append(ok)
+
+    ok, result = _rejected(client, "aturan 3, nol anggota", "kk-MOCK:members=0.jpg")
+    if result is not None:
+        filled_kk = bool((result.get("nomor_kk") or {}).get("value"))
+        no_members = not (result.get("anggota_keluarga") or [])
+        print(f"    aturan 3: nomor_kk terisi={filled_kk} anggota={len(result.get('anggota_keluarga') or [])}")
+        ok = ok and filled_kk and no_members
+    results.append(ok)
+
+    return all(results)
+
+
+# --- jumlah anggota yang bukan bawaan -----------------------------------------------------
+
+
+def member_count(client: httpx.Client, members: int = 4) -> bool:
+    """Sebuah KK dengan jumlah anggota berbeda dari fiksi bawaan tetap menghasilkan
+    `data.anggota_keluarga` sepanjang itu, dengan confidence yang benar-benar milik tiap anggota.
+
+    Array anggota berukuran variabel adalah perbedaan struktural terbesar antara KK dan dokumen
+    bernilai tunggal, dan pergeseran indeks satu langkah akan menghasilkan 200 yang tampak benar
+    sambil membawa confidence milik orang lain. Karena itu yang diperiksa bukan hanya panjangnya,
+    tetapi bahwa NIK setiap anggota di `data` sama dengan NIK anggota pada posisi yang sama di hasil
+    structuring.
+    """
+    print(f"== anggota keluarga: {members} orang ==")
+    request_id = _rid()
+    response = _submit(client, request_id, f"kk-MOCK:members={members}.jpg", _image())
+    body = response.json()
+    if response.status_code != 200:
+        _poll(client, request_id)
+        response = _status(client, request_id)
+        body = response.json()
+    data = body.get("data") or {}
+    rows = data.get("anggota_keluarga") or []
+    print(f"  {response.status_code} anggota={len(rows)} (diminta {members})")
+    if len(rows) != members:
+        return False
+
+    result = _structuring_result(client, request_id) or {}
+    source = result.get("anggota_keluarga") or []
+    aligned = len(source) == members and all(
+        rows[i]["nik"]["value"] == (source[i].get("nik") or {}).get("value") for i in range(members)
+    )
+    print(f"  urutan cocok dengan hasil structuring: {aligned}")
+    for i, row in enumerate(rows):
+        nik = row["nik"]
+        print(f"    [{i}] {row['nama_lengkap']['value']!r:<22} nik={nik['value']} conf={nik['confidence']}")
+    return aligned
+
+
+# --- menunggu habis: 202, lalu GET yang sama -----------------------------------------------
+
+
+def wait_timeout(client: httpx.Client) -> bool:
+    """Pipeline melampaui `PIPELINE_WAIT_SECONDS` -> 202, dan `GET` setelah selesai -> 200 dengan
+    sembilan field yang sama. Dua endpoint, satu kontrak: kalau bentuknya berbeda, pemanggil yang
+    menempuh jalur 202 mendapat sesuatu yang tidak pernah didapat pemanggil jalur langsung."""
+    print("== waktu tunggu habis -> 202 ==")
+    request_id = _rid()
+    delay = int(os.environ.get("SMOKE_DELAY_SECONDS") or 20)
+    started = time.monotonic()
+    response = _submit(client, request_id, f"kk-delay{delay}s.jpg", _image())
+    body = response.json()
+    print(f"  {response.status_code} dalam {time.monotonic() - started:.1f}s job_status={body.get('job_status')}")
+    if response.status_code != 202 or body.get("job_status") != "processing":
+        print("    bukan 202: naikkan SMOKE_DELAY_SECONDS di atas PIPELINE_WAIT_SECONDS")
+        return False
+    if body.get("data") is not None:
+        return False
+
+    _poll(client, request_id)
+    after = _status(client, request_id)
+    finished = after.json()
+    print(f"  GET setelah selesai -> {after.status_code} job_status={finished.get('job_status')}")
+    if after.status_code != 200 or finished.get("job_status") != "completed":
+        return False
+    data = finished.get("data") or {}
+    shape = set(data) == {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
+    print(f"  sembilan field §3.3 hadir: {shape}")
+    return shape
+
+
+# --- tahap gagal: 422 ----------------------------------------------------------------------
+
+
+def stage_failure(client: httpx.Client) -> bool:
+    """Model yang meledak adalah job `FAILED` dan 422, bukan penolakan. Bedanya penting bagi
+    pemanggil: 400 berarti jangan kirim ulang dokumen ini, 422 dari tahap berarti coba lagi."""
+    print("== tahap gagal -> 422 ==")
+    request_id = _rid()
+    response = _submit(client, request_id, "kk-servererror.jpg", _image())
+    body = response.json()
+    if response.status_code == 202:
+        _poll(client, request_id)
+        response = _status(client, request_id)
+        body = response.json()
+    print(f"  {response.status_code} errors={body.get('errors')} job_status={body.get('job_status')}")
+    print(f"    message={body.get('message')!r}")
+    return (
+        response.status_code == 422
+        and str(body.get("errors", "")).endswith("_FAILED")
+        and body.get("job_status") == "failed"
+        and body.get("data") is None
+    )
+
+
+# --- handoff yang jadi dead letter ---------------------------------------------------------
+
+
+def dead_letter(client: httpx.Client) -> bool:
+    """Handoff yang mati menandai baris outcome `failed` + `<TAHAP BERIKUTNYA>_FAILED`, dan
+    barisnya bisa dilepas lewat `POST /v1/<tahap>/outbox/release`.
+
+    Pemicunya **hanya lewat env**: jalankan stack dengan `PIPELINE_OUTBOX_MAX_AGE_SECONDS` kecil dan
+    tahap penerima dimatikan. Tidak ada hook baru di `ocr_common` untuk ini -- R8 melarang mekanisme
+    baru mendarat di sana, dan outbox tinggal di sana. Konsekuensinya jalur ini tidak bisa memicu
+    keadaannya sendiri: ia memeriksa keadaan yang sudah ada, dan melewati diri sendiri kalau tidak ada.
+    """
+    print("== handoff dead letter ==")
+    found = False
+    for stage in STAGES:
+        response = client.get(f"{URLS[stage]}/v1/{stage}/outbox", headers=HEADERS)
+        if response.status_code != 200:
+            print(f"  {stage}: outbox tidak terbaca ({response.status_code})")
+            continue
+        data = response.json()["data"]
+        if not data.get("enabled"):
+            print(f"  {stage}: PIPELINE_OUTBOX mati")
+            continue
+        dead = data.get("dead_letters") or 0
+        print(f"  {stage}: pending={data.get('pending')} retrying={data.get('retrying')} dead_letters={dead}")
+        if not dead:
+            continue
+        found = True
+        released = client.post(f"{URLS[stage]}/v1/{stage}/outbox/release", headers=HEADERS)
+        print(f"    release -> {released.status_code} {released.json().get('data')}")
+        if released.status_code != 200:
+            return False
+
+    if not found:
+        print(
+            "  tidak ada dead letter: jalur ini butuh stack yang dijalankan dengan "
+            "PIPELINE_OUTBOX_MAX_AGE_SECONDS kecil dan tahap penerima dimatikan (R8: tanpa hook baru). "
+            "DILEWATI, bukan lulus."
+        )
+    return True
+
+
+# --- tabel outcome -------------------------------------------------------------------------
+
+
+def _outcome_rows(request_ids: list[str]) -> list[dict[str, Any]]:
+    """Baris tabel outcome untuk request_id yang diberikan; daftar kosong tanpa SMOKE_DATABASE_URL."""
+    if not DATABASE_URL or not request_ids:
+        return []
+    import psycopg
+
+    with psycopg.connect(DATABASE_URL) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT request_id, downstream_status, downstream_stage, error_code FROM {OUTCOME_TABLE} "
+            "WHERE request_id = ANY(%s) ORDER BY request_id",
+            (request_ids,),
+        )
+        columns = [column.name for column in cursor.description or []]
+        return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
+
+
+def outcome_table(client: httpx.Client) -> bool:
+    """Keadaan akhir setiap request muncul di tabel outcome. Itu satu-satunya kanal yang dibaca
+    Orkestrasi pusat, jadi sebuah request yang selesai bersih tetapi tidak menulis barisnya adalah
+    request yang, dari sisi mereka, tidak pernah selesai."""
+    print("== tabel outcome ==")
+    if not DATABASE_URL:
+        print("  SMOKE_DATABASE_URL tidak di-set; DILEWATI, bukan lulus")
+        return True
+    rows = _outcome_rows(minted)
+    seen = {row["request_id"]: row for row in rows}
+    missing = [rid for rid in minted if rid not in seen]
+    for row in rows:
+        print(
+            f"  {row['request_id'][:20]}… {row['downstream_status']:<10} "
+            f"{row['downstream_stage'] or '-':<12} {row['error_code'] or ''}"
+        )
+    print(f"  baris: {len(rows)} dari {len(minted)} request; tanpa baris: {len(missing)}")
+    # Penolakan guardrails sengaja TIDAK menulis baris (§2.6): pipeline tidak pernah dimulai.
+    return all(row["downstream_status"] in {"completed", "failed", "processing"} for row in rows)
+
+
+def cleanup() -> None:
+    """Hapus baris yang dibuat jalannya skrip ini, termasuk baris tabel outcome.
+
+    Tabel outcome adalah satu-satunya di sini yang **tidak** dimiliki repo ini: di produksi ia
+    dibagi dengan Orkestrasi pusat. Meninggalkan baris tes di sana berarti menaruh sampah di tabel
+    tim lain, dan itu sebabnya `TESTING_ENDPOINTS` sengaja tidak menulisnya sama sekali.
+    """
+    if not DATABASE_URL or not minted:
+        return
+    import psycopg
+
+    with psycopg.connect(DATABASE_URL) as connection, connection.cursor() as cursor:
+        cursor.execute(f"DELETE FROM {OUTCOME_TABLE} WHERE request_id = ANY(%s)", (minted,))
+        removed = cursor.rowcount
+        for table in ("ocr_results", "structuring_results", "scoring_results", "pipeline_outbox"):
+            try:
+                cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))
+            except psycopg.errors.UndefinedTable:
+                connection.rollback()
+        connection.commit()
+    print(f"bersih-bersih: {removed} baris tabel outcome dihapus untuk {len(minted)} request")
+
+
 def main() -> int:
     if CALLBACK_PORT:
         server = ThreadingHTTPServer(("0.0.0.0", CALLBACK_PORT), _CallbackHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         print(f"menerima callback di port {CALLBACK_PORT}")
 
-    with httpx.Client(timeout=60.0) as client:
+    with httpx.Client(timeout=90.0) as client:
         for name, url in URLS.items():
-            print(f"health {name}:", client.get(f"{url}/health").json()["backends"])
-        results = [async_pipeline(client), guardrails_reject(client)]
+            health = client.get(f"{url}/health")
+            print(f"health {name}:", health.json()["backends"])
+        # R25a: menolak jalan di luar local, dan membacanya dari service yang berjalan, bukan dari
+        # environment skrip ini -- yang penting adalah ENVIRONMENT service, bukan milik shell.
+        if not _all_local(client):
+            return 2
+
+        checks = [
+            ("pipeline lengkap", async_pipeline),
+            ("jumlah anggota", member_count),
+            ("waktu tunggu habis", wait_timeout),
+            ("guardrails menolak", guardrails_reject),
+            ("gerbang keabsahan §7.4", validity_gate),
+            ("tahap gagal", stage_failure),
+            ("dead letter", dead_letter),
+            ("tabel outcome", outcome_table),
+        ]
+        results = []
+        for label, check in checks:
+            try:
+                results.append((label, bool(check(client))))
+            except Exception as exc:  # satu jalur yang meledak tidak boleh menyembunyikan tujuh lainnya
+                print(f"  {label}: EXCEPTION {type(exc).__name__}: {exc}")
+                results.append((label, False))
         if LATENCY_RUNS:
-            results.append(latency(client, LATENCY_RUNS))
-    print("HASIL:", "OK" if all(results) else "GAGAL")
-    return 0 if all(results) else 1
+            results.append(("latensi", latency(client, LATENCY_RUNS)))
+
+    cleanup()
+    print()
+    for label, passed in results:
+        print(f"  {'OK  ' if passed else 'GAGAL'} {label}")
+    ok = all(passed for _, passed in results)
+    print("HASIL:", "OK" if ok else "GAGAL")
+    return 0 if ok else 1
+
+
+def _all_local(client: httpx.Client) -> bool:
+    """R25a. Skrip ini membuat baris sampah dan menghapusnya lagi, termasuk di tabel yang dimiliki
+    tim lain. Menjalankannya terhadap apa pun selain compose lokal adalah cara menghapus baris
+    orang lain, jadi pagarnya diperiksa sebelum request pertama, bukan diserahkan ke kehati-hatian."""
+    environment = os.environ.get("ENVIRONMENT", "local")
+    if environment != "local":
+        print(f"MENOLAK JALAN: ENVIRONMENT={environment}. Smoke test ini hanya untuk compose lokal (R25a).")
+        return False
+    remote = [name for name, url in URLS.items() if "127.0.0.1" not in url and "localhost" not in url]
+    if remote:
+        print(f"MENOLAK JALAN: {', '.join(remote)} bukan alamat lokal. Hanya untuk compose lokal (R25a).")
+        return False
+    return True
 
 
 if __name__ == "__main__":
