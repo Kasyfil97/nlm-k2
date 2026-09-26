@@ -8,6 +8,14 @@ asyncio_default_fixture_loop_scope = "function"
 root = ["."]
 extra-paths = [".", "../../libs/ocr_common"]
 
+[tool.ty.rules]
+# `app/ml/kk_quality.py` imports torch, torchvision, cv2, scipy, xgboost and fitz inside a function,
+# and marks each with `ty: ignore[unresolved-import]`. Whether that ignore is *used* depends on the
+# environment: CI installs this service's requirements.txt, so the modules resolve and every ignore
+# becomes "unused"; a laptop venv without ~2 GB of wheels needs all of them. Both states are normal,
+# and `ty` exits non-zero on a warning, so without this the gate can only pass in one of them.
+unused-ignore-comment = "ignore"
+
 [tool.pyrefly]
 search-path = [".", "../../libs/ocr_common"]
 
