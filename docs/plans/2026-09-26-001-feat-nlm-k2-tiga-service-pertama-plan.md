@@ -404,7 +404,7 @@ tersisa; setiap fixture emas lolos.
 
 ---
 
-- [ ] **Unit 3: Integritas baris outcome dan detak job**
+- [x] **Unit 3: Integritas baris outcome dan detak job** — selesai
 
 **Goal:** Baris outcome tidak pernah mundur, dan job yang sah-berjalan-lama tidak dianggap basi.
 
@@ -451,8 +451,13 @@ dikerjakan sebagai pertahanan berlapis, bukan sebagai judulnya.
   ini perbaiki jadi tak terlihat di produksi — dan justru pengukuran itulah yang memberi tahu apakah
   detaknya bekerja. Perubahan semantik penulisan ini juga masuk daftar yang disepakati dengan
   Orkestrasi pusat, bukan sekadar keputusan sepihak nlm-k2, karena tabelnya milik mereka.
-- Detak: `JobRepository` memperoleh `touch(request_id)` yang memperbarui `updated_at` hanya
-  `WHERE status = PROCESSING`, no-op di `InMemoryJobRepository`, dijalankan sebagai task yang
+- Detak **dipasang tetapi dimatikan bawaannya** (`PIPELINE_HEARTBEAT_SECONDS = 0`). Reviewer benar
+  bahwa intervalnya dirancang melawan durasi yang belum diukur, dan batch ini tidak bisa melatihnya:
+  mock selesai dalam milidetik, dan hook `delay…s` dibatasi 120 detik melawan lease 300 detik. Tetapi
+  `repository.py`, `stage.py`, dan `factory.py` beku setelah gerbang R6, jadi menambahkan `touch()`
+  belakangan berarti satu siklus R22b. Mekanismenya ada, angkanya tidak dikarang — batch yang
+  menjalankan model sungguhan tinggal menyetelnya. `JobRepository` memperoleh `touch(request_id)`
+  yang memperbarui `updated_at` hanya `WHERE status = PROCESSING`, dijalankan sebagai task yang
   `StagePipeline._run_bound` mulai dan **batalkan di `finally`** — detak yang hidup lebih lama dari
   job yang dibatalkan akan menjaga lease job mati tetap hangat dan melumpuhkan reaper sepenuhnya.
   Intervalnya diteruskan dari `build_stage_pipeline`.
