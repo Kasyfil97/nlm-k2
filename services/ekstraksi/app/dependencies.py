@@ -22,8 +22,8 @@ from ocr_common.testing_endpoints import testing_path
 
 from app.config import Settings, get_settings
 from app.ml.base import OcrEngine
+from app.ml.kk_ocr import KkOcrConfig, KkOcrEngine
 from app.ml.mock import MockOcrEngine
-from app.ml.paddle import PaddleOcrEngine
 from app.ml.remote import RemoteOcrEngine
 from app.services.ekstraksi_service import EkstraksiService
 from app.services.job_service import EkstraksiJobService
@@ -31,13 +31,22 @@ from app.services.job_service import EkstraksiJobService
 DB_TABLE_PREFIX = "ocr"
 
 
-def _build_paddle(settings: Settings) -> PaddleOcrEngine:
-    if not settings.ekstraksi_ocr_url:
-        raise RuntimeError("EKSTRAKSI_OCR_URL is required when EKSTRAKSI_BACKEND=paddle")
-    client = RemoteModelClient(
-        settings.ekstraksi_ocr_url, settings.ekstraksi_ocr_timeout_seconds, name="ekstraksi OCR model"
+def _build_kk_ocr(settings: Settings) -> KkOcrEngine:
+    """The in-process PP-OCRv5 det + rec path. Built here, at start-up, so a missing runtime or
+    missing weights fails the process rather than every job."""
+    return KkOcrEngine(
+        KkOcrConfig(
+            ppocr_root=settings.ekstraksi_ppocr_root,
+            det_weights=settings.ekstraksi_det_weights_path,
+            rec_weights=settings.ekstraksi_rec_weights_path,
+            device=settings.ekstraksi_device,
+            rec_batch_size=settings.ekstraksi_rec_batch_size,
+            rec_image_shape=settings.ekstraksi_rec_image_shape,
+            det_limit_side_len=settings.ekstraksi_det_limit_side_len,
+            det_limit_type=settings.ekstraksi_det_limit_type,
+            torch_threads=settings.ekstraksi_torch_threads,
+        )
     )
-    return PaddleOcrEngine(client)
 
 
 def _build_remote(settings: Settings) -> RemoteOcrEngine:
@@ -56,7 +65,7 @@ def _build_remote(settings: Settings) -> RemoteOcrEngine:
 # EKSTRAKSI_BACKEND -> how to build it. Add a backend here and, if it needs settings, in config.py.
 OCR_BACKENDS: dict[str, Factory[OcrEngine]] = {
     "mock": lambda settings: MockOcrEngine(),
-    "paddle": _build_paddle,
+    "kk_ocr": _build_kk_ocr,
     "remote": _build_remote,
 }
 
@@ -144,7 +153,7 @@ def _job_service(pipeline: StagePipeline) -> EkstraksiJobService:
         get_ekstraksi_service(),
         settings.max_upload_bytes,
         url_policy=settings.file_url_policy,
-        simulate_delay=settings.is_local,
+        simulate_delay=settings.simulation_hooks_enabled,
         handoff_by_reference=settings.pipeline_handoff_by_reference,
     )
 
