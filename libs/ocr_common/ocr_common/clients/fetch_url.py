@@ -3,6 +3,12 @@
 The host is resolved once and the connection is pinned to that address, so a DNS rebinding cannot
 redirect the request later; private, loopback and link-local addresses are refused unless the
 policy allows them; redirects are not followed; the body is capped at `limit` bytes.
+
+The default policy denies everything. An empty `FILE_URL_ALLOWED_HOSTS` means **no URL may be
+fetched**, not "any public address": a service deployed with the variable unset would otherwise be
+a fetcher for whatever URL a caller supplies, and that is the one place remote content enters the
+pipeline. Plain `http` is likewise refused unless the policy allows it, which only local
+development does.
 """
 
 import asyncio
@@ -39,19 +45,42 @@ class UrlPolicy:
 
     allowed_hosts: tuple[str, ...] = ()
     allow_private: bool = False
+    #: Plain `http`. Local development only -- a presigned MinIO link on a laptop has no TLS.
+    allow_http: bool = False
+    #: Treat an EMPTY `allowed_hosts` as "any host" instead of "no host". Local development only.
+    allow_any_host: bool = False
 
     def host_allowed(self, host: str) -> bool:
-        """True when `host` matches the allow-list (`.example.internal` = any subdomain), or
-        when the list is empty.
+        """True when `host` matches the allow-list (`.example.internal` = any subdomain).
+
+        An empty list denies everything unless `allow_any_host`. This inverts the reading of
+        `FILE_URL_ALLOWED_HOSTS` that the contract's §13.1 table still carries; the difference is
+        recorded as an open contract note, because failing open on an unset variable is the wrong
+        default for the only inbound-content path in the pipeline.
         """
         if not self.allowed_hosts:
-            return True
+            return self.allow_any_host
         host = host.lower().rstrip(".")
         return any(host == entry or (entry.startswith(".") and host.endswith(entry)) for entry in self.allowed_hosts)
 
-    def address_allowed(self, address: str) -> bool:
-        """True when a resolved address may be connected to: any address with `allow_private`,
-        otherwise only public ones (or any non-special address when a host allow-list is set).
+    def scheme_allowed(self, scheme: str) -> bool:
+        """`https` always; `http` only with `allow_http`."""
+        return scheme == "https" or (scheme == "http" and self.allow_http)
+
+    def exact_host(self, host: str) -> bool:
+        """True when `host` is listed literally, as opposed to matching a `.suffix` wildcard entry."""
+        host = host.lower().rstrip(".")
+        return any(host == entry for entry in self.allowed_hosts)
+
+    def address_allowed(self, address: str, host: str = "") -> bool:
+        """True when a resolved address may be connected to.
+
+        Loopback, link-local, multicast and reserved are never reachable. A public address always
+        is. A PRIVATE address (RFC1918, IPv6 ULA) is reachable only for a host listed **literally**:
+        an object store inside the cluster is the reason the allow-list exists, so denying it
+        outright would make the feature useless. A `.suffix` wildcard entry does not earn that
+        trust -- whoever controls DNS under the suffix could otherwise point a name at any internal
+        address and use this service to reach it.
         """
         if self.allow_private:
             return True
@@ -60,10 +89,11 @@ class UrlPolicy:
             ip = ip.ipv4_mapped
         if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified or ip.is_reserved:
             return False
-        return ip.is_global or bool(self.allowed_hosts)
+        return ip.is_global or self.exact_host(host)
 
 
 STRICT_URL_POLICY = UrlPolicy()
+"""Denies every URL. The safe default for a caller that forgot to pass a policy."""
 
 
 class _PinnedHTTPConnection(http.client.HTTPConnection):
@@ -91,7 +121,7 @@ def _resolve(host: str, port: int, policy: UrlPolicy) -> str:
     except socket.gaierror as exc:
         raise FetchUrlError("Could not fetch file_url: host could not be resolved") from exc
     addresses = [str(info[4][0]) for info in infos]
-    blocked = [address for address in addresses if not policy.address_allowed(address)]
+    blocked = [address for address in addresses if not policy.address_allowed(address, host)]
     if blocked or not addresses:
         logger.warning("file_url host %s refused: resolves to %s", host, ", ".join(blocked) or "nothing")
         raise FetchUrlError(f"file_url host is not allowed: {host}")
@@ -141,6 +171,8 @@ async def fetch(
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ALLOWED_SCHEMES:
         raise FetchUrlError(f"Unsupported URL scheme: {parsed.scheme or '(none)'}")
+    if not policy.scheme_allowed(parsed.scheme):
+        raise FetchUrlError(f"Unsupported URL scheme: {parsed.scheme} (https is required)")
     host = parsed.hostname
     if not host:
         raise FetchUrlError("file_url has no host")

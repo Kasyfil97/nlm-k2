@@ -16,7 +16,12 @@ from ocr_common.clients.fetch_url import UrlPolicy
 Environment = Literal["local", "dev", "staging", "production"]
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 DEFAULT_JOB_LEASE_SECONDS = 300.0
-DEFAULT_MAX_UPLOAD_BYTES = int(2.5 * 1024 * 1024)
+DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# API keys a service refuses to start with outside local: the placeholders that travel in
+# `.env.example` and in copied deployment manifests. Compared case-insensitively.
+PLACEHOLDER_API_KEYS = frozenset(
+    {"changeme", "change-me", "secret", "x", "test", "dev", "key", "apikey", "api-key", "your-api-key", "todo"}
+)
 
 
 class BaseServiceSettings(BaseSettings):
@@ -35,10 +40,14 @@ class BaseServiceSettings(BaseSettings):
     service_base_url: str | None = None
     port: int = 8000
 
-    # 5 MB (contract §13.1). A Kartu Keluarga photo is larger than a tax card: the corpus runs to
-    # refused with 413 before any model runs.
+    # 5 MB (§13.1): a Kartu Keluarga photo is larger than a tax card. Anything above is refused
+    # with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
-    allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
+    # §13.1: PDF is deliberately absent, so a PDF is a 400 at intake. `pdf_enabled` is the ONLY
+    # way to admit it -- adding `application/pdf` to this list by hand would create a half-open
+    # path where PDFs pass intake and then fail deeper as a 422 instead of a clean 400.
+    allowed_content_types: list[str] = ["image/jpeg", "image/png"]
+    pdf_enabled: bool = False
     file_url_allowed_hosts: str = ""
     field_confidence_threshold: float = Field(0.5, ge=0, le=1)
     # The `-test` endpoints (orchestrator `/v1/extract-ocr-test`, `/v1/<stage>/jobs-test`): the same pipeline on
@@ -65,12 +74,57 @@ class BaseServiceSettings(BaseSettings):
         return self.log_format or ("text" if self.is_local else "json")
 
     @property
+    def effective_content_types(self) -> tuple[str, ...]:
+        """Content types intake accepts: `ALLOWED_CONTENT_TYPES`, plus PDF only when `PDF_ENABLED`."""
+        types = tuple(self.allowed_content_types)
+        if self.pdf_enabled and "application/pdf" not in types:
+            types = (*types, "application/pdf")
+        return types
+
+    @property
     def file_url_policy(self) -> UrlPolicy:
-        """The `UrlPolicy` for `file_url` downloads built from `FILE_URL_ALLOWED_HOSTS` and the environment."""
+        """The `UrlPolicy` for `file_url` downloads, from `FILE_URL_ALLOWED_HOSTS` and the environment.
+
+        Outside local this fails closed three ways at once: an empty allow-list denies every URL,
+        plain `http` is refused, and a resolved private or loopback address is refused even when the
+        hostname is listed.
+        """
         hosts = tuple(
             host.strip().lower().rstrip(".") for host in self.file_url_allowed_hosts.split(",") if host.strip()
         )
-        return UrlPolicy(allowed_hosts=hosts, allow_private=self.is_local)
+        return UrlPolicy(
+            allowed_hosts=hosts,
+            allow_private=self.is_local,
+            allow_http=self.is_local,
+            allow_any_host=self.is_local,
+        )
+
+    def require_file_url_allowlist(self) -> None:
+        """Raises outside local when `FILE_URL_ALLOWED_HOSTS` is empty. Called by the services that
+        download: orchestrator and ekstraksi always, guardrails when `GUARDRAILS_FETCH_URL`."""
+        if self.is_local or self.file_url_allowed_hosts.strip():
+            return
+        raise ValueError(
+            "FILE_URL_ALLOWED_HOSTS must list the hosts this service may download from when "
+            f"ENVIRONMENT={self.environment}: an empty list denies every file_url, so starting without "
+            "one would leave the download path dead (set ENVIRONMENT=local for local development)"
+        )
+
+    def require_pii_audit(self) -> None:
+        """Raises outside local while the §8.5 audit is not implemented.
+
+        The check is on `PII_AUDIT_IMPLEMENTED`, not on whether `PII_ENCRYPTION_KEY` is set: any
+        Fernet-shaped string would satisfy the latter while nothing is encrypted and no audit row is
+        written, which is exactly the state the guard exists to block. Only the batch that actually
+        writes the encrypted, blind-indexed audit may flip this flag.
+        """
+        if self.is_local or self.pii_audit_implemented:
+            return
+        raise ValueError(
+            "PII_AUDIT_IMPLEMENTED=false: the encrypted audit with a blind index over nomor_kk is not "
+            f"implemented yet, so this service refuses to start with ENVIRONMENT={self.environment}. "
+            "It handles NIK and names; set ENVIRONMENT=local for development"
+        )
 
     def require_outside_local(self, **values: object) -> None:
         """Raises unless every given value is set, when not local; used by the subclasses' validators."""
@@ -105,6 +159,13 @@ class BaseServiceSettings(BaseSettings):
                 f"set a real backend when ENVIRONMENT={self.environment}"
             )
 
+    @property
+    def simulation_hooks_enabled(self) -> bool:
+        """Whether the filename hooks of `ocr_common.simulation` may fire. Local only, always: the
+        filename crosses the trust boundary in the multipart request, so a caller could otherwise
+        steer the pipeline by naming a file."""
+        return self.is_local
+
     @model_validator(mode="after")
     def _guard_auth(self) -> Self:
         if self.auth_disabled and not self.is_local:
@@ -112,7 +173,28 @@ class BaseServiceSettings(BaseSettings):
                 f"AUTH_DISABLED=true is only allowed with ENVIRONMENT=local (got ENVIRONMENT={self.environment}): "
                 "it turns off the X-API-Key check on every endpoint"
             )
+        if not self.is_local:
+            placeholders = sorted({k for k in self.accepted_api_keys if k.strip().lower() in PLACEHOLDER_API_KEYS})
+            if placeholders:
+                shown = ", ".join(placeholders)
+                raise ValueError(
+                    f"API_KEY / API_KEYS still holds a placeholder ({shown}), which is how a shared example "
+                    f"secret reaches a deployed environment. Set a real key when ENVIRONMENT={self.environment}"
+                )
         return self
+
+    @model_validator(mode="after")
+    def _guard_dev_affordances(self) -> Self:
+        """Laptop-only affordances are gated here, at the config layer, rather than where they are
+        used: a filename is caller-controlled input, so a hook that reads one must not be reachable
+        by a request that merely names a file a certain way."""
+        if self.is_local or not self.testing_endpoints:
+            return self
+        raise ValueError(
+            "TESTING_ENDPOINTS=true is only allowed with ENVIRONMENT=local (got "
+            f"ENVIRONMENT={self.environment}): it exposes a parallel pipeline on the testing_* tables "
+            "that skips the outcome table"
+        )
 
 
 class PipelineSettings(BaseServiceSettings):
@@ -146,6 +228,9 @@ class PipelineSettings(BaseServiceSettings):
     pipeline_outbox_max_age_seconds: float = Field(24 * 3600.0, gt=0)
     pipeline_outbox_stale_after_seconds: float = Field(300.0, gt=0)
     pipeline_handoff_by_reference: bool = False
+    # §8.5: flipped only by the batch that actually writes the encrypted, blind-indexed audit.
+    # `require_pii_audit()` explains why this exists rather than a check on PII_ENCRYPTION_KEY.
+    pii_audit_implemented: bool = False
     pipeline_stale_jobs: bool = True
     pipeline_stale_job_interval_seconds: float = Field(30.0, gt=0)
     pipeline_stale_job_batch: int = Field(10, gt=0)

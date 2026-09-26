@@ -128,9 +128,16 @@ def test_intake_rejects_bad_url_scheme_as_400():
 
 
 def test_intake_refuses_internal_file_url_as_400():
-    response = client.post("/v1/echo", data={"file_url": "http://169.254.169.254/latest/meta-data/"}, headers=AUTH)
+    response = client.post("/v1/echo", data={"file_url": "https://169.254.169.254/latest/meta-data/"}, headers=AUTH)
     assert response.status_code == 400
     assert response.json()["message"] == "file_url host is not allowed: 169.254.169.254"
+
+
+def test_intake_refuses_plain_http_as_400():
+    """Skema diperiksa sebelum host, jadi http ditolak lebih dulu dan tidak pernah di-resolve."""
+    response = client.post("/v1/echo", data={"file_url": "http://storage.example.com/a.jpg"}, headers=AUTH)
+    assert response.status_code == 400
+    assert response.json()["message"] == "Unsupported URL scheme: http (https is required)"
 
 
 def test_validation_error_uses_envelope_with_code():

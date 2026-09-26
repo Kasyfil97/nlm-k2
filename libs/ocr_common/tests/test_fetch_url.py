@@ -7,7 +7,9 @@ import pytest
 
 from ocr_common.clients.fetch_url import STRICT_URL_POLICY, FetchUrlError, UrlPolicy, _resolve, fetch
 
-LOCAL = UrlPolicy(allow_private=True)
+# Mode laptop: alamat privat, plain http, dan allow-list kosong yang berarti 'apa saja'.
+# Ketiganya hanya menyala dengan ENVIRONMENT=local (lihat BaseServiceSettings.file_url_policy).
+LOCAL = UrlPolicy(allow_private=True, allow_http=True, allow_any_host=True)
 BODY = b"x" * 100
 PDF_BODY = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + b"x" * 50
 PNG_BODY = b"\x89PNG\r\n\x1a\n" + b"x" * 50
@@ -143,14 +145,14 @@ async def test_slow_download_is_bounded_by_the_timeout(port):
 @pytest.mark.parametrize(
     "url",
     [
-        "http://127.0.0.1:{port}/a.jpg",
-        "http://localhost:{port}/a.jpg",
-        "http://[::1]:{port}/a.jpg",
-        "http://[::ffff:127.0.0.1]:{port}/a.jpg",
-        "http://0.0.0.0:{port}/a.jpg",
-        "http://169.254.169.254/computeMetadata/v1/",
-        "http://10.0.0.5/a.jpg",
-        "http://192.168.1.10/a.jpg",
+        "https://127.0.0.1:{port}/a.jpg",
+        "https://localhost:{port}/a.jpg",
+        "https://[::1]:{port}/a.jpg",
+        "https://[::ffff:127.0.0.1]:{port}/a.jpg",
+        "https://0.0.0.0:{port}/a.jpg",
+        "https://169.254.169.254/computeMetadata/v1/",
+        "https://10.0.0.5/a.jpg",
+        "https://192.168.1.10/a.jpg",
     ],
 )
 async def test_internal_addresses_are_refused_without_being_contacted(port, url, monkeypatch):
@@ -175,7 +177,7 @@ def test_host_allowlist_matches_exact_hosts_and_dot_suffixes():
 async def test_host_outside_the_allowlist_is_refused_before_dns():
     policy = UrlPolicy(allowed_hosts=("minio.internal",))
     with pytest.raises(FetchUrlError, match="file_url host is not allowed: evil.example"):
-        await fetch("http://evil.example/a.jpg", limit=1000, policy=policy)
+        await fetch("https://evil.example/a.jpg", limit=1000, policy=policy)
 
 
 @pytest.mark.parametrize(
@@ -196,7 +198,7 @@ def test_allowlisted_host_may_be_private_but_never_loopback_or_link_local(monkey
     ("addresses", "allowed"),
     [(["93.184.216.34"], True), (["10.0.0.5"], False), (["93.184.216.34", "10.0.0.5"], False)],
 )
-def test_without_allowlist_only_public_addresses_are_allowed(monkeypatch, addresses, allowed):
+def test_resolve_without_allowlist_still_only_accepts_public_addresses(monkeypatch, addresses, allowed):
     _fake_dns(monkeypatch, {"files.example": addresses})
     if allowed:
         assert _resolve("files.example", 80, STRICT_URL_POLICY) == addresses[0]

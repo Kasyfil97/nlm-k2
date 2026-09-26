@@ -5,13 +5,14 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ocr_common.clients.fetch_url import FetchUrlError, fetch
 
-FileField = File(None, description="Document image (JPEG/PNG/PDF). Omit when sending file_url.")
+FileField = File(None, description="Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.")
 FileUrlField = Form(
     None,
     description=(
-        "URL this service fetches the document image from (e.g. a presigned MinIO GET). Omit when uploading file. "
-        "The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`, or resolve to a public address when "
-        "that is empty; redirects are not followed."
+        "URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when uploading file. "
+        "The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`: an EMPTY list denies every URL "
+        "rather than allowing public ones. https only, redirects are not followed, and a host that resolves "
+        "to a private or loopback address is refused even when it is listed."
     ),
 )
 
