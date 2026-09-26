@@ -72,6 +72,14 @@ class JobRepository(Protocol):
         """Record in the outcome row that `next_stage` never received the job."""
         ...
 
+    async def touch(self, request_id: str) -> None:
+        """Push the job's lease forward while it is still running (`PIPELINE_HEARTBEAT_SECONDS`).
+
+        Only touches a row that is still `PROCESSING`, so a finished or failed job is never
+        resurrected by a beat that was already in flight.
+        """
+        ...
+
     async def get(self, request_id: str) -> JobRecord | None:
         """The job's record, or None when the request_id is unknown to this stage."""
         ...
@@ -153,6 +161,13 @@ class InMemoryJobRepository:
     async def handoff_failed(self, request_id: str, next_stage: str, error_message: str) -> None:
         """No outcome row in memory: nothing to record."""
         pass
+
+    async def touch(self, request_id: str) -> None:
+        """See `JobRepository.touch`. In memory there is one process and no lease contention, but the
+        timestamp is still moved so the in-process reaper behaves the same way as the SQL one."""
+        record = self._jobs.get(request_id)
+        if record is not None and record["status"] == STATUS_PROCESSING:
+            record["updated_at"] = _now_iso()
 
     async def get(self, request_id: str) -> JobRecord | None:
         """See `JobRepository.get`."""

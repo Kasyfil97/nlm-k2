@@ -20,6 +20,18 @@ from ocr_common.web.request_id import bind_request_id, reset_request_id
 
 logger = logging.getLogger(__name__)
 
+
+async def _cancel(task: "asyncio.Task[None] | None") -> None:
+    """Cancel a heartbeat and wait for it, so it cannot outlive the job it was beating for."""
+    if task is None:
+        return
+    task.cancel()
+    try:
+        await task
+    except (asyncio.CancelledError, Exception):  # noqa: B014 - shutting a beat down must be quiet
+        pass
+
+
 STAGE_OCR = "OCR"
 STAGE_STRUCTURING = "STRUCTURING"
 STAGE_SCORING = "SCORING"
@@ -50,6 +62,8 @@ class StagePipeline:
         runner: BackgroundRunner | None = None,
         callbacks: bool = True,
         metrics_stage: str | None = None,
+        heartbeat_seconds: float = 0.0,
+        max_runtime_seconds: float = 0.0,
     ):
         """`callbacks=False` when the orchestrator has no callback endpoint: no callback is sent or
         queued, and the outcome reaches the orchestrator through its table (ORCHESTRATION_OUTCOME_TABLE)
@@ -63,6 +77,8 @@ class StagePipeline:
         self.outbox = outbox
         self.runner = runner or BackgroundRunner()
         self.callbacks = callbacks
+        self.heartbeat_seconds = heartbeat_seconds
+        self.max_runtime_seconds = max_runtime_seconds
 
     async def submit(
         self,
@@ -152,8 +168,9 @@ class StagePipeline:
         final: dict[str, Any] | None = None
         reason: str | None = None
         started = time.perf_counter()
+        beat = self._start_heartbeat(request_id)
         try:
-            result = dict(await work())
+            result = dict(await self._bounded(work()))
             reason = rejection(result) if rejection else None
             if reason is None:
                 payload = dict(handoff_payload(result)) if handoff_payload else None
@@ -183,6 +200,8 @@ class StagePipeline:
             metrics.JOBS.labels(self.metrics_stage, metrics.OUTCOME_CRASHED).inc()
             await self._failed(request_id, f"Internal error in {self.stage} stage")
             return
+        finally:
+            await _cancel(beat)
 
         if self.outbox is not None:
             return
@@ -202,6 +221,47 @@ class StagePipeline:
             raise
         except ServiceError as exc:
             await self._handoff_failed(request_id, next_stage, exc.message)
+
+    def _start_heartbeat(self, request_id: str) -> asyncio.Task[None] | None:
+        """Push this job's lease forward while it runs, so a slow-but-alive job is not reclaimed.
+
+        Off unless `PIPELINE_HEARTBEAT_SECONDS` is set. The task is cancelled in `_run_bound`'s
+        `finally`: a beat that outlived its job would keep a dead job's lease warm and defeat the
+        reaper entirely, which is the opposite of what this is for.
+
+        It beats on the event loop, so it only beats while `work()` releases the loop. An in-process
+        model must therefore run off the loop (`run_in_threadpool` / `to_thread`) -- otherwise a long
+        inference blocks the beat and the very case this exists for is the one it misses.
+        """
+        if not self.heartbeat_seconds:
+            return None
+
+        async def beat() -> None:
+            while True:
+                await asyncio.sleep(self.heartbeat_seconds)
+                try:
+                    await self.repository.touch(request_id)
+                except Exception:  # noqa: BLE001 - a missed beat must never fail the job
+                    logger.warning("%s heartbeat failed for job %s", self.stage, request_id, exc_info=True)
+
+        return asyncio.create_task(beat(), name=f"heartbeat:{self.stage}:{request_id}")
+
+    async def _bounded(self, work: Awaitable[Mapping[str, Any]]) -> Mapping[str, Any]:
+        """`work`, with `PIPELINE_JOB_MAX_RUNTIME_SECONDS` as a hard ceiling.
+
+        The ceiling exists because the heartbeat removes the only upper bound a job used to have.
+        Before it, a wedged-but-alive process was reclaimed once its lease expired; after it, such a
+        job would beat forever, never be reaped, and never write a terminal outcome row.
+        """
+        if not self.max_runtime_seconds:
+            return await work
+        try:
+            return await asyncio.wait_for(work, self.max_runtime_seconds)
+        except TimeoutError as exc:
+            raise InternalError(
+                f"{self.stage} stage exceeded PIPELINE_JOB_MAX_RUNTIME_SECONDS "
+                f"({self.max_runtime_seconds:g}s) and was stopped"
+            ) from exc
 
     def _messages(
         self,

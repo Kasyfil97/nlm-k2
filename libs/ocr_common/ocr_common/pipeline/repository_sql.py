@@ -183,6 +183,21 @@ class SqlJobRepository:
         async with self.engine.begin() as conn:
             await self._outcome.failed(conn, request_id, error_message, stage=next_stage)
 
+    async def touch(self, request_id: str) -> None:
+        """See `JobRepository.touch`.
+
+        The `status == PROCESSING` guard is what makes a beat that is already in flight harmless:
+        it cannot move `updated_at` on a job that finished or failed in the meantime, so it can
+        never make a settled job look alive again.
+        """
+        jobs = self._jobs
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                update(jobs)
+                .where(jobs.c.request_id == request_id, jobs.c.status == STATUS_PROCESSING)
+                .values(updated_at=datetime.now(UTC))
+            )
+
     def _wake(self, messages: Sequence[OutboxMessage]) -> None:
         # After the commit: a relay woken inside the transaction would poll before the rows are visible.
         if self._outbox is not None and messages:

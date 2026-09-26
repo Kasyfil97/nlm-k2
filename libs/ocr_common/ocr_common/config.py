@@ -231,6 +231,16 @@ class PipelineSettings(BaseServiceSettings):
     # §8.5: flipped only by the batch that actually writes the encrypted, blind-indexed audit.
     # `require_pii_audit()` explains why this exists rather than a check on PII_ENCRYPTION_KEY.
     pii_audit_implemented: bool = False
+    # Detak: sementara job berjalan ia memperbarui `updated_at`, supaya job yang sah-berjalan-lama
+    # tidak terlihat basi bagi reaper. `0` = mati, dan itulah bawaannya untuk batch ini: mekanismenya
+    # dipasang sekarang karena `repository.py`, `stage.py` dan `factory.py` beku setelah gerbang R6,
+    # tetapi intervalnya tidak dikarang -- ia disetel oleh batch yang menjalankan model sungguhan,
+    # ketika durasi job pertama kali bisa diukur.
+    pipeline_heartbeat_seconds: float = Field(0.0, ge=0)
+    # Batas atas umur job, TERLEPAS dari `updated_at`. Detak menghapus satu-satunya batas atas yang
+    # dulu ada (lease), jadi tanpa ini job yang macet tetapi prosesnya hidup akan berdetak selamanya,
+    # tidak pernah dipanen, dan tidak pernah menulis keadaan akhir. `0` = mati.
+    pipeline_job_max_runtime_seconds: float = Field(0.0, ge=0)
     pipeline_stale_jobs: bool = True
     pipeline_stale_job_interval_seconds: float = Field(30.0, gt=0)
     pipeline_stale_job_batch: int = Field(10, gt=0)
@@ -265,6 +275,18 @@ class PipelineSettings(BaseServiceSettings):
                 "ORCHESTRATION_CALLBACK_KEY must be set with ORCHESTRATION_CALLBACK_FORMAT=result: the orchestrator's "
                 "result callback is authenticated with X-Callback-Key"
             )
+        if self.pipeline_heartbeat_seconds and not self.pipeline_job_max_runtime_seconds:
+            raise ValueError(
+                "PIPELINE_HEARTBEAT_SECONDS needs PIPELINE_JOB_MAX_RUNTIME_SECONDS: a beating job is never "
+                "reclaimed by the reaper, so without a ceiling a wedged job would beat forever and never "
+                "reach a terminal state"
+            )
+        if self.pipeline_heartbeat_seconds >= self.pipeline_job_lease_seconds:
+            if self.pipeline_heartbeat_seconds:
+                raise ValueError(
+                    "PIPELINE_HEARTBEAT_SECONDS must be well below PIPELINE_JOB_LEASE_SECONDS, otherwise the "
+                    "lease expires between beats and the reaper reclaims a job that is still running"
+                )
         if self.pipeline_handoff_by_reference and not self.database_url:
             raise ValueError(
                 "PIPELINE_HANDOFF_BY_REFERENCE=true needs DATABASE_URL: the next stage reads this stage's "

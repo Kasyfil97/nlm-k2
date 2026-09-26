@@ -148,9 +148,12 @@ def test_the_outcome_row_is_off_until_the_table_is_configured():
 
 
 async def test_a_failed_handoff_marks_the_request_failed_at_the_next_stage(repository):
+    """Tahap yang MENYERAHKAN job tidak pernah menulis `result_data`: hanya scoring yang mengirim
+    `outcome_data`, dan scoring tidak punya tahap berikutnya. Jadi barisnya masih `processing` saat
+    handoff-nya gagal, dan `422/failed` adalah jawaban yang benar -- bukan penulisan yang ditekan."""
     repo, _ = repository
     await repo.claim(RID)
-    await repo.complete(RID, {"fields": {"nomor_kk": 0.7}, "anggota_keluarga": []}, outcome_data=DATA)
+    await repo.complete(RID, {"texts": []})
 
     await repo.handoff_failed(RID, "STRUCTURING", "Handoff to STRUCTURING failed: structuring service is unavailable")
 
@@ -158,3 +161,99 @@ async def test_a_failed_handoff_marks_the_request_failed_at_the_next_stage(repos
     assert (row["status_code"], row["downstream_status"], row["downstream_stage"]) == (422, "failed", "STRUCTURING")
     assert row["error_code"] == "STRUCTURING_FAILED"
     assert row["error_message"] == "Handoff to STRUCTURING failed: structuring service is unavailable"
+
+
+# --- monotonisitas: baris `completed` tidak boleh mundur (Unit 3) ---------------------------
+
+
+async def test_a_dead_lettered_handoff_after_completion_does_not_undo_it(repository):
+    """Jalur yang BENAR-BENAR bisa dicapai, dan alasan unit ini ada.
+
+    Analisis awal menyebut reaper sebagai jalurnya; itu keliru. `reclaim_stale` hanya memilih baris
+    `PROCESSING`, dan `complete()` menyetel job jadi `DONE` di transaksi yang sama dengan penulisan
+    baris `completed`, jadi reaper tidak akan pernah melihatnya. Yang bisa terjadi adalah relay
+    outbox menyerah melewati `PIPELINE_OUTBOX_MAX_AGE_SECONDS` setelah tahap berikutnya sudah
+    selesai -- dan `handoff_failed()` lalu menulis `422/failed` di atas hasil yang sudah benar,
+    tepat di tabel yang dibaca tim lain sebagai kanal produksi.
+    """
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.9}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    await repo.handoff_failed(RID, "SCORING", "next stage never accepted the job")
+
+    row = await _row(repository)
+    assert row["downstream_status"] == "completed", "baris selesai tidak boleh mundur jadi failed"
+    assert row["result_data"] == DATA, "dan hasilnya tidak boleh hilang"
+
+
+async def test_a_late_failure_from_a_duplicate_run_does_not_undo_completion(repository):
+    """Jalur kedua: eksekusi kembar yang ditinggalkan `resume()` terdahulu memanggil `fail()`
+    setelah eksekusi asli memanggil `complete()`."""
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    await repo.fail(RID, "Internal error in SCORING stage")
+
+    row = await _row(repository)
+    assert (row["downstream_status"], row["result_data"]) == ("completed", DATA)
+
+
+async def test_a_late_rejection_does_not_undo_completion(repository):
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, rejection="ditolak terlambat")
+
+    row = await _row(repository)
+    assert (row["downstream_status"], row["status_code"]) == ("completed", 200)
+
+
+async def test_a_reclaim_after_completion_does_not_blank_the_result(repository):
+    """Pertahanan berlapis. Lewat reaper jalur ini tidak bisa dicapai, tetapi `claimed()` memang
+    dulu menulis `result_data=None` tanpa syarat, jadi sifatnya tetap ditegaskan."""
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    outcome = repo._outcome
+    assert outcome is not None
+    async with repo.engine.begin() as conn:
+        await outcome.claimed(conn, RID)
+
+    row = await _row(repository)
+    assert (row["downstream_status"], row["result_data"]) == ("completed", DATA)
+
+
+async def test_completion_after_a_failure_clears_the_stale_error_columns(repository):
+    """`claim()` mengklaim ulang baris `FAILED`, jadi urutan fail -> klaim ulang -> sukses bisa
+    terjadi. Tanpa pembersihan eksplisit, barisnya jadi `200/completed` yang masih membawa
+    `error_code` lama -- tim Orkestrasi membaca request selesai yang sekaligus melaporkan galat."""
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.fail(RID, "Internal error in SCORING stage")
+    assert await repo.claim(RID) is True
+
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    row = await _row(repository)
+    assert row["downstream_status"] == "completed"
+    assert (row["error_code"], row["error_message"]) == (None, None)
+
+
+async def test_a_suppressed_write_is_logged_and_counted(repository, caplog):
+    """Penekanan tidak boleh senyap: kalau balapannya tak terlihat di produksi, tidak ada yang tahu
+    seberapa sering ia terjadi -- padahal justru pengukuran itu yang memberi tahu apakah detaknya
+    bekerja."""
+    import logging
+
+    repo, _ = repository
+    await repo.claim(RID)
+    await repo.complete(RID, {"fields": {}, "anggota_keluarga": []}, outcome_data=DATA)
+
+    with caplog.at_level(logging.WARNING):
+        await repo.handoff_failed(RID, "SCORING", "next stage never accepted the job")
+
+    assert any(RID in record.message and "completed" in record.message.lower() for record in caplog.records)
