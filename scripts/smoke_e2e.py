@@ -13,6 +13,9 @@ from typing import Any
 
 import httpx
 
+from ocr_common.kk import DOC_FIELDS
+from ocr_common.synthetic_kk import member, nomor_kk
+
 
 def _key_from_env_file() -> str:
     path = os.path.join(os.path.dirname(__file__), "..", "services", "ekstraksi", ".env")
@@ -61,6 +64,7 @@ def _image() -> bytes:
         from PIL import Image, ImageDraw, ImageFont
     except ImportError:
         return b"\xff\xd8fake-jpeg-bytes"
+    head = member(0)
     image = Image.new("RGB", (1000, 620), "white")
     draw = ImageDraw.Draw(image)
     try:
@@ -68,14 +72,14 @@ def _image() -> bytes:
     except OSError:
         big = small = ImageFont.load_default()
     lines = [
-        ("KEMENTERIAN KEUANGAN REPUBLIK INDONESIA", big),
-        ("DIREKTORAT JENDERAL PAJAK", big),
-        ("NPWP : 12.345.678.9-012.345", small),
-        ("NAMA : BUDI SANTOSO", small),
-        ("NAMA BADAN : PT CIPTA KARYA MANDIRI", small),
-        ("ALAMAT : JL. MERDEKA NO. 12 JAKARTA", small),
-        ("KPP PRATAMA JAKARTA MENTENG", small),
-        ("TERDAFTAR : 15-03-2018", small),
+        ("KARTU KELUARGA", big),
+        (f"No. {nomor_kk()}", big),
+        (f"Nama Kepala Keluarga : {head.nama_lengkap}", small),
+        ("Alamat : JL. MERDEKA NO. 12", small),
+        ("Desa/Kelurahan : CIHAPIT      RT/RW : 003/007", small),
+        ("Kecamatan : BANDUNG WETAN    Kode Pos : 40114", small),
+        (f"{head.nama_lengkap}  {head.nik}  {head.status_hubungan_dalam_keluarga}", small),
+        (f"{head.ayah} / {head.ibu}", small),
     ]
     for i, (text, font) in enumerate(lines):
         draw.text((40, 40 + i * 68), text, fill="black", font=font)
@@ -88,7 +92,7 @@ def _submit(client: httpx.Client, request_id: str, filename: str, content: bytes
     return client.post(
         f"{URLS['orchestrator']}/v1/extract-ocr",
         headers=HEADERS,
-        data={"request_id": request_id, "document_type": "npwp"},
+        data={"request_id": request_id, "document_type": "kk"},
         files={"file": (filename, content, "image/jpeg")},
     )
 
@@ -119,7 +123,7 @@ def async_pipeline(client: httpx.Client) -> bool:
     print("request_id:", request_id)
 
     started = time.monotonic()
-    submitted = _submit(client, request_id, "npwp.jpg", image)
+    submitted = _submit(client, request_id, "kk.jpg", image)
     elapsed = time.monotonic() - started
     body = submitted.json()
     print(
@@ -143,13 +147,21 @@ def async_pipeline(client: httpx.Client) -> bool:
         print(f"  {stage:<12} {job['status'] if job else '(belum ada job)'} {(job or {}).get('error_message') or ''}")
     ok = all(jobs.get(stage, {}).get("status") == "DONE" for stage in STAGES)
     if finished_in_time:
-        read = jobs["structuring"]["result"]["fields"]["nomor_npwp"]["value"]
-        ok = ok and body["data"]["nomor_npwp"]["value"] == read
+        # nomor_kk di dalam, no_kk di luar: itu satu dari dua penggantian nama §3.3.1, dan
+        # memeriksanya di sini adalah satu-satunya tempat kedua sisi proyeksi dilihat bersama.
+        read = jobs["structuring"]["result"]["nomor_kk"]["value"]
+        ok = ok and body["data"]["no_kk"]["value"] == read
     if ok:
-        for name, field in jobs["structuring"]["result"]["fields"].items():
-            print(f"  {name:<12} {field['value']!r:<35} conf={field['confidence']}")
+        structured = jobs["structuring"]["result"]
+        for name in DOC_FIELDS:
+            field = structured.get(name) or {}
+            print(f"  {name:<24} {field.get('value')!r:<32} ocr={field.get('ocr_conf')} crf={field.get('crf_conf')}")
+        members = structured.get("anggota_keluarga") or []
+        print(f"  anggota_keluarga: {len(members)} orang")
         score = jobs["scoring"]["result"]
-        print(f"  npwp_confidence = {score['npwp_confidence']}  name_confidence = {score['name_confidence']}")
+        print(f"  skor dokumen: {score.get('fields')}")
+        print(f"  skor anggota: {len(score.get('anggota_keluarga') or [])} baris")
+        ok = ok and len(members) == len(score.get("anggota_keluarga") or [])
 
     status = _status(client, request_id)
     read_back = status.json()
@@ -160,7 +172,7 @@ def async_pipeline(client: httpx.Client) -> bool:
     if finished_in_time:
         ok = ok and read_back["data"] == body["data"]
 
-    again = _submit(client, request_id, "npwp.jpg", image)
+    again = _submit(client, request_id, "kk.jpg", image)
     repeated = again.json()
     print(f"kirim ulang request_id yang sama -> {again.status_code} job_status={repeated.get('job_status')}")
     ok = ok and again.status_code == 200 and repeated.get("job_status") == "completed"
@@ -200,7 +212,7 @@ def latency(client: httpx.Client, runs: int) -> bool:
     for _ in range(runs):
         request_id = f"REQ_{uuid.uuid4()}"
         started = time.monotonic()
-        response = _submit(client, request_id, "npwp.jpg", image)
+        response = _submit(client, request_id, "kk.jpg", image)
         answered = time.monotonic() - started
         codes[response.status_code] += 1
         jobs = _poll(client, request_id)
@@ -225,12 +237,12 @@ def latency(client: httpx.Client, runs: int) -> bool:
 
 
 def guardrails_reject(client: httpx.Client) -> bool:
-    """Butuh GUARDRAILS_BACKEND=mock: model mock menolak nama file yang mengandung `notnpwp`."""
+    """Butuh GUARDRAILS_BACKEND=mock: model mock menolak nama file yang mengandung `notkk`."""
     print("== guardrails menolak ==")
     request_id = f"REQ_{uuid.uuid4()}"
-    response = _submit(client, request_id, "notnpwp.jpg", _image())
+    response = _submit(client, request_id, "notkk.jpg", _image())
     body = response.json()
-    print(f"notnpwp.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
+    print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
     print(f"  message={body.get('message')!r}")
     status = _status(client, request_id)
     print(f"  GET status -> {status.status_code} (tidak ada tahap yang jalan)")

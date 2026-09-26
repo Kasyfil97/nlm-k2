@@ -19,6 +19,7 @@ runs with `STRUCTURING_BACKEND=mock`, rather than in shared code.
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
 from ocr_common.synthetic_kk import household, nomor_kk
@@ -80,7 +81,7 @@ class MockStructurer:
             }
             for index, person in enumerate(people)
         ]
-        return document  # type: ignore[return-value]
+        return cast(StructuringResult, document)
 
 
 def _levers(texts: list[OcrBox]) -> dict[str, str]:
@@ -92,7 +93,7 @@ def _empty(reason: str) -> StructuringResult:
     document: dict[str, object] = {name: _field("") for name in DOC_FIELDS}
     document["anggota_keluarga"] = []
     document["reject_reason"] = reason
-    return document  # type: ignore[return-value]
+    return cast(StructuringResult, document)
 
 
 def _reject_reason(head: str, members: list[dict]) -> str | None:

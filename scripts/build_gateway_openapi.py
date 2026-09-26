@@ -54,9 +54,10 @@ services' own specs. Each service also serves its full Swagger UI at `/docs`.
    - rejected by the guardrails model -> **400**, `errors: DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`;
      nothing runs and no callback follows.
    - passed -> the document goes on to the OCR stage and the service waits for the pipeline for up to
-     `PIPELINE_WAIT_SECONDS` (15 s by default, counted from the request's arrival). Finished in time ->
-     **200**, `job_status: completed`, `data` = `nomor_npwp` and `nama` as `{value, confidence}` with
-     confidence 0/1; a stage failed -> **422** `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED`; still
+     `PIPELINE_WAIT_SECONDS` (30 s by default, counted from the request's arrival). Finished in time ->
+     **200**, `job_status: completed`, `data` = `no_kk`, `nama_kepala_keluarga` and `anggota_keluarga[]`
+     with seven fields per member, each `{value, confidence}` and confidence 0/1; a stage failed ->
+     **422** `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED`; still
      running -> **202**, `job_status: processing`. Give this call an HTTP timeout well above the wait.
 2. **Receive callbacks** (see *Webhooks*), sent by the pipeline stages themselves after a hand-off. The
    `SCORING` / `DONE` callback carries the **final result** (richer than `data`: OCR scores, trust
@@ -68,9 +69,16 @@ Time a request out on your side: a stage that crashes mid-job cannot send its ca
 
 ## What the result is, and is not
 
-`fields` holds `nomor_npwp`, `nama`, `nama_badan`. `scoring` holds `npwp_confidence` and
-`name_confidence`: the probability, from the ML team's trust model, that each extracted field is
-correct. There is **no document-level score and no approve / reject decision**; thresholds are yours.
+`data` carries **nine** fields: `no_kk`, `nama_kepala_keluarga`, and one object per household member
+with `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+`ayah`, `ibu`. Structuring reads eleven document fields and fifteen per member; the rest stay behind
+`GET /v1/structuring/jobs/{request_id}` rather than travelling to you. `value` is `""` when a field
+was not found, never null, and the object is never replaced by null.
+
+`confidence` is 0 or 1: the ML team's trust model gives each field a probability of being correct,
+and 1 means it reached `FIELD_CONFIDENCE_THRESHOLD`. There is **no document-level score and no
+approve / reject decision**; thresholds are yours. A member array is positional — member *n* in
+`data` is member *n* on the card.
 
 ## Addresses
 

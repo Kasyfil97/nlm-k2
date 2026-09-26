@@ -38,6 +38,10 @@ FOUNDATION = (
     "deploy/",
     ".github/",
     "api/",
+    # scripts/ ada di sini sejak temuan agen B: `smoke_e2e.py` mengirim `notnpwp.jpg` selama
+    # enam unit dan gerbang ini tidak pernah melihatnya, karena berkas gerbangnya sendiri
+    # tinggal di direktori yang tidak dicakupnya.
+    "scripts/",
     "services/structuring/",
     "services/scoring/",
 )
@@ -50,6 +54,7 @@ ALLOWED: dict[str, str] = {
     "README.md": "menyebut repo asal yang strukturnya disalin",
     "libs/ocr_common/tests/test_kk_shapes.py": "uji yang justru memastikan bentuk lama tidak lolos",
     "libs/ocr_common/tests/test_gateway_spec.py": "mendeteksi spec yang belum dikonversi; ia harus menyebut istilahnya",
+    "scripts/check_no_legacy_terms.py": "berkas gerbangnya sendiri: ia memuat polanya dan pesannya",
 }
 
 # `docs/` memuat kontrak, requirements, rencana, dan catatan keputusan; semuanya membandingkan

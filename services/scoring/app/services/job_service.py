@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from starlette.concurrency import run_in_threadpool
 
@@ -7,7 +7,7 @@ from ocr_common.errors import BadRequest, UnprocessableEntity
 from ocr_common.kk import DOCUMENT_TYPE, contract_fields, final_result
 from ocr_common.pipeline import StagePipeline, Work
 from ocr_common.pipeline.results import StageResults, load_upstream
-from ocr_common.types import FinalResult, ScoringResult
+from ocr_common.types import FinalResult, ScoringResult, StructuringResult
 
 from app.services.confidence_service import ConfidenceService
 
@@ -99,7 +99,14 @@ class ScoringJobService:
             }
 
         def final(scoring: Mapping[str, Any]) -> FinalResult:
-            return final_result(document_type, guardrails, chain["structuring"], scoring)
+            # Dicast: keduanya JSON yang sudah divalidasi model muatannya di tahap asalnya,
+            # bukan TypedDict yang bisa dibuktikan pemeriksa tipe di sini.
+            return final_result(
+                document_type,
+                guardrails,
+                cast(StructuringResult, chain["structuring"]),
+                cast(ScoringResult, scoring),
+            )
 
         # `contract_fields` needs the structuring result, not the bundled final one: the member
         # alignment check lives there and reads both lists. `work` fills `chain` before any callback

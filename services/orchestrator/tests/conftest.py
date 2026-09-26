@@ -28,7 +28,10 @@ ACCEPTED_REPORT: dict[str, Any] = {
 }
 REJECTED_REPORT: dict[str, Any] = {
     "passed": False,
-    "reason": "Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga",
+    # Kalimat ini persis yang dikembalikan guardrails (`REASON_REJECT`, §3.5). Sebelumnya di sini
+    # ada kalimat karangan yang tidak pernah diucapkan service mana pun -- tidak merusak apa-apa,
+    # karena orchestrator hanya meneruskannya, tetapi menyesatkan pembaca berikutnya.
+    "reason": "Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas",
     "document": {"verdict": "reject", "confidence": 0.8821, "probability_bad": 0.8821, "threshold_used": 0.5},
 }
 

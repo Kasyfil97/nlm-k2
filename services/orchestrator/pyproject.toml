@@ -8,6 +8,14 @@ asyncio_default_fixture_loop_scope = "function"
 root = ["."]
 extra-paths = [".", "../../libs/ocr_common"]
 
+[tool.ty.rules]
+# `app/config.py` dan `app/services/document_checks.py` mengimpor `fitz` di dalam fungsi dan
+# menandainya `ty: ignore[unresolved-import]`. Apakah ignore itu TERPAKAI bergantung pada
+# lingkungan: `requirements-dev.txt` memasang PyMuPDF, jadi di CI modulnya resolve dan ignore-nya
+# jadi "tidak terpakai" -- dan `ty` keluar dengan kode bukan-nol atas sebuah warning. Tanpa baris
+# ini gerbangnya hanya bisa hijau di salah satu lingkungan, dan yang merah justru CI.
+unused-ignore-comment = "ignore"
+
 [tool.pyrefly]
 search-path = [".", "../../libs/ocr_common"]
 
