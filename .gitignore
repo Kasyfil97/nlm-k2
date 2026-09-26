@@ -26,7 +26,6 @@ services/*/weights/*
 
 # Data rujukan internal aturan structuring (daftar nama): dipasang saat deploy, bukan lewat git.
 
-docs/
 
 # Keluaran lokal tools: log port-forward tracker dan hasil run k6.
 tools/tracker/.port-forward.log
