@@ -1,10 +1,17 @@
-"""The `remote` backend: the ML team's guardrails model served over HTTP. The document is sent whole
-and the response already carries the per-page and document verdicts."""
+"""The `remote` backend: the ML team's quality service over HTTP.
+
+Kept rather than dropped because it is the deployment shape the ML team already runs (K2Quality is
+a service before it is a library), and because it is the only way to put the model on a GPU host
+while this service stays small. It is a `DocumentChecker`, not a `QualityModel`: the document goes
+over whole and the verdict comes back already made, under the remote service's own threshold.
+"""
 
 from typing import Any
 
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import InternalError
+
+VERDICTS = ("accepted", "reject", "unassessable")
 
 
 class RemoteGuardrailsModel:
@@ -21,40 +28,56 @@ class RemoteGuardrailsModel:
             content=content,
             content_type=content_type or "image/jpeg",
         )
-        return parse_report(body, self._client.name)
+        return parse_document(body, self._client.name)
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
 
-def _verdict(value: Any) -> str:
-    if value not in ("accepted", "reject"):
-        raise ValueError(f"unknown verdict: {value!r}")
-    return value
+def _probability(value: Any, *, allow_null: bool) -> float | None:
+    if value is None and allow_null:
+        return None
+    number = float(value)
+    if not 0.0 <= number <= 1.0:
+        raise ValueError(f"probability out of range: {number}")
+    return round(number, 4)
 
 
-def parse_report(body: Any, name: str) -> dict[str, Any]:
-    """The model service's {data: {document, pages}} into the report shape GuardrailsService returns."""
+def parse_document(body: Any, name: str) -> dict[str, Any]:
+    """The remote `{data: {document}}` into the §5.2 `document` block.
+
+    Only the three fields the contract names are taken through; anything else the service adds is
+    dropped here rather than forwarded, because this block travels unchanged to scoring and an
+    unknown key there would outlive everyone who knew what it meant.
+    """
     try:
-        data = body["data"]
-        document = data["document"]
+        document = body["data"]["document"]
+        verdict = document["verdict"]
+        if verdict not in VERDICTS:
+            raise ValueError(f"unknown verdict: {verdict!r}")
+        unassessable = verdict == "unassessable"
+        probability_bad = _probability(document.get("probability_bad"), allow_null=unassessable)
+        if probability_bad is None and not unassessable:
+            raise ValueError(f"verdict {verdict!r} without a probability_bad")
+        confidence = probability_bad if verdict == "reject" else None
+        if verdict == "accepted" and probability_bad is not None:
+            confidence = round(1.0 - probability_bad, 4)
         return {
-            "document": {
-                "verdict": _verdict(document["verdict"]),
-                "confidence": float(document["confidence"]),
-                "n_pages": int(document["n_pages"]),
-                "n_approve": int(document["n_approve"]),
-                "n_reject": int(document["n_reject"]),
-            },
-            "pages": [
-                {
-                    "page_index": int(page["page_index"]),
-                    "proba_approve": float(page["proba_approve"]),
-                    "proba_reject": float(page["proba_reject"]),
-                    "verdict": _verdict(page["verdict"]),
-                }
-                for page in data["pages"]
-            ],
+            "verdict": verdict,
+            "confidence": confidence,
+            "probability_bad": probability_bad,
+            # The remote service applies its own threshold. It states which one when it can; when it
+            # does not, the field is null rather than this service's threshold, which was not used.
+            "threshold_used": _optional_threshold(document.get("threshold_used")),
         }
     except (KeyError, TypeError, ValueError) as exc:
         raise InternalError(f"{name} returned an unexpected response") from exc
+
+
+def _optional_threshold(value: Any) -> float | None:
+    if value is None:
+        return None
+    number = float(value)
+    if not 0 < number < 1:
+        raise ValueError(f"threshold_used out of range: {number}")
+    return number

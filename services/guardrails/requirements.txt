@@ -4,8 +4,20 @@ python-multipart==0.0.9
 pydantic-settings==2.5.2
 httpx==0.27.2
 
+# The K2Quality model core: the patch blur CNN (torch/torchvision), the 19 classical CV features
+# (opencv + scipy), and the booster over the 23-feature vector (xgboost).
 torch==2.14.0
 torchvision==0.29.0
-numpy==2.3.5
+numpy==2.2.6
 Pillow==12.3.0
+# headless: the service never opens a window, and the GUI build drags in X11 libraries that are not
+# in the slim base image.
+opencv-python-headless==4.12.0.88  # caps numpy at <2.3, which is why numpy is pinned to the 2.2 line above
+scipy==1.16.2
+# Plain `xgboost`, to stay identical to the stack the ML team trained and evaluated on. Note that
+# on linux/x86_64 it hard-depends on nvidia-nccl-cu12 (~250 MB in the lock) even though torch here
+# is the +cpu build, so the image carries a GPU library it can never use. `xgboost-cpu` is the same
+# import name without that dependency and is the obvious swap if image size matters more than parity.
+xgboost==3.0.5
+# Only reachable with PDF_ENABLED=true (R34a): page 1 is rasterised at the training DPI.
 PyMuPDF==1.28.2

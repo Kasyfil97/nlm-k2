@@ -1,11 +1,14 @@
 openapi: 3.1.0
 info:
-  title: OCR NPWP Guardrails API
-  description: 'The guardrails model of the OCR NPWP pipeline, internal: the orchestrator NPWP calls `POST
-    /v1/guardrails/check` for every document it receives, and hands a document that passes to the OCR
-    stage itself. The check classifies every page of the document (image or PDF) as accepted / reject
-    and aggregates a document verdict. The model runs in this process (`efficientnet`) or in the ML team''s
-    model service (`remote`). All endpoints except /health, /ready and /metrics require an X-API-Key header.
+  title: OCR Kartu Keluarga Guardrails API
+  description: 'The image-quality judge of the nlm-k2 Kartu Keluarga pipeline, internal: the orchestrator
+    calls `POST /v1/guardrails/check` for every document it receives, and hands one that passes to the
+    OCR stage. A Kartu Keluarga is a single image, so the check produces one verdict -- `accepted`, `reject`,
+    or `unassessable` when the image could not be judged at all -- and never an HTTP error for the document
+    itself. The model runs in this process (`kk_quality`: patch blur CNN + XGBoost + isotonic calibration)
+    or in the ML team''s quality service (`remote`). This is the only image-quality gate in the pipeline,
+    so `GUARDRAILS_THRESHOLD` is the single lever for refusing a bad photo. All endpoints except /health,
+    /ready and /metrics require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -103,7 +106,7 @@ paths:
                     version: 1.0.0
                     device: cpu
                     backends:
-                      guardrails: efficientnet
+                      guardrails: kk_quality
   /ready:
     get:
       tags:
@@ -160,15 +163,20 @@ paths:
     post:
       tags:
       - Guardrails
-      summary: 'Judge a document (internal: called by the orchestrator NPWP)'
-      description: 'Runs the guardrails model on each page (a PDF is rendered page by page; an image is
-        one page) and aggregates a document verdict, **without** starting anything: no OCR job, no callback.
-        The model is either in this process (`efficientnet`) or the ML team''s model service (`remote`,
-        POST /v1/predict/json); the report is the same either way. The orchestrator NPWP calls it for
-        every `extract-ocr` and hands `data` on to the OCR stage when `passed`. Always 200 when the document
-        was judged: read `data.passed`. Only the model judges here: the type, size (`MAX_UPLOAD_BYTES`)
-        and page count (`MAX_DOCUMENT_PAGES`) of the document are checked by the orchestrator NPWP before
-        it calls this endpoint. A file the model cannot read (not an image, an unreadable PDF) is 400.'
+      summary: 'Judge a Kartu Keluarga image (internal: called by the orchestrator)'
+      description: 'Runs the guardrails model on the image and answers a verdict, **without** starting
+        anything: no OCR job, no callback. A Kartu Keluarga is one image, so there is one verdict and
+        no page list. The model runs in this process (`kk_quality`) or in the ML team''s quality service
+        (`remote`, POST /v1/predict/json); the report is the same either way. The orchestrator calls it
+        for every `extract-ocr` and forwards `data` unchanged to the OCR stage when `passed`.
+
+
+        **Always 200 when the document was received**: read `data.passed`. An image the model cannot judge
+        is `verdict: "unassessable"` with `probability_bad: null` and `passed: false`, not an error status.
+        The 400s below are about the *request*, not about the document: an intake that names neither or
+        both of `file` and `file_url`, a `threshold` outside (0, 1), a refused `file_url`, or a `file_url`
+        while `GUARDRAILS_FETCH_URL=false`. Type and size are checked by the orchestrator before this
+        endpoint is called.'
       operationId: checkDocument
       requestBody:
         content:
@@ -193,16 +201,9 @@ paths:
                       passed: true
                       document:
                         verdict: accepted
-                        confidence: 0.9821
-                        n_pages: 1
-                        n_approve: 1
-                        n_reject: 0
-                        reject_threshold: 0.5
-                      pages:
-                      - page_index: 0
-                        proba_approve: 0.9821
-                        proba_reject: 0.0179
-                        verdict: accepted
+                        confidence: 0.9713
+                        probability_bad: 0.0287
+                        threshold_used: 0.5
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 rejected:
                   summary: Rejected
@@ -212,22 +213,29 @@ paths:
                     message: OK
                     data:
                       passed: false
-                      reason: 'Document rejected by guardrails: 1/1 page(s) rejected (confidence 0.88)'
+                      reason: Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas
                       document:
                         verdict: reject
                         confidence: 0.8821
-                        n_pages: 1
-                        n_approve: 0
-                        n_reject: 1
-                        reject_threshold: 0.5
-                      pages:
-                      - page_index: 0
-                        proba_approve: 0.1179
-                        proba_reject: 0.8821
-                        verdict: reject
+                        probability_bad: 0.8821
+                        threshold_used: 0.5
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                unassessable:
+                  summary: Could not be judged
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OK
+                    data:
+                      passed: false
+                      reason: Gambar tidak dapat dinilai, mohon unggah ulang foto Kartu Keluarga yang
+                        utuh
+                      document:
+                        verdict: unassessable
+                        threshold_used: 0.5
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
-          description: A file the model cannot read, or bad intake
+          description: Bad intake, or a threshold outside (0, 1)
           content:
             application/json:
               schema:
@@ -235,8 +243,8 @@ paths:
               example:
                 status_code: 400
                 status_desc: Bad Request
-                message: Uploaded file is not a readable image
-                errors: Uploaded file is not a readable image
+                message: Send exactly one of file or file_url
+                errors: Send exactly one of file or file_url
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -257,7 +265,7 @@ paths:
               example:
                 status_code: 422
                 status_desc: Unprocessable Entity
-                message: 'body.file: Field required'
+                message: 'body.threshold: Input should be a valid number'
                 errors: VALIDATION_ERROR
         '500':
           description: The guardrails model failed
@@ -323,6 +331,16 @@ components:
             uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
             list denies every URL rather than allowing public ones. https only, redirects are not followed,
             and a host that resolves to a private or loopback address is refused even when it is listed.'
+        threshold:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Threshold
+          description: Reject threshold for this request only, overriding every configured source. Strictly
+            between 0 and 1; normally not sent. Ignored by the `remote` backend, which judges under its
+            own
+          examples:
+          - 0.5
       type: object
       title: Body_checkDocument
     DocumentResult:
@@ -332,59 +350,54 @@ components:
           enum:
           - accepted
           - reject
+          - unassessable
           title: Verdict
-          description: 'Document verdict. Default policy `all`: accepted only when every page is accepted'
+          description: '`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it,
+            and `unassessable` when the model could not judge the image at all (undecodable, not an image,
+            or dimensions outside the range it was trained on). `unassessable` is a verdict and not an
+            error: this endpoint always answers 200'
           examples:
           - accepted
         confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
           title: Confidence
-          description: Confidence in the verdict. accepted -> the lowest `proba_approve` over the pages
-            (the weakest page decides); reject -> the highest `proba_reject` among the rejected pages
+          description: 'Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad`
+            when accepted, null when unassessable'
           examples:
-          - 0.9821
-        n_pages:
-          type: integer
-          minimum: 0.0
-          title: N Pages
-          description: Pages judged (a PDF is capped at 20)
+          - 0.9713
+        probability_bad:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability Bad
+          description: 'Raw model output: the probability that the image is bad. Travels unchanged to
+            scoring as the `guardrail_probability` feature. Null when the verdict is `unassessable`'
           examples:
-          - 2
-        n_approve:
-          type: integer
-          minimum: 0.0
-          title: N Approve
-          description: Pages with verdict `accepted`
-          examples:
-          - 2
-        n_reject:
-          type: integer
-          minimum: 0.0
-          title: N Reject
-          description: Pages with verdict `reject`
-          examples:
-          - 0
-        reject_threshold:
+          - 0.0287
+        threshold_used:
           anyOf:
           - type: number
             exclusiveMaximum: 1.0
             exclusiveMinimum: 0.0
           - type: 'null'
-          title: Reject Threshold
-          description: 'The reject threshold the pages were judged with: the central orchestrator''s (`GUARDRAILS_THRESHOLD_URL`),
-            else the default (`GUARDRAILS_REJECT_THRESHOLD`, else the checkpoint''s 0.5). Null with the
-            `remote` backend, which applies its own'
+          title: Threshold Used
+          description: 'The threshold in force for this request: the `threshold` form field, else the
+            central orchestrator''s (`GUARDRAILS_THRESHOLD_URL`), else `GUARDRAILS_THRESHOLD`, else the
+            value stored with the weights, else 0.5. Echoed because it can change without a deploy here.
+            Null with the `remote` backend when that service does not state its own'
           examples:
           - 0.5
       type: object
       required:
       - verdict
       - confidence
-      - n_pages
-      - n_approve
-      - n_reject
+      - probability_bad
       title: DocumentResult
     ErrorResponse:
       properties:
@@ -447,24 +460,18 @@ components:
           - type: string
           - type: 'null'
           title: Reason
-          description: Why the document was rejected; null when `passed`. The model is a binary classifier,
-            so the reason can only state how many pages were rejected and how confidently, not *what*
-            is wrong with them
+          description: Why the document was stopped, in Indonesian and shown to the end user as it stands;
+            null when `passed`. The model is binary and judges the image as a whole, so the reason cannot
+            say which part is wrong -- only whether the quality was too low or the image could not be
+            judged at all
           examples:
           - null
         document:
           $ref: '#/components/schemas/DocumentResult'
-        pages:
-          items:
-            $ref: '#/components/schemas/PageResult'
-          type: array
-          title: Pages
-          description: One entry per page, in page order
       type: object
       required:
       - passed
       - document
-      - pages
       title: GuardrailReport
     GuardrailReportResponse:
       properties:
@@ -546,47 +553,6 @@ components:
       - backends
       title: HealthResponse
       description: '`GET /health`.'
-    PageResult:
-      properties:
-        page_index:
-          type: integer
-          minimum: 0.0
-          title: Page Index
-          description: 0-based page number; an image is always page 0
-          examples:
-          - 0
-        proba_approve:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Proba Approve
-          description: Model probability of `accepted`
-          examples:
-          - 0.9821
-        proba_reject:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Proba Reject
-          description: Model probability of `reject`; `proba_approve + proba_reject = 1`
-          examples:
-          - 0.0179
-        verdict:
-          type: string
-          enum:
-          - accepted
-          - reject
-          title: Verdict
-          description: '`reject` when `proba_reject` reaches the reject threshold (`document.reject_threshold`)'
-          examples:
-          - accepted
-      type: object
-      required:
-      - page_index
-      - proba_approve
-      - proba_reject
-      - verdict
-      title: PageResult
     ReadyResponse:
       properties:
         status:
@@ -623,6 +589,6 @@ components:
       name: X-API-Key
 tags:
 - name: Guardrails
-  description: 'The guardrails check (internal: called by the orchestrator NPWP)'
+  description: 'The guardrails check (internal: called by the orchestrator)'
 - name: Health
   description: Liveness and readiness probes; no API key
