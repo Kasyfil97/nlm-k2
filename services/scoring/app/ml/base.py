@@ -1,16 +1,16 @@
+from collections.abc import Mapping
 from typing import Any, Protocol
 
 
-class Scorer(Protocol):
-    """Legacy document scorer behind POST /v1/scoring/score: one score for the whole document from the
-    structured fields, plus per-field scores and the reasons a field was penalised.
+class TrustModel(Protocol):
+    """Turns the scoring payload into P(correct) per contract field.
 
-    The pipeline callback uses the trust model (app/ml/trust_model.py) instead, which is not a backend.
+    Returns the §8.3 shape: `fields` for the two document fields and `anggota_keluarga` with seven
+    per member, under their INTERNAL names -- the rename to the outgoing contract happens in the
+    orchestrator. A field whose value is empty scores `None`, and `anggota_keluarga` is
+    positionally aligned with the structuring result and must be the same length.
     """
 
     name: str
 
-    @property
-    def supported_document_types(self) -> tuple[str, ...]: ...
-
-    def score(self, fields: dict[str, dict[str, Any]]) -> dict[str, Any]: ...
+    def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]: ...

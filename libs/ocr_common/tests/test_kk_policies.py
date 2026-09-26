@@ -12,6 +12,7 @@ from ocr_common.clients.fetch_url import STRICT_URL_POLICY, FetchUrlError, UrlPo
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES, BaseServiceSettings, PipelineSettings
 from ocr_common.errors import BadRequest, PayloadTooLarge
 from ocr_common.image_validation import validate_image
+from ocr_common.testing import TEST_API_KEY
 
 JPEG = b"\xff\xd8fake-jpeg-bytes"
 
@@ -127,13 +128,22 @@ def test_a_downloading_service_refuses_to_start_without_an_allowlist():
 # --- kunci API placeholder (R29) -----------------------------------------------------------
 
 
-@pytest.mark.parametrize("placeholder", ["changeme", "CHANGEME", "secret", "x", "your-api-key", " test "])
-def test_a_placeholder_api_key_refuses_to_start_outside_local(placeholder):
+@pytest.mark.parametrize("weak", ["changeme", "CHANGEME", " your-api-key ", "replace-me", "todo"])
+def test_a_named_placeholder_api_key_refuses_to_start_outside_local(weak):
     with pytest.raises(ValidationError, match="placeholder"):
-        deployed(api_key=placeholder)
+        deployed(api_key=weak)
 
 
-def test_a_placeholder_hidden_in_the_rotation_list_is_caught_too():
+@pytest.mark.parametrize("short", ["x", "k", "secret", "dev-key-123"])
+def test_a_key_too_short_to_be_real_refuses_too(short):
+    """Aturan panjang yang menanggung beban: apa yang salah dari `x` bukan namanya, melainkan
+    bahwa ia terlalu pendek untuk pernah menjadi kunci sungguhan. Daftar nama selalu bisa
+    dielakkan dengan satu salah ketik lagi."""
+    with pytest.raises(ValidationError, match="shorter than 16"):
+        deployed(api_key=short)
+
+
+def test_a_weak_key_hidden_in_the_rotation_list_is_caught_too():
     with pytest.raises(ValidationError, match="placeholder"):
         deployed(api_key="a-real-looking-key", api_keys="another-real-one,changeme")
 
@@ -174,7 +184,7 @@ def test_pii_audit_guard_blocks_deployment_while_the_audit_is_unimplemented():
     with pytest.raises(ValueError, match="PII_AUDIT_IMPLEMENTED=false"):
         pipeline().require_pii_audit()
     pipeline(pii_audit_implemented=True).require_pii_audit()
-    PipelineSettings(api_key="k", environment="local", _env_file=None).require_pii_audit()
+    PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None).require_pii_audit()
 
 
 def test_the_guard_does_not_key_on_the_encryption_key_being_present():

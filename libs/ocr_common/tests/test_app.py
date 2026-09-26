@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from ocr_common.config import BaseServiceSettings
 from ocr_common.errors import BadRequest
+from ocr_common.testing import TEST_API_KEY
 from ocr_common.web.app import create_app
 from ocr_common.web.envelope import envelope
 from ocr_common.web.intake import FileField, FileUrlField, read_image
@@ -24,7 +25,7 @@ async def json_endpoint(request: Request, body: dict):
     return envelope(200, "Success", body, get_request_id(request))
 
 
-settings = BaseServiceSettings(api_key="k", _env_file=None)
+settings = BaseServiceSettings(api_key=TEST_API_KEY, environment="local", _env_file=None)
 app = create_app(
     settings=settings,
     title="Demo",
@@ -33,7 +34,7 @@ app = create_app(
     backends={"demo": "mock"},
 )
 client = TestClient(app, raise_server_exceptions=False)
-AUTH = {"X-API-Key": "k"}
+AUTH = {"X-API-Key": TEST_API_KEY}
 
 
 def test_health_is_public():
@@ -58,7 +59,7 @@ def test_wrong_api_key_is_401_including_non_ascii(key):
 
 def test_auth_disabled_skips_the_api_key_check():
     open_app = create_app(
-        settings=BaseServiceSettings(api_key="k", auth_disabled=True, environment="local", _env_file=None),
+        settings=BaseServiceSettings(api_key=TEST_API_KEY, auth_disabled=True, environment="local", _env_file=None),
         title="Demo",
         description="demo",
         routers=[router],
@@ -127,17 +128,43 @@ def test_intake_rejects_bad_url_scheme_as_400():
     assert "Unsupported URL scheme" in response.json()["message"]
 
 
+# Kebijakan `file_url` sengaja longgar dengan ENVIRONMENT=local (MinIO di laptop tanpa TLS, alamat
+# privat, allow-list kosong). Kedua uji di bawah karenanya butuh app yang settings-nya TER-DEPLOY --
+# menjalankannya terhadap app lokal justru akan benar-benar mencoba menghubungi alamatnya.
+deployed_app = create_app(
+    settings=BaseServiceSettings(
+        api_key=TEST_API_KEY,
+        environment="production",
+        file_url_allowed_hosts="storage.example.com",
+        _env_file=None,
+    ),
+    title="Demo",
+    description="demo",
+    routers=[router],
+    backends={"demo": "remote"},
+)
+deployed_client = TestClient(deployed_app, raise_server_exceptions=False)
+
+
 def test_intake_refuses_internal_file_url_as_400():
-    response = client.post("/v1/echo", data={"file_url": "https://169.254.169.254/latest/meta-data/"}, headers=AUTH)
+    response = deployed_client.post(
+        "/v1/echo", data={"file_url": "https://169.254.169.254/latest/meta-data/"}, headers=AUTH
+    )
     assert response.status_code == 400
     assert response.json()["message"] == "file_url host is not allowed: 169.254.169.254"
 
 
 def test_intake_refuses_plain_http_as_400():
     """Skema diperiksa sebelum host, jadi http ditolak lebih dulu dan tidak pernah di-resolve."""
-    response = client.post("/v1/echo", data={"file_url": "http://storage.example.com/a.jpg"}, headers=AUTH)
+    response = deployed_client.post("/v1/echo", data={"file_url": "http://storage.example.com/a.jpg"}, headers=AUTH)
     assert response.status_code == 400
     assert response.json()["message"] == "Unsupported URL scheme: http (https is required)"
+
+
+def test_an_unlisted_host_is_refused_even_over_https():
+    response = deployed_client.post("/v1/echo", data={"file_url": "https://evil.test/a.jpg"}, headers=AUTH)
+    assert response.status_code == 400
+    assert response.json()["message"] == "file_url host is not allowed: evil.test"
 
 
 def test_validation_error_uses_envelope_with_code():
@@ -150,7 +177,7 @@ def test_validation_error_uses_envelope_with_code():
 
 def test_every_accepted_key_opens_the_door_during_a_rotation():
     rotating = create_app(
-        settings=BaseServiceSettings(api_key="baru", api_keys="lama, baru ,", _env_file=None),
+        settings=BaseServiceSettings(api_key="baru", api_keys="lama, baru ,", environment="local", _env_file=None),
         title="Demo",
         description="demo",
         routers=[router],
@@ -159,7 +186,7 @@ def test_every_accepted_key_opens_the_door_during_a_rotation():
     assert rotating.state.settings.accepted_api_keys == ("baru", "lama")
     for key in ("lama", "baru"):
         assert rotating_client.post("/v1/json", json={}, headers={"X-API-Key": key}).status_code == 200
-    assert rotating_client.post("/v1/json", json={}, headers={"X-API-Key": "k"}).status_code == 401
+    assert rotating_client.post("/v1/json", json={}, headers={"X-API-Key": TEST_API_KEY}).status_code == 401
 
 
 adopting = APIRouter()

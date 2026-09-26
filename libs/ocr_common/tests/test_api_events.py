@@ -12,7 +12,7 @@ from ocr_common.pipeline.outcomes import (
 )
 from ocr_common.pipeline.repository_sql import SqlJobRepository
 from ocr_common.pipeline.tables import orchestration_api_events_table, orchestration_outcome_table
-from ocr_common.testing import RecordingCallback
+from ocr_common.testing import TEST_API_KEY, RecordingCallback
 
 TABLE = "orchestration_api_events"
 RID = "OCR_api_events"
@@ -217,7 +217,7 @@ async def test_double_write_fills_the_outcome_row_and_the_event_log(tmp_path):
 
 def test_writers_follow_the_settings():
     def build(**tables):
-        settings = PipelineSettings(api_key="k", environment="local", _env_file=None, **tables)
+        settings = PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None, **tables)
         return build_stage_outcome(settings, stage=STAGE_SCORING)
 
     assert build() is None

@@ -19,18 +19,17 @@ from ocr_common.pipeline import (
 from ocr_common.registry import Factory, build_backend
 
 from app.config import Settings, get_settings
-from app.ml.base import Scorer
-from app.ml.heuristic import HeuristicNpwpScorer
-from app.ml.trust_model import TrustModel
+from app.ml.base import TrustModel
+from app.ml.mock import MockTrustModel
 from app.services.confidence_service import ConfidenceService
 from app.services.job_service import ScoringJobService
-from app.services.scoring_service import ScoringService
 
 DB_TABLE_PREFIX = "scoring"
 
-# SCORING_BACKEND -> how to build the legacy document scorer.
-SCORER_BACKENDS: dict[str, Factory[Scorer]] = {
-    "heuristic": lambda settings: HeuristicNpwpScorer(),
+# SCORING_BACKEND -> how to build the trust model. `mock` is the only one in this batch; the
+# calibrated model joins it later, and `reject_mock_backend_outside_local` starts applying then.
+TRUST_MODEL_BACKENDS: dict[str, Factory[TrustModel]] = {
+    "mock": lambda settings: MockTrustModel(),
 }
 
 
@@ -38,14 +37,9 @@ SCORER_BACKENDS: dict[str, Factory[Scorer]] = {
 
 
 @lru_cache
-def get_scorer() -> Scorer:
-    settings: Settings = get_settings()
-    return build_backend(SCORER_BACKENDS, settings.scoring_backend, settings, "scoring")
-
-
-@lru_cache
 def get_trust_model() -> TrustModel:
-    return TrustModel(get_settings().scoring_model_path)
+    settings: Settings = get_settings()
+    return build_backend(TRUST_MODEL_BACKENDS, settings.scoring_backend, settings, "scoring")
 
 
 # --- pipeline -----------------------------------------------------------------------
@@ -86,10 +80,6 @@ def get_testing_results() -> StageResults | None:
 
 
 # --- services (cheap to build: one per request) ------------------------------------------
-
-
-def get_scoring_service() -> ScoringService:
-    return ScoringService(get_scorer(), get_settings())
 
 
 def get_confidence_service() -> ConfidenceService:

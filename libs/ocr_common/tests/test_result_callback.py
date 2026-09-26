@@ -14,6 +14,7 @@ from ocr_common.pipeline.callbacks import (
     stage_callback_body,
 )
 from ocr_common.pipeline.factory import build_callback
+from ocr_common.testing import TEST_API_KEY
 
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 GUARDRAILS = {"passed": True, "reason": None, "document": {"verdict": "accepted", "confidence": 0.98}}
@@ -201,7 +202,7 @@ async def test_outbox_send_turns_the_stored_stage_body_into_the_result():
 
 
 def _settings(**overrides) -> PipelineSettings:
-    return PipelineSettings(api_key="k", environment="local", _env_file=None, **overrides)
+    return PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None, **overrides)
 
 
 def test_the_callback_format_picks_the_callback_class():
@@ -216,7 +217,7 @@ def test_the_callback_format_picks_the_callback_class():
 
 def _production(callback_key: str | None) -> PipelineSettings:
     return PipelineSettings(
-        api_key="k",
+        api_key=TEST_API_KEY,
         environment="production",
         database_url="postgresql+asyncpg://u:p@db/x",
         orchestration_url="http://ocr-orchestration.ocr-dev.svc.cluster.local",

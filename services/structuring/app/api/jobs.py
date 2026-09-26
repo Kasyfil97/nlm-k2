@@ -39,8 +39,8 @@ _JOB = {"request_id": REQUEST_ID_EXAMPLE, "stage": "STRUCTURING", "created_at": 
         "Records the job (`structuring_jobs`, idempotent per request_id), answers **202 immediately**, then in the "
         "background: turns the OCR lines into named fields, stores the result (`structuring_results`), POSTs the "
         "`STRUCTURING` callback, and hands the job (guardrails + OCR + structuring results) to the scoring service.\n\n"
-        "A document that is not a lone NPWP card fails the job with a reason: an upload that also contains a "
-        "KTP / KK / marriage certificate, a CAPTCHA page, a screenshot of the DJP NPWP lookup, more than 2 pages, "
+        "A document that is not a lone KK card fails the job with a reason: an upload that also contains a "
+        "KTP / KK / marriage certificate, a CAPTCHA page, a screenshot of the DJP KK lookup, more than 2 pages, "
         "or no text at all."
     ),
     responses={
@@ -87,7 +87,7 @@ async def submit_job(body: StructuringJobRequest, service: StructuringJobService
     operation_id="getStructuringJob",
     summary="Status and result of the structuring stage",
     description=(
-        "Status of this stage only, and its structured fields once `DONE`. Internal: the orchestrator NPWP reads "
+        "Status of this stage only, and its structured fields once `DONE`. Internal: the orchestrator KK reads "
         "it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and it helps to debug."
     ),
     responses={
@@ -109,7 +109,7 @@ async def submit_job(body: StructuringJobRequest, service: StructuringJobService
                 ),
             ),
             failed=(
-                "Failed: the upload was not a lone NPWP card",
+                "Failed: the upload was not a lone KK card",
                 envelope(
                     200,
                     "Success",
@@ -117,7 +117,7 @@ async def submit_job(body: StructuringJobRequest, service: StructuringJobService
                         **_JOB,
                         "status": "FAILED",
                         "error_message": (
-                            "Upload contains another document (KARTU TANDA PENDUDUK); send the NPWP card only"
+                            "Upload contains another document (KARTU TANDA PENDUDUK); send the KK card only"
                         ),
                         "result": None,
                         "updated_at": "2026-09-18T04:00:01+00:00",

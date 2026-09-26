@@ -15,6 +15,11 @@ from ocr_common.web.openapi import spec_text
 TEST_API_KEY = "test-key"
 
 
+#: An API key long enough to pass the production guard. Tests that build *deployed* settings need
+#: one; tests that only need a local app do not, but using it everywhere keeps the intent obvious.
+TEST_API_KEY = "test-key-not-a-placeholder"
+
+
 def set_test_env(**extra: str) -> None:
     """Point the settings at a local test configuration before the app module is imported."""
     os.environ["API_KEY"] = TEST_API_KEY

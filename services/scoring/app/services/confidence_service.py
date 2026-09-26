@@ -1,50 +1,42 @@
-import re
+from collections.abc import Mapping
 from typing import Any
 
-from ocr_common.types import FieldConfidences
-
-from app.ml.trust_model import TrustModel
-
-NAME_FIELDS = ("nama", "nama_badan")
-
-
-def _has_value(field: dict[str, Any] | None) -> bool:
-    return bool(field and field.get("value") is not None and str(field["value"]).strip())
+from app.ml.base import TrustModel
 
 
 class ConfidenceService:
+    """Builds the payload the trust model scores, and runs it.
+
+    `payload` is kept whole in the stage result as an audit trail: §8.3 requires the numbers to be
+    reproducible without re-running the pipeline, and that is only true if exactly what was scored
+    is stored alongside what came out.
+    """
+
     def __init__(self, model: TrustModel):
         self._model = model
 
-    def predict(self, payload: dict[str, Any]) -> FieldConfidences:
+    def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._model.predict(payload)
 
     @staticmethod
     def payload_from_chain(
         guardrails: dict[str, Any] | None, ocr: dict[str, Any] | None, structuring: dict[str, Any]
     ) -> dict[str, Any]:
-        """The ML team's scoring payload from the chained stage results: number and name signals from
-        structuring (the name as its base read, before normalisation), the document-level OCR scores from
-        the OCR blocks, the flag from the structuring rules, and the guardrails confidence of an accepted
-        document."""
-        fields = structuring.get("fields") or {}
-        number = fields.get("nomor_npwp") if _has_value(fields.get("nomor_npwp")) else None
-        name = next((fields[key] for key in NAME_FIELDS if _has_value(fields.get(key))), None)
-        number_signals = (number or {}).get("signals") or {}
-        name_signals = (name or {}).get("signals") or {}
+        """The scoring payload from the chained stage results.
 
-        blocks = (ocr or {}).get("blocks") or []
-        scores = [float(block["confidence"]) for block in blocks if block.get("confidence") is not None]
-
+        `guardrail_probability` is the raw model output, not the verdict's confidence: §10 types it
+        as the feature. It is `None` when guardrails was skipped **and** when the verdict was
+        `unassessable`, which the real model must impute rather than assume a number for -- the
+        contract's §10 says `probability_bad` is a float, so a null here is a case the calibrator
+        has to be told about explicitly.
+        """
         document = (guardrails or {}).get("document") or {}
+        ocr_result = ocr or {}
         return {
-            "npwp": re.sub(r"\D", "", str(number["value"])) if number else None,
-            "npwp_score": number.get("confidence") if number else None,
-            "npwp_candidate_count": number_signals.get("candidate_count"),
-            "name_base": (name_signals.get("name_base") or str(name["value"])) if name else None,
-            "name_score": name.get("confidence") if name else None,
-            "avg_doc_score": round(sum(scores) / len(scores), 6) if scores else None,
-            "min_doc_score": min(scores) if scores else None,
-            "flag": bool(structuring.get("flag", False)),
-            "guardrail_probability": document.get("confidence") if document.get("verdict") == "accepted" else None,
+            "structuring": structuring,
+            "guardrail_probability": document.get("probability_bad"),
+            "guardrail_verdict": document.get("verdict"),
+            "avg_doc_score": ocr_result.get("avg_doc_score"),
+            "min_doc_score": ocr_result.get("min_doc_score"),
+            "text_regions_count": ocr_result.get("text_regions_count"),
         }

@@ -2,17 +2,18 @@ import pytest
 from pydantic import ValidationError
 
 from ocr_common.config import BaseServiceSettings, PipelineSettings
+from ocr_common.testing import TEST_API_KEY
 
 DB = "postgresql+asyncpg://u:p@10.0.0.5:5432/db"
 ORCH = "http://orkestrasi:8000"
 
 
 def base(**overrides) -> BaseServiceSettings:
-    return BaseServiceSettings(api_key="k", _env_file=None, **overrides)
+    return BaseServiceSettings(api_key=TEST_API_KEY, _env_file=None, **overrides)
 
 
 def pipeline(**overrides) -> PipelineSettings:
-    return PipelineSettings(api_key="k", _env_file=None, **overrides)
+    return PipelineSettings(api_key=TEST_API_KEY, _env_file=None, **overrides)
 
 
 def test_environment_defaults_to_production(monkeypatch):

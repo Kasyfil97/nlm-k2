@@ -6,23 +6,47 @@ from ocr_common.web.request_id import get_request_id
 from ocr_common.web.schemas import REQUEST_ID_EXAMPLE, UNAUTHORIZED, error, success_examples
 from ocr_common.web.security import verify_api_key
 
-from app.api.schemas import ConfidenceRequest, ConfidenceResponse, ScoreRequest, ScoreResponse
-from app.dependencies import get_confidence_service, get_scoring_service
+from app.api.schemas import ConfidenceRequest, ConfidenceResponse
+from app.dependencies import get_confidence_service
 from app.services.confidence_service import ConfidenceService
-from app.services.scoring_service import ScoringService
 
 router = APIRouter(tags=["Scoring"], dependencies=[Depends(verify_api_key)])
 
+# What `jobs.py` shows as the audit trail. Imported from here, which is why this module is rewritten
+# before `jobs.py` compiles.
 CONFIDENCE_PAYLOAD_EXAMPLE = {
-    "npwp": "12.345.678.9-012.000",
-    "npwp_score": 0.98,
-    "npwp_candidate_count": 1,
-    "name_base": "PT CONTOH INDONESIA",
-    "name_score": 0.95,
-    "avg_doc_score": 0.91,
-    "min_doc_score": 0.62,
-    "flag": False,
-    "guardrail_probability": 0.98,
+    "structuring": "{...the §7.3 structuring result, whole...}",
+    "guardrail_probability": 0.0287,
+    "guardrail_verdict": "accepted",
+    "avg_doc_score": 0.814,
+    "min_doc_score": 0.2822,
+    "text_regions_count": 177,
+}
+
+CONFIDENCE_EXAMPLE = {
+    "document_type": "kk",
+    "fields": {"nomor_kk": 0.9412, "nama_kepala_keluarga": 0.8871},
+    "anggota_keluarga": [
+        {
+            "nama_lengkap": 0.9702,
+            "nik": 0.9655,
+            "pendidikan": 0.8410,
+            "jenis_pekerjaan": 0.7733,
+            "status_hubungan_dalam_keluarga": 0.9218,
+            "ayah": 0.8064,
+            "ibu": 0.7951,
+        },
+        {
+            "nama_lengkap": 0.9333,
+            "nik": 0.9510,
+            "pendidikan": 0.7126,
+            "jenis_pekerjaan": None,
+            "status_hubungan_dalam_keluarga": 0.9047,
+            "ayah": 0.7702,
+            "ibu": 0.7588,
+        },
+    ],
+    "model": "kk-trust-mock-v1",
 }
 
 
@@ -32,35 +56,25 @@ CONFIDENCE_PAYLOAD_EXAMPLE = {
     operation_id="predictConfidence",
     summary="Per-field confidence from the trust model, synchronous (no job, no callback)",
     description=(
-        "The ML team's scoring contract (`POST /v1/score` of their scoring service, model of 21 Sep 2026): the "
-        "payload carries the signals of the previous stages, the answer is the probability that each extracted "
-        "field is correct (`npwp_confidence`, `name_confidence`), from `weights/trust_model.joblib` (imputer -> "
-        "scaler -> logistic regression, one feature row per field: `field_is_npwp`, `field_score`, "
-        "`shape_confidence`, `field_multiple_candidates`, `name_max_char_len`, `avg_doc_score`, `min_doc_score`, "
-        "`flag`, `guardrail_probability`). There is no document score and no approve/reject decision here; "
-        "thresholds are the caller's. A field whose value is null gets a null confidence. Any other null is "
-        "treated as missing and filled by the model's own median imputer."
+        "P(each extracted field is correct), after fusing the two structuring scores and calibrating. "
+        "Only the **nine contract fields** are scored -- two document fields and seven per household member -- "
+        "not all 26 that structuring extracts: each field needs its own calibrator, and training 26 of them "
+        "for 9 numbers anyone reads would be waste. The keys here are the INTERNAL names; the rename to the "
+        "outgoing contract happens in the orchestrator."
+        "\n\n"
+        "`anggota_keluarga` comes back with exactly as many rows as were sent, in the same order. There is no "
+        "document-level score and no approve/reject decision: the threshold belongs to the caller."
     ),
     responses={
         200: success_examples(
-            "Probability that each extracted field is correct",
-            both=(
-                "Both fields present",
-                envelope(200, "Success", {"npwp_confidence": 0.9835, "name_confidence": 0.9806}, REQUEST_ID_EXAMPLE),
-            ),
-            flagged=(
-                "`flag: true` (a review flag of the structuring rules) lowers both confidences",
-                envelope(200, "Success", {"npwp_confidence": 0.9757, "name_confidence": 0.9725}, REQUEST_ID_EXAMPLE),
-            ),
-            no_name=(
-                "`name_base` is null: a field that was not found has no confidence",
-                envelope(200, "Success", {"npwp_confidence": 0.9835, "name_confidence": None}, REQUEST_ID_EXAMPLE),
+            "P(correct) per contract field",
+            scored=(
+                "Two members; the second one's occupation was not read, so it scores null",
+                envelope(200, "Success", CONFIDENCE_EXAMPLE, REQUEST_ID_EXAMPLE),
             ),
         ),
         401: UNAUTHORIZED,
-        422: error(
-            422, "Validation Error", "body.npwp_score: Input should be a valid number", errors="VALIDATION_ERROR"
-        ),
+        422: error(422, "Validation Error", "body.structuring: Field required", errors="VALIDATION_ERROR"),
     },
 )
 async def confidence(
@@ -69,52 +83,4 @@ async def confidence(
     service: ConfidenceService = Depends(get_confidence_service),
 ):
     data = await run_in_threadpool(service.predict, body.model_dump())
-    return envelope(200, "Success", data, get_request_id(request))
-
-
-@router.post(
-    "/v1/scoring/score",
-    response_model=ScoreResponse,
-    operation_id="scoreDocument",
-    deprecated=True,
-    summary="Legacy: heuristic document score (used only by the legacy extract-ocr contract)",
-    description=(
-        "Combines per-field confidence and format validation into one document score "
-        "(the `guardrails` value of extract-ocr), then applies the configured "
-        "thresholds to decide approve / review / reject."
-    ),
-    responses={
-        200: success_examples(
-            "The document was scored",
-            approve=(
-                "A person's card: `nama_badan` is optional, so missing it does not lower the score",
-                envelope(
-                    200,
-                    "Success",
-                    {
-                        "score": 0.9904,
-                        "decision": "approve",
-                        "field_scores": [
-                            {"name": "nomor_npwp", "score": 0.9992, "issues": []},
-                            {"name": "nama", "score": 0.9773, "issues": []},
-                            {"name": "nama_badan", "score": 0.0, "issues": ["missing"]},
-                        ],
-                        "reasons": [],
-                    },
-                    REQUEST_ID_EXAMPLE,
-                ),
-            ),
-        ),
-        400: error(400, "Unsupported document_type or no fields", "No fields to score"),
-        401: UNAUTHORIZED,
-        422: error(422, "Validation Error", "body.fields: Field required", errors="VALIDATION_ERROR"),
-    },
-)
-async def score(
-    request: Request,
-    body: ScoreRequest,
-    service: ScoringService = Depends(get_scoring_service),
-):
-    fields = {name: value.model_dump() for name, value in body.fields.items()}
-    data = service.score(body.document_type, fields)
     return envelope(200, "Success", data, get_request_id(request))

@@ -7,7 +7,7 @@ from ocr_common.pipeline import STAGE_SCORING, StagePipeline, database
 from ocr_common.pipeline.outcomes import OrchestrationOutcome, build_stage_outcome
 from ocr_common.pipeline.repository_sql import SqlJobRepository
 from ocr_common.pipeline.tables import orchestration_outcome_table
-from ocr_common.testing import RecordingCallback
+from ocr_common.testing import TEST_API_KEY, RecordingCallback
 
 TABLE = "orchestration_extract_ocr"
 RID = "REQ_outcome"
@@ -138,10 +138,10 @@ async def test_the_pipeline_passes_the_row_data_of_the_last_stage(repository):
 
 
 def test_the_outcome_row_is_off_until_the_table_is_configured():
-    off = PipelineSettings(api_key="k", environment="local", _env_file=None)
+    off = PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None)
     assert build_stage_outcome(off, stage=STAGE_SCORING) is None
 
-    on = PipelineSettings(api_key="k", environment="local", orchestration_outcome_table=TABLE, _env_file=None)
+    on = PipelineSettings(api_key=TEST_API_KEY, environment="local", orchestration_outcome_table=TABLE, _env_file=None)
     writer = build_stage_outcome(on, stage=STAGE_SCORING)
     assert isinstance(writer, OrchestrationOutcome)
     assert writer.table.name == TABLE

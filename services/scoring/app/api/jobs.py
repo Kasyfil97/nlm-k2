@@ -85,7 +85,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
     summary="Status and result of the scoring stage",
     description=(
         "Status of this stage only and, once `DONE`, the two confidences plus the exact payload that was scored. "
-        "Internal: the orchestrator NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`); "
+        "Internal: the orchestrator reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`); "
         "the central orchestrator receives the final result in the callback. Also useful to audit a score."
     ),
     responses={
@@ -101,7 +101,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
                         "status": "DONE",
                         "error_message": None,
                         "result": {
-                            "npwp_confidence": 0.9806,
+                            "nomor_kk": 0.9806,
                             "name_confidence": 0.9948,
                             "payload": CONFIDENCE_PAYLOAD_EXAMPLE,
                         },
@@ -118,7 +118,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
                     {
                         **_JOB,
                         "status": "FAILED",
-                        "error_message": "Unsupported document_type: ktp. Supported: ['npwp']",
+                        "error_message": "Unsupported document_type: ktp. Supported: ['kk']",
                         "result": None,
                         "updated_at": "2026-09-18T04:00:01+00:00",
                     },

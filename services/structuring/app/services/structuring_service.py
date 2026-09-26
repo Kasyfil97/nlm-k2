@@ -1,26 +1,22 @@
-from ocr_common.errors import BadRequest
-from ocr_common.kk import DOCUMENT_TYPE
-from ocr_common.types import OcrBlock, StructuringResult
+from ocr_common.types import OcrBox, StructuringResult
 
 from app.ml.base import Structurer
 
 
 class StructuringService:
-    """Drops empty lines, runs the structurer, and shapes the stage result (`StructuringResult`)."""
+    """Runs the structurer over the OCR boxes and returns the stage result (`StructuringResult`).
+
+    Note what it does **not** do: it does not refuse an empty input. nilam raised `BadRequest("No
+    text lines to structure")` here, which for a Kartu Keluarga is the wrong answer -- §7.4 makes
+    "no text boxes at all" the *first rejecting rule*, so an empty image has to reach the rules and
+    come back as a `reject_reason`, not as a 400 from this layer. The two look alike to a caller and
+    are not: a rejection is a `DONE` job whose result stays readable, a 400 here is a stage failure.
+
+    Blank boxes are still dropped: a box the recogniser produced with no text is noise, not content.
+    """
 
     def __init__(self, structurer: Structurer):
         self._structurer = structurer
 
-    def structure(self, lines: list[OcrBlock]) -> StructuringResult:
-        cleaned = [line for line in lines if (line.get("text") or "").strip()]
-        if not cleaned:
-            raise BadRequest("No text lines to structure")
-
-        document = self._structurer.structure(cleaned)
-        return {
-            "document_type": DOCUMENT_TYPE,
-            "fields": document["fields"],
-            "flag": document["flag"],
-            "flag_reason": document["flag_reason"],
-            "reject_reason": document.get("reject_reason"),
-        }
+    def structure(self, texts: list[OcrBox]) -> StructuringResult:
+        return self._structurer.structure([box for box in texts if (box.get("text") or "").strip()])

@@ -17,10 +17,13 @@ Environment = Literal["local", "dev", "staging", "production"]
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 DEFAULT_JOB_LEASE_SECONDS = 300.0
 DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
-# API keys a service refuses to start with outside local: the placeholders that travel in
-# `.env.example` and in copied deployment manifests. Compared case-insensitively.
+# Two rules, because "placeholder" has two shapes. A name blocklist catches the values that travel
+# in `.env.example` and in copied deployment manifests; a minimum length catches everything else,
+# including the one-character keys that are obviously stand-ins but belong to no list. The length
+# rule is the load-bearing one -- a blocklist can always be sidestepped by one more typo.
+MIN_API_KEY_LENGTH = 16
 PLACEHOLDER_API_KEYS = frozenset(
-    {"changeme", "change-me", "secret", "x", "test", "dev", "key", "apikey", "api-key", "your-api-key", "todo"}
+    {"changeme", "change-me", "changemechangeme", "your-api-key", "your_api_key", "replace-me", "todo", "example"}
 )
 
 
@@ -174,12 +177,19 @@ class BaseServiceSettings(BaseSettings):
                 "it turns off the X-API-Key check on every endpoint"
             )
         if not self.is_local:
-            placeholders = sorted({k for k in self.accepted_api_keys if k.strip().lower() in PLACEHOLDER_API_KEYS})
-            if placeholders:
-                shown = ", ".join(placeholders)
+            weak = sorted(
+                {
+                    key
+                    for key in self.accepted_api_keys
+                    if key.strip().lower() in PLACEHOLDER_API_KEYS or len(key.strip()) < MIN_API_KEY_LENGTH
+                }
+            )
+            if weak:
+                shown = ", ".join(repr(key) for key in weak)
                 raise ValueError(
-                    f"API_KEY / API_KEYS still holds a placeholder ({shown}), which is how a shared example "
-                    f"secret reaches a deployed environment. Set a real key when ENVIRONMENT={self.environment}"
+                    f"API_KEY / API_KEYS holds a placeholder or a key shorter than {MIN_API_KEY_LENGTH} "
+                    f"characters ({shown}), which is how a shared example secret reaches a deployed "
+                    f"environment. Set a real key when ENVIRONMENT={self.environment}"
                 )
         return self
 

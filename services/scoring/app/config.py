@@ -6,9 +6,8 @@ from ocr_common.config import PipelineSettings
 class Settings(PipelineSettings):
     port: int = 8044
 
-    scoring_model_path: str = "weights/trust_model.joblib"
-
-    scoring_backend: str = "heuristic"
+    # Satu-satunya backend di batch ini. Model terkalibrasi menambahkannya di sini.
+    scoring_backend: str = "mock"
 
     scoring_approve_threshold: float = 0.8
     scoring_review_threshold: float = 0.5

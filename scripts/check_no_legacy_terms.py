@@ -1,4 +1,4 @@
-"""Gerbang R6: tidak ada sisa NPWP di lingkup yang sedang diperiksa.
+"""Gerbang R6: tidak ada sisa istilah pipeline lama di lingkup yang sedang diperiksa.
 
 Kenapa ini skrip dan bukan satu baris `grep`: gerbangnya butuh **lingkup** dan **pengecualian**,
 dan keduanya harus tertulis di satu tempat yang bisa dijalankan, bukan tersebar di prosa.
@@ -9,9 +9,9 @@ service stub. Ketiga service agen dibersihkan agennya masing-masing di fase 1 da
 definisi selesai R24; `scripts/smoke_e2e.py` dan pembangun gateway milik Unit 10. Menuntut semuanya
 bersih sebelum fase 1 adalah syarat yang tidak mungkin dipenuhi.
 
-    python scripts/check_no_npwp.py                  # lingkup fondasi (gerbang R6)
-    python scripts/check_no_npwp.py orchestrator     # satu service (gerbang R24)
-    python scripts/check_no_npwp.py all              # seluruh repo (gerbang fase 2)
+    python scripts/check_no_legacy_terms.py               # lingkup fondasi (gerbang R6)
+    python scripts/check_no_legacy_terms.py orchestrator  # satu service (gerbang R24)
+    python scripts/check_no_legacy_terms.py all           # seluruh repo (gerbang fase 2)
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ SERVICES = ("orchestrator", "guardrails", "ekstraksi", "structuring", "scoring")
 ALLOWED: dict[str, str] = {
     "README.md": "menyebut repo asal yang strukturnya disalin",
     "libs/ocr_common/tests/test_kk_shapes.py": "uji yang justru memastikan bentuk lama tidak lolos",
+    "libs/ocr_common/tests/test_gateway_spec.py": "mendeteksi spec yang belum dikonversi; ia harus menyebut istilahnya",
 }
 
 # `docs/` memuat kontrak, requirements, rencana, dan catatan keputusan; semuanya membandingkan

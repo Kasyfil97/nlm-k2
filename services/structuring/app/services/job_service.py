@@ -7,7 +7,7 @@ from ocr_common.errors import UnprocessableEntity
 from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.pipeline import STAGE_SCORING, HandoffPayload, StagePipeline, Work
 from ocr_common.pipeline.results import StageResults, load_upstream
-from ocr_common.types import OcrBlock, StructuringResult
+from ocr_common.types import OcrBox, StructuringResult
 
 from app.services.structuring_service import StructuringService
 
@@ -15,7 +15,14 @@ Handoff = HandoffPayload
 
 
 def _rejection(structuring: Mapping[str, Any]) -> str | None:
-    """A rejecting check of the ML team's rules stops the pipeline here: no scoring, a 400 for the client."""
+    """A rejecting rule of the KK validity gate stops the pipeline here: no scoring, a 400 for the client.
+
+    Three lines, and this is the ONLY stage that supplies the hook. It merely *reads* a key the
+    result already carries -- the reason is produced by the rules and lives in the payload, which is
+    what lets a stateless orchestrator turn it into the client's 400 by reading
+    `GET /v1/structuring/jobs/{request_id}`. A reason kept only in the outcome row could never get
+    there: a `DONE` job with no marker is indistinguishable from a hand-off still in flight.
+    """
     return structuring.get("reject_reason") or None
 
 
@@ -72,16 +79,17 @@ class StructuringJobService:
 
         async def work() -> StructuringResult:
             chain["ocr"] = ocr if ocr is not None else await load_upstream(self._results, "ocr", request_id)
-            lines: list[OcrBlock] = [
+            texts: list[OcrBox] = [
                 {
-                    "text": block.get("text") or "",
-                    "confidence": block.get("confidence", 1.0),
-                    "bbox": block.get("bbox"),
-                    "page": block.get("page", 0),
+                    "text": box.get("text") or "",
+                    "score": box.get("score", 1.0),
+                    "poly": box.get("poly") or [],
                 }
-                for block in chain["ocr"].get("blocks") or []
+                for box in chain["ocr"].get("texts") or []
             ]
-            return await run_in_threadpool(self._structuring.structure, lines)
+            # MAY be empty: an image with no readable text must reach the validity gate to be
+            # rejected there (§7.4, first rule), not refused earlier as a bad request.
+            return await run_in_threadpool(self._structuring.structure, texts)
 
         def handoff(structuring: Mapping[str, Any]) -> dict[str, Any]:
             body: dict[str, Any] = {"request_id": request_id, "document_type": document_type, "guardrails": guardrails}
