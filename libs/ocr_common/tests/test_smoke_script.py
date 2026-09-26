@@ -80,3 +80,21 @@ def test_every_minted_request_id_is_recorded_for_cleanup(smoke):
     assert 'f"REQ_{uuid.uuid4()}"' not in after_helper.split("return request_id", 1)[1], (
         "ada request_id yang dibuat di luar _rid(); barisnya tidak akan ikut terhapus"
     )
+
+
+def test_no_tracked_file_carries_crlf():
+    """`.gitattributes` says `* text=auto eol=lf`, but that normalises what goes INTO git, not the
+    working tree — and the working tree is the Docker build context.
+
+    Two generators have written CRLF here already (`ocr_common.web.openapi`, fixed in freeze-2, and
+    `scripts/build_gateway_openapi.py`, fixed after it did the same thing to the gateway spec).
+    Both were invisible in diffs, because git normalises on read too. This is the check that makes
+    the third one visible on the day it lands.
+    """
+    import subprocess
+
+    listed = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.split("\0")
+    offenders = [name for name in listed if name and (ROOT / name).is_file() and b"\r\n" in (ROOT / name).read_bytes()]
+    assert not offenders, f"CRLF di pohon kerja: {offenders[:10]}"

@@ -218,7 +218,10 @@ def main() -> int:
         print(f"{TARGET.relative_to(ROOT)} sesuai")
         return 0
     TARGET.parent.mkdir(parents=True, exist_ok=True)
-    TARGET.write_text(text, encoding="utf-8")
+    # newline eksplisit, alasan yang sama seperti di ocr_common.web.openapi (freeze-2): di Windows
+    # write_text menerjemahkan LF jadi CRLF, dan .gitattributes menormalkan yang MASUK git, bukan
+    # pohon kerja. Berkas ini terlewat waktu itu karena ia tinggal di scripts/, bukan di pustaka.
+    TARGET.write_text(text, encoding="utf-8", newline=chr(10))
     print(f"ditulis: {TARGET}")
     return 0
 
