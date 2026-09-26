@@ -503,7 +503,7 @@ suite; reaper masih memulihkan job yang benar-benar terlantar.
 
 ---
 
-- [ ] **Unit 4: Baseline database dan keputusan yang tercatat**
+- [x] **Unit 4: Baseline database dan keputusan yang tercatat** — selesai
 
 **Goal:** Skema KK berdiri dalam satu baseline, dan lima keputusan yang dibekukan gerbang tertulis
 sebelum ditulis.
@@ -527,7 +527,10 @@ sebelum ditulis.
   penyelarasan larik anggota
 
 **Approach:**
-- Baseline membentuk keadaan akhir langsung: `ocr_jobs/_results`, `structuring_jobs/_results`,
+- Baseline membentuk keadaan akhir **tabel pipeline** langsung. *Dipersempit saat pelaksanaan:*
+  ia **tidak** memuat tabel audit R27 — bentuknya diputuskan dan dicatat, tetapi tabel kosong tanpa
+  penulis tidak menghasilkan apa pun, dan bentuk yang salah sama mahalnya untuk diperbaiki seperti
+  menambahkannya belakangan. Isinya: `ocr_jobs/_results`, `structuring_jobs/_results`,
   `scoring_jobs/_results`, `pipeline_outbox` + dead letter, dan — sesuai keputusan R34 — tabel
   `testing_*`. Tujuh revisi nilam tidak disalin; sebagiannya justru membongkar desain lama.
 - R34 memutus pertahankan-atau-buang untuk: jalur callback, `ocr.orchestration_api_events`, tabel
@@ -694,7 +697,7 @@ tersisa di kedua service.
 
 **Goal:** Pintu masuk pipeline menjawab §3 dan §4 lengkap dengan matriks hasilnya.
 
-**Requirements:** R9, R10, R11, R12, R18a (sisi orchestrator)
+**Requirements:** R9, R10, R11, R12, R18a (sisi orchestrator), plus **rate limit dan CORS**
 
 **Dependencies:** Gerbang R6
 
@@ -713,6 +716,12 @@ tersisa di kedua service.
   `PIPELINE_WAIT_SECONDS > 0` harus eksplisit (202 dengan tahap pertama), karena §3.7 hanya
   mendefinisikan kasus `PIPELINE_WAIT_SECONDS = 0`.
 - Penolakan dibaca dari `reject_reason` di dalam muatan hasil structuring.
+- **Rate limit dan CORS ditulis, bukan diwarisi.** Ditemukan saat Unit 4: keduanya ada di
+  `K2Orchestrator` (`src/middleware/rate_limiter.py` sliding window; `allow_origins` di
+  `src/core/config.py`) tetapi **tidak ada di nilam**, sementara kontrak §12 mendaftarkannya
+  "dipertahankan apa adanya". Orchestrator satu-satunya service yang terekspos ke luar. Elastic APM
+  sengaja tidak ikut — agennya menangkap badan request, yang di sini berarti unggahan kartu terkirim
+  ke kolektor pihak ketiga; lihat `docs/decisions/2026-09-26-keputusan-fase-0.md`.
 
 **Patterns to follow:** `app/api/extract_ocr.py:86` `_CONTRACT_TABLE` untuk menyuntikkan matriks §3.2
 ke OpenAPI; `app/clients/ekstraksi.py` untuk bentuk klien tahap.
