@@ -703,7 +703,7 @@ contohnya. Ditambah target `make env`.
 
 ### Fase 1 — tiga agen paralel
 
-- [ ] **Unit 7: Orchestrator (agen A, port 8040)**
+- [x] **Unit 7: Orchestrator (agen A, port 8040)**
 
 **Goal:** Pintu masuk pipeline menjawab §3 dan §4 lengkap dengan matriks hasilnya.
 

@@ -49,8 +49,8 @@ def extract_response(
         return 400, body
     pipeline = outcome["pipeline"] or {}
     if pipeline.get("status") == STATUS_REJECTED:
-        # A rejecting check of the structuring rules: answered like a guardrails rejection, with the
-        # rules' own Indonesian reason as the message.
+        # A rejecting rule of the KK validity gate: answered like a guardrails rejection, with the
+        # gate's own Indonesian reason as the message.
         return 400, extract_body(
             400,
             pipeline["error_message"],
@@ -62,7 +62,10 @@ def extract_response(
             params=params,
         )
     if pipeline.get("status") == STATUS_DONE:
-        data = contract_fields(outcome["result"], threshold)
+        # `result` adalah FinalResult: kedua muatan tahap disimpan utuh, jadi proyeksinya
+        # menerima keduanya. Fungsi yang sama persis dipanggil tahap scoring (§8.5).
+        final = outcome["result"]
+        data = contract_fields(final["structuring"], final["scoring"], threshold)
         return 200, extract_body(
             200,
             COMPLETED_MESSAGE,

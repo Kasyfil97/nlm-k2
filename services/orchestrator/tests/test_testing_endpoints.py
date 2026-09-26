@@ -17,7 +17,7 @@ RID = "REQ_testing"
 
 def _submit(client, auth, path, **data):
     return client.post(
-        path, headers=auth, data={"request_id": RID, **data}, files={"file": ("npwp.jpg", JPEG, "image/jpeg")}
+        path, headers=auth, data={"request_id": RID, **data}, files={"file": ("kk.jpg", JPEG, "image/jpeg")}
     )
 
 

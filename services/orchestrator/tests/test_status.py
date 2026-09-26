@@ -7,6 +7,7 @@ from ocr_common.errors import ServiceError, UpstreamUnavailable
 from app.clients.stages import StageStatusClient, build_stage_status_clients
 from app.config import get_settings
 from app.services.pipeline_waiter import STATUS_REJECTED, PipelineWaiter, WaitOutcome
+from tests.conftest import EXPECTED_DATA, OCR_RESULT, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_status"
 
@@ -47,13 +48,10 @@ def test_finished_request_is_200_with_its_data_and_no_params(client, auth, stub_
         "status_code": 200,
         "status_desc": "OK",
         "message": "OCR extraction completed successfully",
-        "data": {
-            "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-            "nama": {"value": "BUDI SANTOSO", "confidence": 1},
-        },
+        "data": EXPECTED_DATA,
         "errors": None,
         "request_id": RID,
-        "document_type": "npwp",
+        "document_type": "kk",
         "job_status": "completed",
         "guardrails": 0,
         "params": None,
@@ -84,8 +82,8 @@ def test_failed_stage_is_422(client, auth, stub_waiter):
     )
 
 
-def test_rejection_by_the_structuring_rules_is_400(client, auth, stub_waiter):
-    reason = "Kode provinsi pada NPWP tidak valid, mohon dicek kembali"
+def test_rejection_by_the_kk_validity_gate_is_400(client, auth, stub_waiter):
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
     stub_waiter.snapshot_outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, reason)
 
     body = _get(client, auth).json()
@@ -126,16 +124,16 @@ def test_status_needs_the_api_key(client):
 
 async def test_snapshot_of_a_finished_pipeline_collects_every_result():
     stages = _stages(
-        _job("DONE", {"blocks": []}),
-        _job("DONE", {"fields": {}}),
-        _job("DONE", {"npwp_confidence": 0.7, "name_confidence": 0.9}),
+        _job("DONE", OCR_RESULT),
+        _job("DONE", STRUCTURING_RESULT),
+        _job("DONE", SCORING_RESULT),
     )
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
 
     assert outcome is not None
     assert (outcome.stage, outcome.status) == ("SCORING", "DONE")
-    assert outcome.results["SCORING"] == {"npwp_confidence": 0.7, "name_confidence": 0.9}
+    assert outcome.results["SCORING"] == SCORING_RESULT
     assert [stage.calls for stage in stages] == [1, 1, 1]
 
 

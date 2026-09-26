@@ -1,9 +1,18 @@
+from typing import Any
+
 import pytest
 
+from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS, SCORED_DOC_FIELDS, SCORED_MEMBER_FIELDS, contract_fields
+from ocr_common.synthetic_kk import household, nomor_kk
 from ocr_common.testing import auth_headers, make_client, set_test_env
 
-set_test_env(AUTH_DISABLED="false")
+# RATE_LIMIT_REQUESTS: the whole suite shares one API key, so every request lands in the same bucket
+# and the production default (60/minute) would turn test number 61 into a 429. The limiter itself is
+# tested in test_rate_limit.py against its own small app, which is also the only place where the
+# number under test is the number that matters.
+set_test_env(AUTH_DISABLED="false", RATE_LIMIT_REQUESTS="100000")
 
+from app.config import get_settings  # noqa: E402
 from app.dependencies import get_ekstraksi_client, get_guardrails_client, get_pipeline_waiter  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.pipeline_waiter import WaitOutcome  # noqa: E402
@@ -11,45 +20,103 @@ from app.services.pipeline_waiter import WaitOutcome  # noqa: E402
 # Only the content type and the size of a document are checked here; the bytes never reach a model.
 JPEG = b"\xff\xd8fake-jpeg-bytes"
 
-ACCEPTED_REPORT = {
+# A Kartu Keluarga is one image, so the report has no page list and no counts across pages.
+ACCEPTED_REPORT: dict[str, Any] = {
     "passed": True,
     "reason": None,
-    "document": {"verdict": "accepted", "confidence": 0.9821, "n_pages": 1, "n_approve": 1, "n_reject": 0},
-    "pages": [{"page_index": 0, "proba_approve": 0.9821, "proba_reject": 0.0179, "verdict": "accepted"}],
+    "document": {"verdict": "accepted", "confidence": 0.9821, "probability_bad": 0.0179, "threshold_used": 0.5},
 }
-REJECTED_REPORT = {
+REJECTED_REPORT: dict[str, Any] = {
     "passed": False,
-    "reason": "Document rejected by guardrails: 1/1 page(s) rejected (confidence 0.88)",
-    "document": {"verdict": "reject", "confidence": 0.8821, "n_pages": 1, "n_approve": 0, "n_reject": 1},
-    "pages": [{"page_index": 0, "proba_approve": 0.1179, "proba_reject": 0.8821, "verdict": "reject"}],
+    "reason": "Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga",
+    "document": {"verdict": "reject", "confidence": 0.8821, "probability_bad": 0.8821, "threshold_used": 0.5},
 }
 
-STRUCTURING_RESULT = {
-    "document_type": "npwp",
-    "fields": {
-        "nomor_npwp": {
-            "value": "12.345.678.9-012.345",
-            "confidence": 0.99,
-            "source": "NPWP : 12.345.678.9-012.345",
-            "signals": {"has_homoglyph": False, "candidate_count": 1},
-        },
-        "nama": {"value": "BUDI SANTOSO", "confidence": 0.97, "source": "NAMA : BUDI SANTOSO"},
-        "nama_badan": {"value": None, "confidence": 0.0, "source": None},
-    },
-    "flag": False,
-    "flag_reason": None,
+# The stage payloads are BUILT from the same generators the stage mocks use, not typed out. Two
+# members, because one member cannot expose an index shift and the second is where the projection
+# stops being a rename and starts being a zip. Every score differs, for the same reason.
+HOUSEHOLD = household(2)
+NOMOR_KK = nomor_kk()
+
+_DOC_VALUES = {
+    "nomor_kk": NOMOR_KK,
+    "nama_kepala_keluarga": HOUSEHOLD[0].nama_lengkap,
+    "alamat": "JL. MERDEKA NO. 12",
+    "desa_kelurahan": "CIHAPIT",
+    "rt": "003",
+    "rw": "007",
+    "kecamatan": "BANDUNG WETAN",
+    "kabupaten_kota": "KOTA BANDUNG",
+    "provinsi": "JAWA BARAT",
+    "kode_pos": "40114",
+    "tanggal_dikeluarkan": "12-03-2019",
 }
-SCORING_RESULT = {"npwp_confidence": 0.7296, "name_confidence": 0.9471, "payload": {"npwp": "123456789012345"}}
+
+
+def structured(value: str, ocr_conf: float | None = 0.99, crf_conf: float | None = 0.97) -> dict:
+    """One structured field: `value` is never null, and both scores are null without a value (§7.3)."""
+    if not value:
+        return {"value": "", "ocr_conf": None, "crf_conf": None}
+    return {"value": value, "ocr_conf": ocr_conf, "crf_conf": crf_conf}
+
+
+STRUCTURING_RESULT: dict[str, Any] = {
+    **{
+        name: structured(_DOC_VALUES[name], round(0.9991 - index * 0.0017, 4), round(0.9873 - index * 0.0021, 4))
+        for index, name in enumerate(DOC_FIELDS)
+    },
+    "anggota_keluarga": [
+        {
+            name: structured(
+                getattr(person, name), round(0.99 - position * 0.031, 4), round(0.97 - position * 0.043, 4)
+            )
+            for name in MEMBER_FIELDS
+        }
+        for position, person in enumerate(HOUSEHOLD)
+    ],
+    "reject_reason": None,
+}
+
+# Scoring returns the nine contract fields under their INTERNAL names. The numbers are spread so that
+# member 2's `jenis_pekerjaan` lands below the 0.5 threshold: the fixture carries one confidence 0 on
+# purpose, because a fixture where everything passes cannot tell a working threshold from a constant.
+LOW_SCORED_FIELD = "jenis_pekerjaan"
+SCORING_RESULT: dict[str, Any] = {
+    "document_type": "kk",
+    "fields": {name: round(0.94 - index * 0.031, 4) for index, name in enumerate(SCORED_DOC_FIELDS)},
+    "anggota_keluarga": [
+        {
+            name: (
+                0.4118
+                if position == 1 and name == LOW_SCORED_FIELD
+                else round(0.93 - position * 0.05 - index * 0.011, 4)
+            )
+            for index, name in enumerate(SCORED_MEMBER_FIELDS)
+        }
+        for position in range(len(HOUSEHOLD))
+    ],
+    "model": "kk-trust-mock-v1",
+}
+OCR_RESULT: dict[str, Any] = {
+    "texts": [{"text": NOMOR_KK, "score": 0.9991, "poly": [[291.0, 7.0], [306.0, 6.0], [309.0, 26.0], [294.0, 28.0]]}],
+    "model": "mock",
+    "text_regions_count": 1,
+    "avg_doc_score": 0.9991,
+    "min_doc_score": 0.9991,
+}
+# What the endpoint must answer for the fixtures above, through the one function the scoring stage
+# also calls (§8.5). Pinned against literal values in test_extract_contract.py.
+EXPECTED_DATA = contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5)
 DONE = WaitOutcome(
     "SCORING",
     "DONE",
-    results={"OCR": {"blocks": []}, "STRUCTURING": STRUCTURING_RESULT, "SCORING": SCORING_RESULT},
+    results={"OCR": OCR_RESULT, "STRUCTURING": STRUCTURING_RESULT, "SCORING": SCORING_RESULT},
 )
 
 
 class StubGuardrails:
     """The guardrails service, answering like its mock model: a file name containing `blur`, `invalid` or
-    `notnpwp` is rejected, anything else accepted. Set `error` to make it fail instead."""
+    `notkk` is rejected, anything else accepted. Set `error` to make it fail instead."""
 
     def __init__(self) -> None:
         self.checked: list[dict] = []
@@ -59,7 +126,7 @@ class StubGuardrails:
         self.checked.append({"request_id": request_id, "filename": filename, "content_type": content_type})
         if self.error is not None:
             raise self.error
-        rejected = any(word in filename for word in ("blur", "invalid", "notnpwp"))
+        rejected = any(word in filename for word in ("blur", "invalid", "notkk"))
         return REJECTED_REPORT if rejected else ACCEPTED_REPORT
 
     async def aclose(self) -> None:
@@ -133,3 +200,15 @@ def stub_waiter():
     app.dependency_overrides[get_pipeline_waiter] = lambda: stub
     yield stub
     app.dependency_overrides.pop(get_pipeline_waiter, None)
+
+
+@pytest.fixture
+def settings_override():
+    """Change settings for one test. The app reads them through a dependency, so this is an
+    override rather than an env variable -- the module was imported once, at collection."""
+
+    def install(**update):
+        app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(update=update)
+
+    yield install
+    app.dependency_overrides.pop(get_settings, None)

@@ -4,7 +4,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
-from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE
+from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
+from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
@@ -21,6 +22,7 @@ from app.api.extract_contract import (
 from app.api.schemas import ExtractOcrResponse
 from app.config import Settings, get_settings
 from app.dependencies import get_extract_service
+from app.middleware import TOO_MANY_REQUESTS
 from app.services.document_checks import TOO_MANY_PAGES_MESSAGE
 from app.services.extract_service import ExtractOcrService
 
@@ -31,10 +33,41 @@ INVALID_PARAMS_MESSAGE = "params must be valid JSON: an object, or a quoted stri
 SKIP_NOT_ALLOWED_CODE = "GUARDRAILS_SKIP_NOT_ALLOWED"
 SKIP_NOT_ALLOWED_MESSAGE = "skip_guardrails is not allowed here: GUARDRAILS_SKIP_ALLOWED is off"
 
-_PARAMS = {"nik": "3123456711950001", "refno": "PK19039Y8U"}
+# Setiap nomor di contoh ini memakai kode provinsi 99, yang tidak pernah diberikan Indonesia (lihat
+# ocr_common.synthetic_kk). Contoh OpenAPI adalah tempat paling terlihat di seluruh repo, jadi nomor
+# berbentuk sah dari wilayah nyata akan tampak -- dan bisa jadi -- NIK seseorang.
+#
+# Ini SENGAJA berbeda dari contoh di docs/api-contract.md, yang memakai 3273... (Kota Bandung). Nilainya
+# ilustratif di kedua tempat dan tidak ada yang memvalidasinya, tetapi perbedaannya perlu diserap saat
+# kontrak naik draf berikutnya, bukan dibiarkan jadi kejutan.
+#: `MAX_UPLOAD_BYTES` bawaan sebagaimana klien membacanya, diturunkan dari konstantanya supaya
+#: dokumentasinya tidak bisa menyimpang lagi dari nilainya.
+UPLOAD_LIMIT = upload_limit_label(DEFAULT_MAX_UPLOAD_BYTES)
+
+_PARAMS = {"nik": "9901011203850001", "refno": "PK19039Y8U"}
 _DATA = {
-    "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-    "nama": {"value": "BUDI SANTOSO", "confidence": 1},
+    "no_kk": {"value": "9901012609260001", "confidence": 1},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
+    "anggota_keluarga": [
+        {
+            "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
+            "nik": {"value": "9901011203850001", "confidence": 1},
+            "pendidikan": {"value": "S1", "confidence": 1},
+            "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
+            "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
+            "ayah": {"value": "SUTRISNO", "confidence": 1},
+            "ibu": {"value": "SITI AMINAH", "confidence": 1},
+        },
+        {
+            "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 1},
+            "nik": {"value": "9901015506880002", "confidence": 1},
+            "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 1},
+            "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
+            "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
+            "ayah": {"value": "AHMAD DAHLAN", "confidence": 1},
+            "ibu": {"value": "RATNA SARI", "confidence": 1},
+        },
+    ],
 }
 _COMPLETED = extract_body(
     200,
@@ -44,7 +77,7 @@ _COMPLETED = extract_body(
     guardrails=0,
     errors=None,
     request_id=RID,
-    document_type="npwp",
+    document_type="kk",
     params=_PARAMS,
 )
 _PROCESSING = extract_body(
@@ -52,27 +85,27 @@ _PROCESSING = extract_body(
     PROCESSING_MESSAGE,
     job_status="processing",
     request_id=RID,
-    document_type="npwp",
+    document_type="kk",
     params=_PARAMS,
 )
 _REJECTED = extract_body(
     400,
-    "Document rejected by guardrails: 1/1 page(s) rejected (confidence 0.88)",
+    "Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga",
     errors=REJECTED_CODE,
     job_status="failed",
     guardrails=1,
     request_id=RID,
-    document_type="npwp",
+    document_type="kk",
     params=_PARAMS,
 )
 _FAILED = extract_body(
     422,
-    "No text lines to structure",
+    "structuring stage failed: parser raised on an unexpected layout",
     errors="STRUCTURING_FAILED",
     job_status="failed",
     guardrails=0,
     request_id=RID,
-    document_type="npwp",
+    document_type="kk",
     params=_PARAMS,
 )
 _SKIP_NOT_ALLOWED = extract_body(
@@ -80,7 +113,7 @@ _SKIP_NOT_ALLOWED = extract_body(
     SKIP_NOT_ALLOWED_MESSAGE,
     errors=SKIP_NOT_ALLOWED_CODE,
     request_id=RID,
-    document_type="npwp",
+    document_type="kk",
 )
 
 _CONTRACT_TABLE = (
@@ -89,9 +122,19 @@ _CONTRACT_TABLE = (
     "| Finished | 200 | `completed` | the fields | `0` | null |\n"
     "| Still running | 202 | `processing` | null | null | null |\n"
     f"| Rejected by the guardrails model | 400 | `failed` | null | `1` | `{REJECTED_CODE}` |\n"
-    f"| Rejected by the structuring rules | 400 | `failed` | null | `1` | `{REJECTED_CODE}` |\n"
+    f"| Rejected by the KK validity gate | 400 | `failed` | null | `1` | `{REJECTED_CODE}` |\n"
     "| A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or "
     "`SCORING_FAILED` |\n\n"
+)
+
+
+#: Dibalas middleware rate limit, bukan router ini: lihat app/middleware.py.
+TOO_MANY_REQUESTS_RESPONSE = error(
+    429,
+    "The caller went over `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`. `Retry-After` says how "
+    "many seconds to wait. The limit is counted per API key, per process",
+    TOO_MANY_REQUESTS,
+    request_id=RID,
 )
 
 
@@ -122,23 +165,25 @@ def _parse_params(raw: str | None) -> Any:
         "`PIPELINE_WAIT_SECONDS` (15 s by default), counted from when this request arrived. The response follows "
         'the central orchestrator\'s `extract-ocr` contract ("Finished" meaning finished within the wait):\n\n'
         + _CONTRACT_TABLE
-        + "`data` holds `nomor_npwp` and `nama` as `{value, confidence}`; `nama` is the taxpayer's name, or the "
-        "registered name on a company's card. `confidence` is `1` when the ML team's trust model gives the value a "
-        "probability of being correct of at least `FIELD_CONFIDENCE_THRESHOLD` (0.5 by default), else `0`. "
+        + "`data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven per "
+        "member. Structuring extracts 11 document fields and 15 per member; only these leave, and the rest "
+        "stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is `{value, confidence}`, where "
+        '`value` is `""` when not found -- never null -- and `confidence` is `1` when the trust model gives '
+        "it a probability of at least `FIELD_CONFIDENCE_THRESHOLD` (0.5 by default), else `0`. "
         "`params` is returned as sent.\n\n"
-        "**Rejected by the structuring rules**: the ML team's rules reject a document that is blurred or blank, "
-        "not in the standard NPWP format, another document or bundled with one, a screenshot of the online NPWP "
-        "lookup, longer than the page limit, or whose number carries an invalid birthdate, province, kecamatan "
-        "or KPP code. `message` is the rules' Indonesian reason, e.g. `Kode provinsi pada NPWP tidak valid, mohon "
-        "dicek kembali`. A single-word name or a letter in the number is tolerated: the fields are returned, and "
-        "the trust model's confidence already accounts for it.\n\n"
+        "**Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring. "
+        "Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member with "
+        "both a NIK and a name. `message` is the gate's Indonesian reason. A rejected document is still a "
+        "`DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.\n\n"
         "**Refused before anything runs** (plain error envelope, no `job_status`): a document above "
-        "`MAX_UPLOAD_BYTES` (2.5 MB by default) answers `413`, one with more than `MAX_DOCUMENT_PAGES` "
-        "(2) pages answers `400`, both with an Indonesian `message` the client can show as is.\n\n"
+        f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and -- only with `PDF_ENABLED`, "
+        "which is off by default -- a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both "
+        "carry an Indonesian `message` the client can show as is. With the switch off a PDF is simply an "
+        "unsupported content type.\n\n"
         "**Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request, "
         "when this service allows it (`GUARDRAILS_SKIP_ALLOWED`; otherwise `403` "
-        f"`{SKIP_NOT_ALLOWED_CODE}` and nothing runs). The file checks above still run, and the structuring rules "
-        "still reject, so `guardrails: 1` can then only come from them. The trust model gets no guardrails "
+        f"`{SKIP_NOT_ALLOWED_CODE}` and nothing runs). The file checks above still run, and the KK validity "
+        "gate still rejects, so `guardrails: 1` can then only come from it. The trust model gets no guardrails "
         "probability and works with that input missing.\n\n"
         "On 202 the result arrives by callback (sent by the pipeline stages), and can be read with "
         "`GET /v1/extract-ocr/{request_id}`. Give this call an HTTP timeout well above `PIPELINE_WAIT_SECONDS` "
@@ -146,8 +191,9 @@ def _parse_params(raw: str | None) -> Any:
         "Send `request_id` plus the document as `file`, or as `file_url`; exactly one of the two. A `file_url` "
         "is downloaded here for the guardrails check, and the URL itself (not the bytes) is handed to the OCR "
         "stage, which downloads it again, also when it re-runs a job left behind by a dead process: the URL "
-        "must stay valid for longer than the job lease. The raw guardrails report (per-page probabilities) is "
-        "not part of this response: it travels down the pipeline and comes back in the SCORING callback.\n\n"
+        "must stay valid for longer than the job lease. The raw guardrails report (`probability_bad` and the "
+        "threshold it was compared against) is not part of this response: it travels down the pipeline and "
+        "comes back in the SCORING callback.\n\n"
         "**Idempotency.** The same request_id again re-runs the guardrails check, but the pipeline does not run "
         "twice unless the earlier OCR attempt `FAILED` or outlived the job lease (`PIPELINE_JOB_LEASE_SECONDS`); "
         "a request_id that already finished answers again with its stored outcome."
@@ -167,14 +213,15 @@ def _parse_params(raw: str | None) -> Any:
         400: {
             "model": ExtractOcrResponse,
             "description": (
-                f"Rejected by the guardrails model or by the structuring rules (`{REJECTED_CODE}`, `guardrails: 1`), "
-                "unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), more than `MAX_DOCUMENT_PAGES` "
-                f"pages (`{TOO_MANY_PAGES_MESSAGE}`), or a bad file / intake (empty, unsupported type, unreadable, "
-                "`file_url` refused)"
+                f"Rejected by the guardrails model or by the KK validity gate (`{REJECTED_CODE}`, "
+                "`guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above "
+                f"`MAX_DOCUMENT_PAGES` pages while `PDF_ENABLED` is on (`{TOO_MANY_PAGES_MESSAGE}`), or a bad "
+                "file / intake (empty, unsupported type, unreadable, `file_url` refused)"
             ),
             "content": {"application/json": {"example": _REJECTED}},
         },
         401: UNAUTHORIZED,
+        429: TOO_MANY_REQUESTS_RESPONSE,
         403: {
             "model": ExtractOcrResponse,
             "description": (
@@ -185,8 +232,8 @@ def _parse_params(raw: str | None) -> Any:
         },
         413: error(
             413,
-            "The document exceeds `MAX_UPLOAD_BYTES` (2.5 MB by default); nothing was started",
-            PAYLOAD_TOO_LARGE_MESSAGE.format(limit="2,5 MB"),
+            f"The document exceeds `MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default); nothing was started",
+            PAYLOAD_TOO_LARGE_MESSAGE.format(limit=UPLOAD_LIMIT),
         ),
         422: {
             "model": ExtractOcrResponse,
@@ -219,14 +266,14 @@ async def extract_ocr(
     response: Response,
     request_id: str = Form(..., description="request_id minted by the central orchestrator", examples=[RID]),
     document_type: str = Form(
-        DOCUMENT_TYPE, description="Document type chosen by the client. Only `npwp` is supported", examples=["npwp"]
+        DOCUMENT_TYPE, description="Document type chosen by the client. Only `kk` is supported", examples=["kk"]
     ),
     params: str | None = Form(
         None,
         description=(
             "Client metadata as JSON: an object, or a quoted string. Not interpreted; returned unchanged in `params`"
         ),
-        examples=['{"nik": "3123456711950001", "refno": "PK19039Y8U"}'],
+        examples=['{"nik": "9901011203850001", "refno": "PK19039Y8U"}'],
     ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
@@ -311,7 +358,7 @@ async def extract_ocr(
         'the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished by now):\n\n'
         + _CONTRACT_TABLE
         + "Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is always "
-        "null here (it is not stored) and `document_type` is `npwp`.\n\n"
+        "null here (it is not stored) and `document_type` is `kk`.\n\n"
         "**404** means no stage has a job for this request_id: it was refused or rejected by the guardrails model "
         "(the `400` of the POST is its final answer), refused before the check, or its POST is still being "
         "judged by guardrails.\n\n"
@@ -334,18 +381,19 @@ async def extract_ocr(
         },
         400: {
             "model": ExtractOcrResponse,
-            "description": f"Rejected by the structuring rules (`{REJECTED_CODE}`, `guardrails: 1`)",
+            "description": f"Rejected by the KK validity gate (`{REJECTED_CODE}`, `guardrails: 1`)",
             "content": {
                 "application/json": {
                     "example": {
                         **_REJECTED,
-                        "message": "Kode provinsi pada NPWP tidak valid, mohon dicek kembali",
+                        "message": "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap",
                         "params": None,
                     }
                 }
             },
         },
         401: UNAUTHORIZED,
+        429: TOO_MANY_REQUESTS_RESPONSE,
         404: error(
             404,
             "No stage has a job for this request_id (rejected by the guardrails model, or not submitted yet)",

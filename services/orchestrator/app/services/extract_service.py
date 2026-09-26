@@ -1,12 +1,13 @@
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 from prometheus_client import Counter
 
 from ocr_common.errors import NotFound
 from ocr_common.kk import DOCUMENT_TYPE, final_result
 from ocr_common.pipeline import STAGE_SCORING, STAGE_STRUCTURING, STATUS_DONE
+from ocr_common.types import ScoringResult, StructuringResult
 
 from app.clients.ekstraksi import EkstraksiJobClient
 from app.clients.guardrails import GuardrailsClient
@@ -89,6 +90,13 @@ class ExtractOcrService:
 def _pipeline(document_type: str, report: dict[str, Any] | None, outcome: WaitOutcome) -> dict[str, Any]:
     result = None
     if outcome.status == STATUS_DONE:
-        result = final_result(document_type, report, outcome.results[STAGE_STRUCTURING], outcome.results[STAGE_SCORING])
+        # Dicast: yang datang dari tahap adalah JSON yang sudah divalidasi model muatannya di sana,
+        # bukan TypedDict yang bisa dibuktikan pemeriksa tipe di sini.
+        result = final_result(
+            document_type,
+            report,
+            cast(StructuringResult, outcome.results[STAGE_STRUCTURING]),
+            cast(ScoringResult, outcome.results[STAGE_SCORING]),
+        )
     pipeline = {"stage": outcome.stage, "status": outcome.status, "error_message": outcome.error_message}
     return {"pipeline": pipeline, "result": result}

@@ -1,14 +1,15 @@
+"""The §3.3.1 projection: the nine fields that leave, and the four ways it can be got wrong."""
+
 import json
-from typing import cast
+from copy import deepcopy
 
 import pytest
 
-from ocr_common.kk import contract_fields
-from ocr_common.types import FinalResult
+from ocr_common.kk import CONTRACT_DOC_FIELDS, CONTRACT_MEMBER_FIELDS, contract_fields
 
 from app.config import get_settings
 from app.main import app
-from tests.conftest import JPEG
+from tests.conftest import JPEG, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_contract"
 
@@ -18,49 +19,126 @@ def _submit(client, auth, **form):
         "/v1/extract-ocr",
         headers=auth,
         data={"request_id": RID, **form},
-        files={"file": ("npwp.jpg", JPEG, "image/jpeg")},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
     )
 
 
-def _result(nomor, nama, nama_badan, npwp_confidence, name_confidence) -> FinalResult:
-    # Only the keys contract_fields reads.
-    return cast(
-        FinalResult,
-        {
-            "fields": {
-                "nomor_npwp": {"value": nomor, "confidence": 0.99},
-                "nama": {"value": nama, "confidence": 0.97},
-                "nama_badan": {"value": nama_badan, "confidence": 0.95},
-            },
-            "scoring": {"npwp_confidence": npwp_confidence, "name_confidence": name_confidence},
-        },
+def _projected(threshold=0.5, *, structuring=None, scoring=None):
+    return contract_fields(structuring or STRUCTURING_RESULT, scoring or SCORING_RESULT, threshold)
+
+
+def test_only_the_nine_contract_fields_leave():
+    """Structuring extracts 11 document fields and 15 per member; the projection is the whole reason
+    `alamat`, `agama` and `tanggal_lahir` do not appear in a response."""
+    data = _projected()
+    assert set(data) == {*CONTRACT_DOC_FIELDS, "anggota_keluarga"}
+    for member in data["anggota_keluarga"]:
+        assert set(member) == set(CONTRACT_MEMBER_FIELDS)
+
+
+def test_the_two_renames_happen_and_nothing_else_does():
+    """`nomor_kk` -> `no_kk` and `status_hubungan_dalam_keluarga` ->
+    `status_hubungan_dalam_rumah_tangga`. The other seven keep their names, which is exactly what
+    makes a mix-up easy to miss."""
+    data = _projected()
+    assert data["no_kk"]["value"] == STRUCTURING_RESULT["nomor_kk"]["value"]
+    assert "nomor_kk" not in data
+    member, source = data["anggota_keluarga"][0], STRUCTURING_RESULT["anggota_keluarga"][0]
+    assert member["status_hubungan_dalam_rumah_tangga"]["value"] == source["status_hubungan_dalam_keluarga"]["value"]
+    assert "status_hubungan_dalam_keluarga" not in member
+
+
+def test_confidence_is_1_from_the_threshold_up_and_0_just_below():
+    scoring = deepcopy(SCORING_RESULT)
+    scoring["fields"]["nomor_kk"] = 0.5
+    scoring["fields"]["nama_kepala_keluarga"] = 0.4999
+    data = _projected(0.5, scoring=scoring)
+    assert (data["no_kk"]["confidence"], data["nama_kepala_keluarga"]["confidence"]) == (1, 0)
+
+
+def test_a_low_score_on_one_member_field_does_not_touch_the_others():
+    """The fixture scores member 2's `jenis_pekerjaan` below the threshold on purpose: a projection
+    that applied one number to the whole member would be invisible if every field passed."""
+    members = _projected()["anggota_keluarga"]
+    assert members[1]["jenis_pekerjaan"]["confidence"] == 0
+    assert members[1]["nama_lengkap"]["confidence"] == 1
+    assert members[0]["jenis_pekerjaan"]["confidence"] == 1
+
+
+def test_a_missing_value_is_an_empty_string_never_null():
+    """§3.3.1: `value` is always a string and the field object is never replaced by null, so a
+    consumer never has to distinguish 'absent' from 'empty'."""
+    structuring = deepcopy(STRUCTURING_RESULT)
+    structuring["nama_kepala_keluarga"] = {"value": "", "ocr_conf": None, "crf_conf": None}
+    del structuring["anggota_keluarga"][0]["ibu"]
+    data = _projected(structuring=structuring)
+    assert data["nama_kepala_keluarga"] == {"value": "", "confidence": 0}
+    assert data["anggota_keluarga"][0]["ibu"] == {"value": "", "confidence": 0}
+
+
+def test_a_value_without_a_score_is_confidence_0_not_an_error():
+    scoring = deepcopy(SCORING_RESULT)
+    scoring["fields"]["nomor_kk"] = None
+    assert _projected(scoring=scoring)["no_kk"] == {
+        "value": STRUCTURING_RESULT["nomor_kk"]["value"],
+        "confidence": 0,
+    }
+
+
+def test_members_are_zipped_positionally_not_matched_by_nik():
+    """Nothing keys the two lists together, so an index shift would silently hand member 1 member
+    2's confidence. This pins the order rather than the content."""
+    scoring = deepcopy(SCORING_RESULT)
+    scoring["anggota_keluarga"][0]["nik"] = 0.99
+    scoring["anggota_keluarga"][1]["nik"] = 0.01
+    members = _projected(scoring=scoring)["anggota_keluarga"]
+    assert (members[0]["nik"]["confidence"], members[1]["nik"]["confidence"]) == (1, 0)
+
+
+def test_a_member_length_mismatch_raises_instead_of_truncating():
+    """A mismatch is a defect in this pipeline, not a property of the document. Truncating or
+    padding would produce a 200 that looks right while carrying another person's confidence."""
+    scoring = deepcopy(SCORING_RESULT)
+    scoring["anggota_keluarga"].pop()
+    with pytest.raises(ValueError, match="anggota_keluarga length mismatch"):
+        _projected(scoring=scoring)
+
+
+def test_a_household_with_no_members_projects_to_an_empty_list():
+    """The first §7.4 rule rejects a card with no readable text, but a *passing* result with zero
+    members is still shape-valid and must not raise."""
+    data = _projected(
+        structuring={**STRUCTURING_RESULT, "anggota_keluarga": []},
+        scoring={**SCORING_RESULT, "anggota_keluarga": []},
     )
+    assert data["anggota_keluarga"] == []
+    assert data["no_kk"]["value"] == STRUCTURING_RESULT["nomor_kk"]["value"]
 
 
-def test_confidence_is_1_from_the_threshold_up():
-    fields = contract_fields(_result("12.345.678.9-012.345", "BUDI SANTOSO", None, 0.5, 0.49), 0.5)
-    assert fields == {
-        "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-        "nama": {"value": "BUDI SANTOSO", "confidence": 0},
-    }
+# --- the same projection, through the endpoint ---------------------------------------------
 
 
-def test_missing_value_or_score_gives_confidence_0():
-    fields = contract_fields(_result(None, "BUDI SANTOSO", None, None, None), 0.5)
-    assert fields == {
-        "nomor_npwp": {"value": None, "confidence": 0},
-        "nama": {"value": "BUDI SANTOSO", "confidence": 0},
-    }
+def test_the_endpoint_returns_the_projection(client, auth):
+    response = _submit(client, auth)
+    assert response.status_code == 200
+    assert response.json()["data"] == _projected(0.5)
 
 
-def test_company_card_reports_the_registered_name_as_nama():
-    fields = contract_fields(_result("01.234.567.8-901.000", None, "PT CIPTA KARYA MANDIRI", 0.9, 0.8), 0.5)
-    assert fields["nama"] == {"value": "PT CIPTA KARYA MANDIRI", "confidence": 1}
+def test_confidence_threshold_can_be_changed(client, auth):
+    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
+        update={"field_confidence_threshold": 0.9}
+    )
+    try:
+        response = _submit(client, auth)
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.json()["data"] == _projected(0.9)
 
 
 @pytest.mark.parametrize(
     "params",
-    ['{"nik": "3123456711950001", "refno": "PK19039Y8U"}', '"halo"'],
+    ['{"nik": "9901011203850001", "refno": "PK19039Y8U"}', '"halo"'],
 )
 def test_params_are_returned_unchanged(client, auth, params):
     response = _submit(client, auth, params=params)
@@ -87,22 +165,36 @@ def test_unsupported_document_type_is_400_before_anything_runs(client, auth, stu
     body = response.json()
     assert (body["errors"], body["message"]) == (
         "UNSUPPORTED_DOCUMENT_TYPE",
-        "Unsupported document_type: ktp. Supported: npwp",
+        "Unsupported document_type: ktp. Supported: kk",
     )
     assert body["document_type"] == "ktp"
     assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
 
 
-def test_confidence_threshold_can_be_changed(client, auth):
-    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
-        update={"field_confidence_threshold": 0.8}
-    )
-    try:
-        response = _submit(client, auth)
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
-
-    assert response.json()["data"] == {
-        "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 0},
-        "nama": {"value": "BUDI SANTOSO", "confidence": 1},
+def test_the_projection_of_the_fixture_household_in_full():
+    """Literal values, not derived from the fixtures. Everything above compares generated data
+    against generated data, which cannot catch a generator that changed under it."""
+    assert _projected() == {
+        "no_kk": {"value": "9924187486671285", "confidence": 1},
+        "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
+        "anggota_keluarga": [
+            {
+                "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
+                "nik": {"value": "9908680101601956", "confidence": 1},
+                "pendidikan": {"value": "SD/SEDERAJAT", "confidence": 1},
+                "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
+                "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
+                "ayah": {"value": "RIZKY SANTOSO", "confidence": 1},
+                "ibu": {"value": "NURUL PRATAMA", "confidence": 1},
+            },
+            {
+                "nama_lengkap": {"value": "SITI SANTOSO", "confidence": 1},
+                "nik": {"value": "9908114806713444", "confidence": 1},
+                "pendidikan": {"value": "D-III", "confidence": 1},
+                "jenis_pekerjaan": {"value": "PELAJAR/MAHASISWA", "confidence": 0},
+                "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
+                "ayah": {"value": "INDAH SANTOSO", "confidence": 1},
+                "ibu": {"value": "HENDRA PRATAMA", "confidence": 1},
+            },
+        ],
     }

@@ -3,4 +3,6 @@ uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 pydantic-settings==2.5.2
 httpx==0.27.2
+# Hanya dipakai jalur PDF, yang mati bawaan (PDF_ENABLED, R34a). Tetap di sini supaya saklarnya bisa
+# dinyalakan tanpa membangun ulang image; diimpor di dalam fungsi, bukan di module level.
 PyMuPDF==1.28.2

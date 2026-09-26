@@ -14,6 +14,7 @@ from app.dependencies import (
     get_testing_ekstraksi_client,
     get_testing_stage_status_clients,
 )
+from app.middleware import add_edge_middleware
 
 settings = get_settings()
 
@@ -40,16 +41,17 @@ async def lifespan(app: FastAPI):
 
 app = create_app(
     settings=settings,
-    title="OCR NPWP Orchestrator API",
+    title="OCR Kartu Keluarga Orchestrator API",
     service_name="orchestrator",
     description=(
-        "Entry point of the OCR NPWP pipeline, and the only service the central orchestrator / gateway calls. "
+        "Entry point of the OCR Kartu Keluarga pipeline, and the only service the central orchestrator calls. "
         "`POST /v1/extract-ocr` checks the file, has the guardrails service judge it, hands a document that "
         "passes to the OCR stage (ekstraksi, which chains to structuring and scoring), and waits up to "
         "`PIPELINE_WAIT_SECONDS` for the pipeline: 200 with the final result, or 202 while it is still running. "
         "`GET /v1/extract-ocr/{request_id}` answers the same contract for a request at any later time. This "
         "service stores nothing: the stages keep the jobs, and they send the result callback. All endpoints "
-        "except /health, /ready and /metrics require an X-API-Key header."
+        "except /health, /ready and /metrics require an X-API-Key header, and are rate limited per caller "
+        "(`RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`, 429 with `Retry-After` beyond that)."
     ),
     tags=[
         {"name": "Extract OCR", "description": "Start the pipeline for a document, and read where a request is"},
@@ -59,3 +61,6 @@ app = create_app(
     lifespan=lifespan,
     entrypoint=True,
 )
+
+# Setelah create_app, jadi keduanya berjalan di luar middleware bawaan; lihat app/middleware.py.
+add_edge_middleware(app, settings)

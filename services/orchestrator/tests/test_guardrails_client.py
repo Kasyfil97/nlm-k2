@@ -40,7 +40,7 @@ def _client(response) -> tuple[GuardrailsClient, Guardrails]:
 async def test_check_posts_the_document_and_returns_the_report():
     client, handler = _client(httpx.Response(200, json={"status_code": 200, "data": ACCEPTED_REPORT}))
 
-    assert await client.check(RID, "npwp.jpg", "image/jpeg", JPEG) == ACCEPTED_REPORT
+    assert await client.check(RID, "kk.jpg", "image/jpeg", JPEG) == ACCEPTED_REPORT
 
     [sent] = handler.requests
     assert sent.url.path == "/v1/guardrails/check"
@@ -48,7 +48,7 @@ async def test_check_posts_the_document_and_returns_the_report():
     fields, file_bytes = _form(sent)
     assert fields == {"request_id": RID}
     assert file_bytes == JPEG
-    assert b'filename="npwp.jpg"' in sent.content
+    assert b'filename="kk.jpg"' in sent.content
 
 
 async def test_a_file_without_a_name_is_sent_as_upload():
@@ -72,7 +72,7 @@ async def test_refusals_and_model_outages_are_passed_on_as_they_are(status, mess
     client, _ = _client(httpx.Response(status, json={"status_code": status, "message": message}))
 
     with pytest.raises(ServiceError) as exc:
-        await client.check(RID, "npwp.jpg", "image/jpeg", JPEG)
+        await client.check(RID, "kk.jpg", "image/jpeg", JPEG)
     assert (exc.value.status_code, exc.value.message) == (status, message)
 
 
@@ -80,7 +80,7 @@ async def test_a_wrong_key_is_our_fault_and_becomes_500():
     client, _ = _client(httpx.Response(401, json={"message": "Invalid or missing API key"}))
 
     with pytest.raises(ServiceError) as exc:
-        await client.check(RID, "npwp.jpg", "image/jpeg", JPEG)
+        await client.check(RID, "kk.jpg", "image/jpeg", JPEG)
     assert (exc.value.status_code, exc.value.message) == (
         500,
         "guardrails service error (401): Invalid or missing API key",
@@ -91,7 +91,7 @@ async def test_unreachable_guardrails_is_503_and_is_not_retried():
     client, handler = _client(httpx.ConnectError("refused"))
 
     with pytest.raises(ServiceError) as exc:
-        await client.check(RID, "npwp.jpg", "image/jpeg", JPEG)
+        await client.check(RID, "kk.jpg", "image/jpeg", JPEG)
     assert (exc.value.status_code, exc.value.message) == (503, "guardrails service is unavailable")
     assert len(handler.requests) == 1
 
@@ -100,7 +100,7 @@ async def test_an_answer_without_a_report_is_500():
     client, _ = _client(httpx.Response(200, json={"data": {"document": {}}}))
 
     with pytest.raises(ServiceError) as exc:
-        await client.check(RID, "npwp.jpg", "image/jpeg", JPEG)
+        await client.check(RID, "kk.jpg", "image/jpeg", JPEG)
     assert (exc.value.status_code, exc.value.message) == (500, "guardrails service returned an unexpected response")
 
 

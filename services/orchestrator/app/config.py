@@ -17,7 +17,7 @@ class Settings(BaseServiceSettings):
     # refused with 403, so an API key alone does not bypass guardrails. The file checks below always run.
     guardrails_skip_allowed: bool = False
 
-    # A PDF with more pages is refused with 400 here, before guardrails or any stage runs (a genuine NPWP
+    # Only reachable with PDF_ENABLED. A PDF with more pages is refused with 400 here (a Kartu Keluarga
     # upload is at most 2 pages, ML team 23 Sep 2026). MAX_UPLOAD_BYTES (413) is checked here too.
     max_document_pages: int = Field(2, ge=1)
 
@@ -35,8 +35,42 @@ class Settings(BaseServiceSettings):
     pipeline_wait_seconds: float = Field(15.0, ge=0)
     pipeline_poll_interval_seconds: float = Field(0.5, gt=0)
 
+    # Rate limit and CORS. Kontrak §12 mendaftarkan keduanya "dipertahankan apa adanya", tetapi struktur
+    # yang disalin tidak punya keduanya -- ditemukan saat Unit 4. Orchestrator satu-satunya service yang
+    # terekspos ke luar jaringan, jadi keduanya hidup di sini saja.
+    #
+    # Batasnya per (API key, klien): kunci lebih dulu, karena itu yang membedakan pemanggil; alamat hanya
+    # dipakai kalau kunci tidak ada, dan yang itu hanya /health dan /ready yang tidak dibatasi sama sekali.
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = Field(60, gt=0)
+    rate_limit_window_seconds: float = Field(60.0, gt=0)
+
+    # Kosong = tidak ada CORSMiddleware sama sekali. Ini bawaan yang benar: pemanggil kontrak adalah
+    # Orkestrasi pusat server-ke-server, bukan browser, dan CORS terbuka pada service ber-API-key adalah
+    # cara memberi halaman mana pun jalan memakai kunci yang bocor.
+    cors_allow_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """`CORS_ALLOW_ORIGINS` sebagai daftar. `*` sengaja TIDAK diperlakukan istimewa: ia hanya asal
+        biasa di sini, dan `allow_credentials` tidak pernah dinyalakan, jadi tidak ada kombinasi yang
+        membuat browser mana pun mengirim kredensial ke service ini."""
+        return [origin.strip() for origin in self.cors_allow_origins.split(",") if origin.strip()]
+
     @model_validator(mode="after")
     def _guard_orchestrator(self) -> Self:
+        # R18a: service ini mengunduh `file_url`, jadi daftar host wajib ada di luar local. Tanpa ini
+        # kebijakannya tetap menolak semua -- gagal tertutup, tetapi diam-diam, saat request pertama.
+        self.require_file_url_allowlist()
+        if self.pdf_enabled:
+            # PyMuPDF is only a dependency of the PDF path, and that path is off by default (R34a),
+            # so nothing imports it at module level. That leaves one bad state worth refusing here:
+            # the switch on in an image that does not carry the library. Without this check every
+            # PDF would be a 500 at the first upload instead of a refusal to start.
+            try:
+                import fitz  # noqa: F401  # ty: ignore[unresolved-import]
+            except ImportError as exc:
+                raise ValueError("PDF_ENABLED=true requires PyMuPDF; install it or turn the switch off") from exc
         # All four always: GET /v1/extract-ocr/{request_id} reads the stages even when POST does not wait.
         self.reject_localhost_outside_local(
             guardrails_service_url=self.guardrails_service_url,

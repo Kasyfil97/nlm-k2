@@ -10,7 +10,7 @@ from app.clients.ekstraksi import EkstraksiJobClient
 from app.config import get_settings
 from app.dependencies import get_ekstraksi_client
 from app.main import app
-from tests.conftest import JPEG
+from tests.conftest import JPEG, REJECTED_REPORT
 
 RID = "REQ_orchestrator_jobs"
 
@@ -61,11 +61,11 @@ def ekstraksi():
     app.dependency_overrides.pop(get_ekstraksi_client, None)
 
 
-def _submit(client, auth, filename="npwp.jpg"):
+def _submit(client, auth, filename="kk.jpg"):
     return client.post(
         "/v1/extract-ocr",
         headers=auth,
-        data={"request_id": RID, "document_type": "npwp"},
+        data={"request_id": RID, "document_type": "kk"},
         files={"file": (filename, JPEG, "image/jpeg")},
     )
 
@@ -102,7 +102,7 @@ def test_accepted_document_is_handed_to_the_ocr_stage(client, auth, ekstraksi):
     assert sent.headers["X-API-Key"] == "k"
     fields, file_bytes = _form(sent)
     assert fields["request_id"] == RID
-    assert fields["document_type"] == "npwp"
+    assert fields["document_type"] == "kk"
     guardrails = json.loads(fields["guardrails"])
     assert guardrails["passed"] is True
     assert guardrails["document"]["verdict"] == "accepted"
@@ -118,8 +118,8 @@ def test_a_document_that_skipped_guardrails_is_handed_over_without_a_guardrails_
         response = client.post(
             "/v1/extract-ocr",
             headers=auth,
-            data={"request_id": RID, "document_type": "npwp", "skip_guardrails": "true"},
-            files={"file": ("npwp.jpg", JPEG, "image/jpeg")},
+            data={"request_id": RID, "document_type": "kk", "skip_guardrails": "true"},
+            files={"file": ("kk.jpg", JPEG, "image/jpeg")},
         )
     finally:
         app.dependency_overrides.pop(get_settings, None)
@@ -134,7 +134,7 @@ def test_a_document_that_skipped_guardrails_is_handed_over_without_a_guardrails_
 def test_rejected_document_stops_here(client, auth, ekstraksi):
     handler = ekstraksi(_accepted)
 
-    response = _submit(client, auth, filename="notnpwp.jpg")
+    response = _submit(client, auth, filename="notkk.jpg")
 
     assert response.status_code == 400
     body = response.json()
@@ -144,7 +144,7 @@ def test_rejected_document_stops_here(client, auth, ekstraksi):
         1,
         None,
     )
-    assert body["message"].startswith("Document rejected by guardrails")
+    assert body["message"] == REJECTED_REPORT["reason"]
     assert handler.requests == []
 
 
@@ -179,15 +179,15 @@ def test_a_document_sent_as_file_url_is_judged_here_and_handed_over_as_the_same_
     client, auth, ekstraksi, stub_guardrails, monkeypatch
 ):
     handler = ekstraksi(_accepted)
-    url = "http://minio.local/bucket/npwp.jpg?X-Amz-Signature=abc"
+    url = "http://minio.local/bucket/kk.jpg?X-Amz-Signature=abc"
 
     async def fake_fetch(fetched, *, limit, timeout=10.0, policy):
         assert fetched == url
-        return JPEG, "npwp.jpg", "image/jpeg"
+        return JPEG, "kk.jpg", "image/jpeg"
 
     monkeypatch.setattr("ocr_common.web.intake.fetch", fake_fetch)
     response = client.post(
-        "/v1/extract-ocr", headers=auth, data={"request_id": RID, "document_type": "npwp", "file_url": url}
+        "/v1/extract-ocr", headers=auth, data={"request_id": RID, "document_type": "kk", "file_url": url}
     )
 
     assert response.status_code == 200
@@ -198,4 +198,4 @@ def test_a_document_sent_as_file_url_is_judged_here_and_handed_over_as_the_same_
     assert form["request_id"] == RID
     assert "guardrails" in form
     assert form["file_url"] == url
-    assert stub_guardrails.checked == [{"request_id": RID, "filename": "npwp.jpg", "content_type": "image/jpeg"}]
+    assert stub_guardrails.checked == [{"request_id": RID, "filename": "kk.jpg", "content_type": "image/jpeg"}]
