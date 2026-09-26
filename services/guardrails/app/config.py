@@ -7,7 +7,7 @@ from ocr_common.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    port: int = 8031
+    port: int = 8041
 
     guardrails_backend: str = "mock"
 

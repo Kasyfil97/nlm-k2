@@ -1,6 +1,6 @@
 x-database: &database
   environment:
-    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-bribrain_ocr_nilam}
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-bribrain_ocr_kk}
   depends_on:
     postgres:
       condition: service_healthy
@@ -17,17 +17,17 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: nilam-ocr-postgres
+    container_name: nlm-k2-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      POSTGRES_DB: ${POSTGRES_DB:-bribrain_ocr_nilam}
+      POSTGRES_DB: ${POSTGRES_DB:-bribrain_ocr_kk}
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bribrain_ocr_nilam}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-bribrain_ocr_kk}"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -37,10 +37,10 @@ services:
     build:
       context: .
       dockerfile: db/Dockerfile
-    image: nilam-ocr-migrate:latest
-    container_name: nilam-ocr-migrate
+    image: nlm-k2-migrate:latest
+    container_name: nlm-k2-migrate
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-bribrain_ocr_nilam}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-bribrain_ocr_kk}
     depends_on:
       postgres:
         condition: service_healthy

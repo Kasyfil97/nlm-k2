@@ -1,7 +1,7 @@
 # Database
 
 Satu database PostgreSQL dipakai bersama oleh repo ini **dan** oleh service orkestrasi
-(`bribrain_ocr_nilam` di Cloud SQL). Karena itu penting jelas: tabel mana milik siapa.
+(`bribrain_ocr_kk` di Cloud SQL). Karena itu penting jelas: tabel mana milik siapa.
 
 ## Peta tabel
 
@@ -59,7 +59,7 @@ gagal kalau keduanya menyimpang.
 ## Perintah
 
 ```bash
-export DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/bribrain_ocr_nilam
+export DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/bribrain_ocr_kk
 
 make db-upgrade                  # jalankan migrasi sampai revisi terakhir
 make db-check                    # gagal kalau definisi tabel di kode beda dengan database

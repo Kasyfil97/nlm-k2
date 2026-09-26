@@ -43,12 +43,12 @@ TAGS = [
 ]
 
 DESCRIPTION = """
-Everything the central orchestrator / gateway needs to integrate the NPWP OCR pipeline, merged from the
+Everything the central orchestrator / gateway needs to integrate the KK OCR pipeline, merged from the
 services' own specs. Each service also serves its full Swagger UI at `/docs`.
 
 ## The flow
 
-1. **`POST /v1/extract-ocr`** on the *orchestrator* service (port `8034`) with your `request_id` and the
+1. **`POST /v1/extract-ocr`** on the *orchestrator* service (port `8040`) with your `request_id` and the
    document (`file` or `file_url`, optional `params`). It answers in the central orchestrator's
    `extract-ocr` contract (`job_status`, `data`, `guardrails`, `params`):
    - rejected by the guardrails model -> **400**, `errors: DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`;
@@ -75,7 +75,7 @@ correct. There is **no document-level score and no approve / reject decision**; 
 ## Addresses
 
 The orchestrator is the only service you call. From another namespace in GKE:
-`http://nilam-ocr-npwp.nilam-ocr-npwp.svc.cluster.local:8034` (the release's entry Service). The
+`http://nlm-k2.nlm-k2.svc.cluster.local:8040` (the release's entry Service). The
 guardrails and pipeline stage services are internal. Nothing is exposed outside the cluster.
 """
 
@@ -186,7 +186,7 @@ def build() -> dict[str, Any]:
     return {
         "openapi": "3.1.0",
         "info": {
-            "title": "NILAM OCR NPWP: gateway integration API",
+            "title": "nlm-k2 OCR Kartu Keluarga: gateway integration API",
             "version": specs["ekstraksi"]["info"]["version"],
             "description": DESCRIPTION.strip() + "\n" + API_CONVENTIONS,
         },

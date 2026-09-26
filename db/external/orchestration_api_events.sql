@@ -1,5 +1,5 @@
 -- Tabel ini MILIK service orkestrasi, bukan repo ini. Isinya disalin dari database dev
--- (bribrain_ocr_nilam, 23 Sep 2026) supaya ORCHESTRATION_API_EVENTS_TABLE bisa diuji di
+-- (bribrain_ocr_kk, 23 Sep 2026) supaya ORCHESTRATION_API_EVENTS_TABLE bisa diuji di
 -- PostgreSQL lokal (make db-external). Migrasi Alembic di repo ini sengaja TIDAK menyentuh tabel ini.
 --
 -- Pipeline hanya MENAMBAH baris (append-only), satu per keadaan akhir request, dengan bentuk yang

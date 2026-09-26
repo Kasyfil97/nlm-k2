@@ -108,7 +108,7 @@ def _download(
     target = (parsed.path or "/") + (f"?{parsed.query}" if parsed.query else "")
     deadline = time.monotonic() + timeout
     try:
-        connection.request("GET", target, headers={"Accept": "*/*", "User-Agent": "nilam-ocr-npwp"})
+        connection.request("GET", target, headers={"Accept": "*/*", "User-Agent": "nlm-k2"})
         response = connection.getresponse()
         if 300 <= response.status < 400:
             raise FetchUrlError(f"Could not fetch file_url: redirects are not followed ({response.status})")

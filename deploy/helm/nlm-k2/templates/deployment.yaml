@@ -5,9 +5,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "nilam-ocr-npwp.componentName" $component }}
+  name: {{ include "nlm-k2.componentName" $component }}
   labels:
-    {{- include "nilam-ocr-npwp.componentLabels" $component | nindent 4 }}
+    {{- include "nlm-k2.componentLabels" $component | nindent 4 }}
 spec:
   {{- if not (dig "autoscaling" "enabled" false $svc) }}
   replicas: {{ $svc.replicaCount | default 1 }}
@@ -15,7 +15,7 @@ spec:
   revisionHistoryLimit: {{ $.Values.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "nilam-ocr-npwp.componentSelectorLabels" $component | nindent 6 }}
+      {{- include "nlm-k2.componentSelectorLabels" $component | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -24,17 +24,17 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include "nilam-ocr-npwp.serviceEnv" (dict "root" $ "svc" $svc) | sha256sum }}
+        checksum/config: {{ include "nlm-k2.serviceEnv" (dict "root" $ "svc" $svc) | sha256sum }}
         {{- with $.Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "nilam-ocr-npwp.componentLabels" $component | nindent 8 }}
+        {{- include "nlm-k2.componentLabels" $component | nindent 8 }}
         {{- with $.Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      serviceAccountName: {{ include "nilam-ocr-npwp.serviceAccountName" $ }}
+      serviceAccountName: {{ include "nlm-k2.serviceAccountName" $ }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds | default $.Values.terminationGracePeriodSeconds }}
       {{- with $.Values.imagePullSecrets }}
@@ -45,7 +45,7 @@ spec:
         {{- toYaml $.Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ $name }}
-          image: "{{ $.Values.image.registry }}/{{ $svc.image.repository }}:{{ include "nilam-ocr-npwp.imageTag" $component }}"
+          image: "{{ $.Values.image.registry }}/{{ $svc.image.repository }}:{{ include "nlm-k2.imageTag" $component }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             # Nama port = nama service, supaya Service gabungan (targetPort per nama)
@@ -54,7 +54,7 @@ spec:
               containerPort: {{ $svc.port }}
           envFrom:
             - configMapRef:
-                name: {{ include "nilam-ocr-npwp.componentName" $component }}
+                name: {{ include "nlm-k2.componentName" $component }}
           env:
             - name: API_KEY
               valueFrom:

@@ -224,7 +224,7 @@ async def extract_ocr(
     params: str | None = Form(
         None,
         description=(
-            "Client metadata as JSON: an object, or a quoted string. Not interpreted; returned unchanged in " "`params`"
+            "Client metadata as JSON: an object, or a quoted string. Not interpreted; returned unchanged in `params`"
         ),
         examples=['{"nik": "3123456711950001", "refno": "PK19039Y8U"}'],
     ),

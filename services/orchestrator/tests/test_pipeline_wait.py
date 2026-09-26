@@ -116,7 +116,7 @@ def test_waiting_disabled_answers_202_right_after_the_handoff(client, auth, stub
 
 async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
     remote = RemoteModelClient(
-        "http://ekstraksi:8030",
+        "http://ekstraksi:8042",
         5.0,
         name="ekstraksi service",
         passthrough_client_errors=True,
@@ -127,7 +127,7 @@ async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
         ),
     )
     guardrails = RemoteModelClient(
-        "http://guardrails:8031",
+        "http://guardrails:8041",
         5.0,
         name="guardrails service",
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"data": ACCEPTED_REPORT})),
@@ -246,7 +246,7 @@ async def test_stage_status_client_quotes_the_request_id_and_maps_404_to_none():
         return httpx.Response(200, json={"data": {"status": "DONE", "result": {"fields": {}}}})
 
     remote = RemoteModelClient(
-        "http://structuring:8032",
+        "http://structuring:8043",
         5.0,
         name="structuring service",
         passthrough_client_errors=True,

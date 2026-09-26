@@ -15,7 +15,7 @@ image:
 
 imagePullSecrets: []
 
-existingSecret: nilam-ocr-npwp-secrets
+existingSecret: nlm-k2-secrets
 secretKeys:
   apiKey: API_KEY
   # Opsional: key lain yang juga diterima (dipisah koma) selama rotasi; lihat README "API key".
@@ -35,9 +35,9 @@ externalSecret:
     kind: ClusterSecretStore
     name: gcp-secret-manager
   remoteKeys:
-    apiKey: nilam-ocr-npwp-api-key
-    databaseUrl: nilam-ocr-npwp-database-url
-    orchestrationApiKey: nilam-ocr-npwp-orchestration-api-key
+    apiKey: nlm-k2-api-key
+    databaseUrl: nlm-k2-database-url
+    orchestrationApiKey: nlm-k2-orchestration-api-key
     # Kosong = tidak diambil dari Secret Manager.
     callbackKey: ""
 
@@ -75,9 +75,9 @@ services:
   orchestrator:
     enabled: true
     image:
-      repository: ms-bribrain-nilam-ocr-npwp-orchestrator
+      repository: ms-bribrain-nlm-k2-orchestrator
       tag: ""
-    port: 8034
+    port: 8040
     entrypoint: true
     pipeline: false
     upstreams: [guardrails, ekstraksi, structuring, scoring]
@@ -106,9 +106,9 @@ services:
   guardrails:
     enabled: true
     image:
-      repository: ms-bribrain-nilam-ocr-npwp-guardrails
+      repository: ms-bribrain-nlm-k2-guardrails
       tag: ""
-    port: 8031
+    port: 8041
     entrypoint: false
     pipeline: false
     upstreams: []
@@ -141,9 +141,9 @@ services:
   ekstraksi:
     enabled: true
     image:
-      repository: ms-bribrain-nilam-ocr-npwp-ekstraksi
+      repository: ms-bribrain-nlm-k2-ekstraksi
       tag: ""
-    port: 8030
+    port: 8042
     entrypoint: false
     pipeline: true
     upstreams: [structuring]
@@ -165,16 +165,16 @@ services:
   structuring:
     enabled: true
     image:
-      repository: ms-bribrain-nilam-ocr-npwp-structuring
+      repository: ms-bribrain-nlm-k2-structuring
       tag: ""
-    port: 8032
+    port: 8043
     entrypoint: false
     pipeline: true
     upstreams: [scoring]
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      STRUCTURING_BACKEND: npwp_rules
+      STRUCTURING_BACKEND: mock
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:
@@ -187,9 +187,9 @@ services:
   scoring:
     enabled: true
     image:
-      repository: ms-bribrain-nilam-ocr-npwp-scoring
+      repository: ms-bribrain-nlm-k2-scoring
       tag: ""
-    port: 8033
+    port: 8044
     entrypoint: false
     pipeline: true
     upstreams: []
@@ -212,7 +212,7 @@ service:
   type: ClusterIP
   annotations: {}
   # Service gabungan bernama `<release>` yang membuka port semua service ber-entrypoint (hanya
-  # orchestrator, 8034). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
+  # orchestrator, 8040). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
   # pipeline memakai Service per komponen.
   entrypoint:
     enabled: true

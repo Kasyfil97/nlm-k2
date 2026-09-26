@@ -6,11 +6,11 @@ image:
   # (services.<nama>.image.tag); ganti nilai ini ke SHA yang sama setelah deploy `all` berikutnya.
   tag: 4d02eba-dirty
 
-existingSecret: nilam-ocr-npwp-secrets
+existingSecret: nlm-k2-secrets
 
 orchestration:
   # Callback hasil ke Orkestrasi (endpoint dari tim Orkestrasi, 24 Sep 2026): satu POST per request
-  # saat selesai, dengan X-Callback-Key = ORCHESTRATION_CALLBACK_KEY di Secret nilam-ocr-npwp-secrets.
+  # saat selesai, dengan X-Callback-Key = ORCHESTRATION_CALLBACK_KEY di Secret nlm-k2-secrets.
   # Key itu WAJIB ada di Secret sebelum deploy: tanpa key, ekstraksi/structuring/scoring menolak start.
   url: http://ocr-orchestration.ocr-dev.svc.cluster.local
   callbackPath: /v1/ocr-callback

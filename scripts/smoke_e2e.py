@@ -27,11 +27,11 @@ def _key_from_env_file() -> str:
 
 
 URLS = {
-    "orchestrator": os.environ.get("ORCHESTRATOR_URL", "http://127.0.0.1:8034"),
-    "guardrails": os.environ.get("GUARDRAILS_URL", "http://127.0.0.1:8031"),
-    "ekstraksi": os.environ.get("EKSTRAKSI_URL", "http://127.0.0.1:8030"),
-    "structuring": os.environ.get("STRUCTURING_URL", "http://127.0.0.1:8032"),
-    "scoring": os.environ.get("SCORING_URL", "http://127.0.0.1:8033"),
+    "orchestrator": os.environ.get("ORCHESTRATOR_URL", "http://127.0.0.1:8040"),
+    "guardrails": os.environ.get("GUARDRAILS_URL", "http://127.0.0.1:8041"),
+    "ekstraksi": os.environ.get("EKSTRAKSI_URL", "http://127.0.0.1:8042"),
+    "structuring": os.environ.get("STRUCTURING_URL", "http://127.0.0.1:8043"),
+    "scoring": os.environ.get("SCORING_URL", "http://127.0.0.1:8044"),
 }
 API_KEY = os.environ.get("API_KEY") or _key_from_env_file()
 HEADERS = {"X-API-Key": API_KEY}

@@ -27,7 +27,7 @@ class Guardrails:
 def _client(response) -> tuple[GuardrailsClient, Guardrails]:
     handler = Guardrails(response)
     remote = RemoteModelClient(
-        "http://guardrails:8031",
+        "http://guardrails:8041",
         5.0,
         name="guardrails service",
         headers={"X-API-Key": "k"},
@@ -106,12 +106,12 @@ async def test_an_answer_without_a_report_is_500():
 
 async def test_the_client_is_built_from_the_settings():
     settings = get_settings().model_copy(
-        update={"guardrails_service_url": "http://guardrails:8031/", "guardrails_timeout_seconds": 7.0}
+        update={"guardrails_service_url": "http://guardrails:8041/", "guardrails_timeout_seconds": 7.0}
     )
     client = build_guardrails_client(settings)
     try:
         remote = client._client
-        assert (remote.base_url, remote.timeout) == ("http://guardrails:8031", 7.0)
+        assert (remote.base_url, remote.timeout) == ("http://guardrails:8041", 7.0)
         assert remote._client.headers["X-API-Key"] == settings.api_key
         assert remote._passthrough_statuses == frozenset(PASSTHROUGH_STATUSES)
     finally:

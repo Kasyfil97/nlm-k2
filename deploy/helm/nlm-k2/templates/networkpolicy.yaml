@@ -4,13 +4,13 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "nilam-ocr-npwp.fullname" . }}-default-deny-ingress
+  name: {{ include "nlm-k2.fullname" . }}-default-deny-ingress
   labels:
-    {{- include "nilam-ocr-npwp.labels" . | nindent 4 }}
+    {{- include "nlm-k2.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "nilam-ocr-npwp.selectorLabels" . | nindent 6 }}
+      {{- include "nlm-k2.selectorLabels" . | nindent 6 }}
   policyTypes: ["Ingress"]
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
@@ -25,13 +25,13 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "nilam-ocr-npwp.componentName" $component }}
+  name: {{ include "nlm-k2.componentName" $component }}
   labels:
-    {{- include "nilam-ocr-npwp.componentLabels" $component | nindent 4 }}
+    {{- include "nlm-k2.componentLabels" $component | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      {{- include "nilam-ocr-npwp.componentSelectorLabels" $component | nindent 6 }}
+      {{- include "nlm-k2.componentSelectorLabels" $component | nindent 6 }}
   policyTypes: ["Ingress"]
   {{- if or $svc.entrypoint $callers }}
   ingress:
@@ -40,7 +40,7 @@ spec:
         # Semua pod release, dan namespace pemanggil di networkPolicy.clientNamespaces (Orkestrasi pusat).
         - podSelector:
             matchLabels:
-              {{- include "nilam-ocr-npwp.selectorLabels" $ | nindent 14 }}
+              {{- include "nlm-k2.selectorLabels" $ | nindent 14 }}
         {{- range $.Values.networkPolicy.clientNamespaces }}
         - namespaceSelector:
             matchLabels:
@@ -50,7 +50,7 @@ spec:
         {{- range $callers }}
         - podSelector:
             matchLabels:
-              {{- include "nilam-ocr-npwp.componentSelectorLabels" (dict "root" $ "name" .) | nindent 14 }}
+              {{- include "nlm-k2.componentSelectorLabels" (dict "root" $ "name" .) | nindent 14 }}
         {{- end }}
         {{- end }}
       ports:

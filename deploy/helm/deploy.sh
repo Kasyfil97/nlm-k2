@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHART="$ROOT/deploy/helm/nilam-ocr-npwp"
+CHART="$ROOT/deploy/helm/nlm-k2"
 DEPLOY_ENV="${DEPLOY_ENV:-ddb-dev}"
 VALUES="$CHART/values-$DEPLOY_ENV.yaml"
-RELEASE="${RELEASE:-nilam-ocr-npwp}"
-NAMESPACE="${NAMESPACE:-nilam-ocr-npwp}"
+RELEASE="${RELEASE:-nlm-k2}"
+NAMESPACE="${NAMESPACE:-nlm-k2}"
 REGISTRY="${REGISTRY:-asia-southeast2-docker.pkg.dev/common-cicd-dev-01/gc-bribrain-dev-gar-temp-01}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-ms-bribrain-nilam-ocr-npwp}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-ms-bribrain-nlm-k2}"
 EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-gke_ddb-kubecluster-dev-01_asia-southeast2_gc-ddb-dev-gke-cluster-01}"
 TIMEOUT="${TIMEOUT:-10m}"
 # Revisi release yang disimpan Helm (satu Secret sh.helm.release.v1.<release>.vN per revisi), untuk rollback.

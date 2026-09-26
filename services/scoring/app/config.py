@@ -4,7 +4,7 @@ from ocr_common.config import PipelineSettings
 
 
 class Settings(PipelineSettings):
-    port: int = 8033
+    port: int = 8044
 
     scoring_model_path: str = "weights/trust_model.joblib"
 

@@ -42,7 +42,7 @@ def database_readiness(database_url: str | None) -> dict[str, ReadinessCheck]:
 
 API_CONVENTIONS = """
 
-## Conventions (the same for every nilam-ocr service)
+## Conventions (the same for every nlm-k2 service)
 
 **Authentication.** Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.
 A missing or wrong key answers `401`. The services are reachable only from inside the cluster.
@@ -131,13 +131,13 @@ def create_app(
     return app
 
 
-# The Helm chart's names (deploy/helm): the release and its namespace are both `nilam-ocr-npwp`, each
+# The Helm chart's names (deploy/helm): the release and its namespace are both `nlm-k2`, each
 # service is `<release>-<service>`, and `<release>` alone is the entry Service in front of the entry point.
-RELEASE = "nilam-ocr-npwp"
+RELEASE = "nlm-k2"
 _NAMESPACE = {
     "namespace": {
         "default": RELEASE,
-        "description": "Namespace of the Helm release (deploy/helm/deploy.sh: nilam-ocr-npwp)",
+        "description": "Namespace of the Helm release (deploy/helm/deploy.sh: nlm-k2)",
     }
 }
 

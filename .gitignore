@@ -25,7 +25,6 @@ services/*/weights/*
 !services/scoring/weights/trust_model.joblib
 
 # Data rujukan internal aturan structuring (daftar nama): dipasang saat deploy, bukan lewat git.
-services/structuring/app/vendor/npwp_rules/data/*.xlsx
 
 docs/
 

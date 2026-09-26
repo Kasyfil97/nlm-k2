@@ -47,7 +47,7 @@ def ekstraksi():
     def install(*responses) -> Ekstraksi:
         handler = Ekstraksi(*responses)
         remote = RemoteModelClient(
-            "http://ekstraksi:8030",
+            "http://ekstraksi:8042",
             5.0,
             name="ekstraksi service",
             headers={"X-API-Key": "k"},

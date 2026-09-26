@@ -8,7 +8,7 @@ info:
     model service (`remote`). All endpoints except /health, /ready and /metrics require an X-API-Key header.
 
 
-    ## Conventions (the same for every nilam-ocr service)
+    ## Conventions (the same for every nlm-k2 service)
 
 
     **Authentication.** Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.
@@ -69,15 +69,15 @@ info:
 servers:
 - url: /
   description: This host (where this page is served)
-- url: http://nilam-ocr-npwp-guardrails.{namespace}.svc.cluster.local:8031
+- url: http://nlm-k2-guardrails.{namespace}.svc.cluster.local:8041
   description: GKE, from inside the release's namespace (the other services of this pipeline)
   variables:
     namespace:
-      default: nilam-ocr-npwp
-      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nilam-ocr-npwp)'
-- url: http://guardrails:8031
+      default: nlm-k2
+      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nlm-k2)'
+- url: http://guardrails:8041
   description: The Docker Compose network
-- url: http://127.0.0.1:8031
+- url: http://127.0.0.1:8041
   description: Local development
 paths:
   /health:

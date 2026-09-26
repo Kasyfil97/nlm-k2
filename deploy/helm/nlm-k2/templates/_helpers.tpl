@@ -1,54 +1,54 @@
-{{- define "nilam-ocr-npwp.name" -}}
+{{- define "nlm-k2.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "nilam-ocr-npwp.fullname" -}}
+{{- define "nlm-k2.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
-{{- else if contains (include "nilam-ocr-npwp.name" .) .Release.Name }}
+{{- else if contains (include "nlm-k2.name" .) .Release.Name }}
 {{- .Release.Name | trunc 63 | trimSuffix "-" }}
 {{- else }}
-{{- printf "%s-%s" .Release.Name (include "nilam-ocr-npwp.name" .) | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-%s" .Release.Name (include "nlm-k2.name" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
 
 {{/* Label yang dimiliki semua pod release, apa pun service-nya. */}}
-{{- define "nilam-ocr-npwp.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "nilam-ocr-npwp.name" . }}
+{{- define "nlm-k2.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "nlm-k2.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
-{{- define "nilam-ocr-npwp.labels" -}}
+{{- define "nlm-k2.labels" -}}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
-{{ include "nilam-ocr-npwp.selectorLabels" . }}
-app.kubernetes.io/part-of: nilam-ocr
+{{ include "nlm-k2.selectorLabels" . }}
+app.kubernetes.io/part-of: nlm-k2
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/* Argumen: dict "root" $ "name" <nama service>. Selector Deployment/Service/PDB satu komponen. */}}
-{{- define "nilam-ocr-npwp.componentSelectorLabels" -}}
-{{ include "nilam-ocr-npwp.selectorLabels" .root }}
+{{- define "nlm-k2.componentSelectorLabels" -}}
+{{ include "nlm-k2.selectorLabels" .root }}
 app.kubernetes.io/component: {{ .name }}
 {{- end }}
 
 {{/* Argumen: dict "root" $ "name" <nama> "svc" <values service>. */}}
-{{- define "nilam-ocr-npwp.componentLabels" -}}
-{{ include "nilam-ocr-npwp.labels" .root }}
+{{- define "nlm-k2.componentLabels" -}}
+{{ include "nlm-k2.labels" .root }}
 app.kubernetes.io/component: {{ .name }}
-app.kubernetes.io/version: {{ include "nilam-ocr-npwp.imageTag" . | quote }}
+app.kubernetes.io/version: {{ include "nlm-k2.imageTag" . | quote }}
 {{- end }}
 
-{{- define "nilam-ocr-npwp.componentName" -}}
-{{- printf "%s-%s" (include "nilam-ocr-npwp.fullname" .root) .name | trunc 63 | trimSuffix "-" }}
+{{- define "nlm-k2.componentName" -}}
+{{- printf "%s-%s" (include "nlm-k2.fullname" .root) .name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "nilam-ocr-npwp.imageTag" -}}
+{{- define "nlm-k2.imageTag" -}}
 {{- .svc.image.tag | default .root.Values.image.tag | default .root.Chart.AppVersion }}
 {{- end }}
 
-{{- define "nilam-ocr-npwp.serviceAccountName" -}}
+{{- define "nlm-k2.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "nilam-ocr-npwp.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "nlm-k2.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
@@ -58,7 +58,7 @@ app.kubernetes.io/version: {{ include "nilam-ocr-npwp.imageTag" . | quote }}
 Isi ConfigMap satu service. Argumen: dict "root" $ "svc" <values service>.
 URL antar service menunjuk ke Service per komponen (<release>-<nama>).
 */}}
-{{- define "nilam-ocr-npwp.serviceEnv" -}}
+{{- define "nlm-k2.serviceEnv" -}}
 {{- $root := .root }}
 {{- $svc := .svc }}
 {{- $env := dict "PORT" ($svc.port | toString) "ENVIRONMENT" $root.Values.environment }}
@@ -70,7 +70,7 @@ URL antar service menunjuk ke Service per komponen (<release>-<nama>).
 {{- end }}
 {{- range $svc.upstreams }}
 {{- $upstream := index $root.Values.services . }}
-{{- $host := include "nilam-ocr-npwp.componentName" (dict "root" $root "name" .) }}
+{{- $host := include "nlm-k2.componentName" (dict "root" $root "name" .) }}
 {{- $_ := set $env (printf "%s_SERVICE_URL" (upper .)) (printf "http://%s:%v" $host $upstream.port) }}
 {{- end }}
 {{- range $key, $value := $root.Values.commonEnv }}

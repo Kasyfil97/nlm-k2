@@ -7,10 +7,10 @@ from ocr_common.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    port: int = 8034
+    port: int = 8040
 
     # The guardrails model service: every document is judged there before it enters the pipeline.
-    guardrails_service_url: str = "http://127.0.0.1:8031"
+    guardrails_service_url: str = "http://127.0.0.1:8041"
     guardrails_api_key: str | None = None
     guardrails_timeout_seconds: float = 20.0
     # Whether a request may skip the guardrails model with `skip_guardrails=true`. Off: such a request is
@@ -21,13 +21,13 @@ class Settings(BaseServiceSettings):
     # upload is at most 2 pages, ML team 23 Sep 2026). MAX_UPLOAD_BYTES (413) is checked here too.
     max_document_pages: int = Field(2, ge=1)
 
-    ekstraksi_service_url: str = "http://127.0.0.1:8030"
+    ekstraksi_service_url: str = "http://127.0.0.1:8042"
     ekstraksi_api_key: str | None = None
     ekstraksi_timeout_seconds: float = 10.0
-    structuring_service_url: str = "http://127.0.0.1:8032"
+    structuring_service_url: str = "http://127.0.0.1:8043"
     structuring_api_key: str | None = None
     structuring_timeout_seconds: float = 10.0
-    scoring_service_url: str = "http://127.0.0.1:8033"
+    scoring_service_url: str = "http://127.0.0.1:8044"
     scoring_api_key: str | None = None
     scoring_timeout_seconds: float = 10.0
     pipeline_retry_attempts: int = 3

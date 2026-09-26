@@ -20,10 +20,10 @@ RUN test -f weights/trust_model.joblib || (echo "services/scoring/weights/trust_
 RUN useradd --create-home --shell /bin/bash appuser
 USER appuser
 
-ENV PORT=8033
-EXPOSE 8033
+ENV PORT=8044
+EXPOSE 8044
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8033\")}/health', timeout=3)" || exit 1
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8044\")}/health', timeout=3)" || exit 1
 
 CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

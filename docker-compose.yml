@@ -10,17 +10,17 @@ services:
     build:
       context: .
       dockerfile: services/orchestrator/Dockerfile
-    image: nilam-ocr-orchestrator:latest
-    container_name: nilam-ocr-orchestrator
+    image: nlm-k2-orchestrator:latest
+    container_name: nlm-k2-orchestrator
     env_file: services/orchestrator/.env
     environment:
-      PORT: "8034"
-      GUARDRAILS_SERVICE_URL: http://guardrails:8031
-      EKSTRAKSI_SERVICE_URL: http://ekstraksi:8030
-      STRUCTURING_SERVICE_URL: http://structuring:8032
-      SCORING_SERVICE_URL: http://scoring:8033
+      PORT: "8040"
+      GUARDRAILS_SERVICE_URL: http://guardrails:8041
+      EKSTRAKSI_SERVICE_URL: http://ekstraksi:8042
+      STRUCTURING_SERVICE_URL: http://structuring:8043
+      SCORING_SERVICE_URL: http://scoring:8044
     ports:
-      - "127.0.0.1:8034:8034"
+      - "127.0.0.1:8040:8040"
     depends_on:
       - guardrails
       - ekstraksi
@@ -30,27 +30,27 @@ services:
     build:
       context: .
       dockerfile: services/guardrails/Dockerfile
-    image: nilam-ocr-guardrails:latest
-    container_name: nilam-ocr-guardrails
+    image: nlm-k2-guardrails:latest
+    container_name: nlm-k2-guardrails
     env_file: services/guardrails/.env
     environment:
-      PORT: "8031"
+      PORT: "8041"
     ports:
-      - "127.0.0.1:8031:8031"
+      - "127.0.0.1:8041:8041"
 
   structuring:
     <<: *common
     build:
       context: .
       dockerfile: services/structuring/Dockerfile
-    image: nilam-ocr-structuring:latest
-    container_name: nilam-ocr-structuring
+    image: nlm-k2-structuring:latest
+    container_name: nlm-k2-structuring
     env_file: services/structuring/.env
     environment:
-      PORT: "8032"
-      SCORING_SERVICE_URL: http://scoring:8033
+      PORT: "8043"
+      SCORING_SERVICE_URL: http://scoring:8044
     ports:
-      - "127.0.0.1:8032:8032"
+      - "127.0.0.1:8043:8043"
     depends_on:
       - scoring
 
@@ -59,26 +59,26 @@ services:
     build:
       context: .
       dockerfile: services/scoring/Dockerfile
-    image: nilam-ocr-scoring:latest
-    container_name: nilam-ocr-scoring
+    image: nlm-k2-scoring:latest
+    container_name: nlm-k2-scoring
     env_file: services/scoring/.env
     environment:
-      PORT: "8033"
+      PORT: "8044"
     ports:
-      - "127.0.0.1:8033:8033"
+      - "127.0.0.1:8044:8044"
 
   ekstraksi:
     <<: *common
     build:
       context: .
       dockerfile: services/ekstraksi/Dockerfile
-    image: nilam-ocr-ekstraksi:latest
-    container_name: nilam-ocr-ekstraksi
+    image: nlm-k2-ekstraksi:latest
+    container_name: nlm-k2-ekstraksi
     env_file: services/ekstraksi/.env
     environment:
-      PORT: "8030"
-      STRUCTURING_SERVICE_URL: http://structuring:8032
+      PORT: "8042"
+      STRUCTURING_SERVICE_URL: http://structuring:8043
     ports:
-      - "127.0.0.1:8030:8030"
+      - "127.0.0.1:8042:8042"
     depends_on:
       - structuring

@@ -44,7 +44,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_PASSWORD: ci
-          POSTGRES_DB: bribrain_ocr_nilam
+          POSTGRES_DB: bribrain_ocr_kk
         ports:
           - 5432:5432
         options: >-
@@ -53,7 +53,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/bribrain_ocr_nilam
+      DATABASE_URL: postgresql+asyncpg://postgres:ci@localhost:5432/bribrain_ocr_kk
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -97,25 +97,25 @@ jobs:
       matrix:
         include:
           - service: orchestrator
-            port: 8034
+            port: 8040
             env: ""
           - service: guardrails
-            port: 8031
+            port: 8041
             env: -e GUARDRAILS_BACKEND=mock
           - service: ekstraksi
-            port: 8030
+            port: 8042
             env: -e EKSTRAKSI_BACKEND=mock
           - service: structuring
-            port: 8032
+            port: 8043
             env: ""
           - service: scoring
-            port: 8033
+            port: 8044
             env: ""
     steps:
       - uses: actions/checkout@v4
       - name: Placeholder weights (the checkpoint is not in git; this image is never pushed)
         if: matrix.service == 'guardrails'
-        run: touch services/guardrails/weights/best_model.pt
+        run: mkdir -p services/guardrails/weights && touch services/guardrails/weights/.placeholder
       - name: Build (hashes in requirements.lock are verified by pip --require-hashes)
         run: docker build -f services/${{ matrix.service }}/Dockerfile -t ci/${{ matrix.service }} .
       - name: Starts, then stops gracefully on SIGTERM

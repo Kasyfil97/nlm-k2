@@ -9,7 +9,7 @@ PROD: dict[str, Any] = {
     "environment": "production",
     "database_url": "postgresql+asyncpg://u:p@10.0.0.5:5432/db",
     "orchestration_url": "http://orkestrasi:8000",
-    "scoring_service_url": "http://scoring:8033",
+    "scoring_service_url": "http://scoring:8044",
 }
 
 
@@ -19,5 +19,5 @@ def test_production_configuration_is_accepted():
 
 def test_default_localhost_next_stage_is_refused_outside_local():
     with pytest.raises(ValidationError, match="SCORING_SERVICE_URL points to localhost"):
-        local_next_stage: dict[str, Any] = {**PROD, "scoring_service_url": "http://127.0.0.1:8033"}
+        local_next_stage: dict[str, Any] = {**PROD, "scoring_service_url": "http://127.0.0.1:8044"}
         Settings(api_key="x", _env_file=None, **local_next_stage)

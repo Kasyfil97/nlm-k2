@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-NAMESPACE="${NAMESPACE:-nilam-ocr-npwp}"
-SECRET="${SECRET:-nilam-ocr-npwp-secrets}"
+NAMESPACE="${NAMESPACE:-nlm-k2}"
+SECRET="${SECRET:-nlm-k2-secrets}"
 DB_PORT="${DB_PORT:-5432}"
-IMAGE="${IMAGE:-nilam-ocr-migrate:local}"
+IMAGE="${IMAGE:-nlm-k2-migrate:local}"
 
 usage() {
   cat <<EOF

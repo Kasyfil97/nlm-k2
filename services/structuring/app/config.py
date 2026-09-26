@@ -7,7 +7,7 @@ from ocr_common.config import PipelineSettings
 
 
 class Settings(PipelineSettings):
-    port: int = 8032
+    port: int = 8043
 
     structuring_backend: str = "npwp_rules"
 
@@ -24,7 +24,7 @@ class Settings(PipelineSettings):
     name_master_path: str | None = None
     npwp_name_list_path: str | None = None
 
-    scoring_service_url: str = "http://127.0.0.1:8033"
+    scoring_service_url: str = "http://127.0.0.1:8044"
     scoring_api_key: str | None = None
     scoring_timeout_seconds: float = 10.0
 

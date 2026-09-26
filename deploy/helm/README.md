@@ -1,25 +1,25 @@
-# Helm chart `nilam-ocr-npwp`
+# Helm chart `nlm-k2`
 
 Satu Deployment, Service, ConfigMap, PodDisruptionBudget, dan NetworkPolicy per service:
-`orchestrator` (8034), `guardrails` (8031), `ekstraksi` (8030), `structuring` (8032), `scoring`
-(8033). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nilam-ocr-npwp-orchestrator`, dst.
+`orchestrator` (8040), `guardrails` (8041), `ekstraksi` (8042), `structuring` (8043), `scoring`
+(8044). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nlm-k2-orchestrator`, dst.
 Tiap service bisa di-scale dan di-restart sendiri; guardrails (torch, CPU-bound) punya HPA opsional, dan
 kalau ia kehabisan memori, tahap lain tidak ikut jatuh.
 
-Service `nilam-ocr-npwp` (tanpa akhiran) adalah pintu masuk yang dipublikasikan ke Orkestrasi pusat
+Service `nlm-k2` (tanpa akhiran) adalah pintu masuk yang dipublikasikan ke Orkestrasi pusat
 ([integration.md](../../integration.md)): ia membuka port semua service ber-`entrypoint`, yaitu hanya
-orchestrator (8034). Selector-nya mencakup semua pod release, tetapi port itu memakai `targetPort`
+orchestrator (8040). Selector-nya mencakup semua pod release, tetapi port itu memakai `targetPort`
 bernama (`orchestrator`), dan Kubernetes hanya memasukkan pod yang punya nama port itu ke endpoint
 port tersebut. Karena nama service dipakai sebagai nama port, nama service maksimal 15 karakter, huruf
 kecil/angka, tanpa `-`. URL antar service di dalam release memakai Service per komponen
-(`http://nilam-ocr-npwp-structuring:8032`).
+(`http://nlm-k2-structuring:8043`).
 
 Ini satu-satunya jalur deploy; manifest Kustomize yang dulu ada di `deploy/k8s` sudah dihapus
 dan polanya (Deployment per service, NetworkPolicy, PDB, HPA, ExternalSecret) dibawa ke sini.
 
 ## Yang sudah diverifikasi di `gc-ddb-dev-gke-cluster-01`
 
-Dari pod di namespace `nilam-ocr-npwp`:
+Dari pod di namespace `nlm-k2`:
 
 | Tujuan | Alamat | Hasil |
 |---|---|---|
@@ -86,9 +86,9 @@ Dengan `externalSecret.enabled=false` (default) chart tidak membuat Secret. Buat
 atau sesudah install; pod menunggu sampai Secret ada.
 
 ```powershell
-kubectl -n nilam-ocr-npwp create secret generic nilam-ocr-npwp-secrets `
+kubectl -n nlm-k2 create secret generic nlm-k2-secrets `
   --from-literal=API_KEY='<api-key>' `
-  --from-literal=DATABASE_URL='postgresql+asyncpg://<user>:<password>@postgres.ocr-dev.svc.cluster.local:5432/bribrain_ocr_nilam' `
+  --from-literal=DATABASE_URL='postgresql+asyncpg://<user>:<password>@postgres.ocr-dev.svc.cluster.local:5432/bribrain_ocr_kk' `
   --from-literal=ORCHESTRATION_API_KEY='<opsional>'
 ```
 
@@ -99,7 +99,7 @@ di password perlu di-URL-encode (`@` menjadi `%40`). `ORCHESTRATION_API_KEY` bol
 pemanggil, lalu jadikan `API_KEY` dan hapus dari `API_KEYS`; tiap langkah cukup `rollout restart`.
 
 Setelah mengubah Secret, restart pod yang memakainya:
-`kubectl -n nilam-ocr-npwp rollout restart deploy -l app.kubernetes.io/instance=nilam-ocr-npwp`.
+`kubectl -n nlm-k2 rollout restart deploy -l app.kubernetes.io/instance=nlm-k2`.
 
 Cluster dengan External Secrets Operator dan `ClusterSecretStore` bisa memakai
 `externalSecret.enabled=true`; Secret dengan nama `existingSecret` lalu diisi dari Secret Manager
@@ -150,7 +150,7 @@ Perubahan `libs/ocr_common` masuk ke semua image; deploy `all`. Perubahan tabel 
 dengan [migrate-db.sh](migrate-db.sh) sebelum deploy image yang membutuhkannya.
 
 **Riwayat release.** Setiap `helm upgrade` atau `helm rollback` menyimpan satu revisi sebagai Secret
-`sh.helm.release.v1.nilam-ocr-npwp.v<N>` di namespace; itulah yang dipakai `helm rollback`. `deploy.sh`
+`sh.helm.release.v1.nlm-k2.v<N>` di namespace; itulah yang dipakai `helm rollback`. `deploy.sh`
 menyimpan 5 revisi terakhir (`--history-max`, ubah lewat env `HISTORY_MAX`); revisi yang lebih tua
 dibuang Helm sendiri pada upgrade berikutnya, jadi Secret itu tidak perlu dihapus manual.
 
@@ -159,29 +159,29 @@ mengubah ConfigMap guardrails (tanpa `*_SERVICE_URL` dan `PIPELINE_WAIT_SECONDS`
 `checksum/config` me-roll pod guardrails walau guardrails tidak disebut. Image guardrails lama menolak
 start dengan ConfigMap itu (`ENVIRONMENT=production` dan `EKSTRAKSI_SERVICE_URL` default localhost),
 lalu `--atomic` me-rollback seluruh release. Tag global `values-ddb-dev.yaml` juga tidak punya image
-orchestrator. Sejak upgrade, entry Service `nilam-ocr-npwp` hanya membuka 8034: Orkestrasi pusat harus
-pindah dari `:8031/v1/extract-ocr` ke `:8034/v1/extract-ocr` pada saat yang sama. `helm rollback` ke
-revisi sebelumnya membuang port 8034 lagi, jadi Orkestrasi pusat harus kembali ke `:8031` kalau
+orchestrator. Sejak upgrade, entry Service `nlm-k2` hanya membuka 8040: Orkestrasi pusat harus
+pindah dari `:8041/v1/extract-ocr` ke `:8040/v1/extract-ocr` pada saat yang sama. `helm rollback` ke
+revisi sebelumnya membuang port 8040 lagi, jadi Orkestrasi pusat harus kembali ke `:8041` kalau
 rollback.
 
 ## Install dan upgrade
 
 ```powershell
-helm upgrade --install nilam-ocr-npwp deploy/helm/nilam-ocr-npwp `
-  -n nilam-ocr-npwp --create-namespace -f deploy/helm/nilam-ocr-npwp/values-ddb-dev.yaml
+helm upgrade --install nlm-k2 deploy/helm/nlm-k2 `
+  -n nlm-k2 --create-namespace -f deploy/helm/nlm-k2/values-ddb-dev.yaml
 ```
 
 Mengganti tag image atau satu env var tanpa menyentuh file:
 
 ```powershell
-helm upgrade nilam-ocr-npwp deploy/helm/nilam-ocr-npwp -n nilam-ocr-npwp --reuse-values `
+helm upgrade nlm-k2 deploy/helm/nlm-k2 -n nlm-k2 --reuse-values `
   --set image.tag=<sha> --set services.scoring.env.SCORING_APPROVE_THRESHOLD="0.85"
 ```
 
-Rollback: `helm -n nilam-ocr-npwp rollback nilam-ocr-npwp`.
+Rollback: `helm -n nlm-k2 rollback nlm-k2`.
 
 **Upgrade dari chart 0.1.x (satu pod, empat container).** Helm menghapus Deployment
-`nilam-ocr-npwp` yang lama dan membuat empat Deployment baru dalam satu `helm upgrade`. Pod lama
+`nlm-k2` yang lama dan membuat empat Deployment baru dalam satu `helm upgrade`. Pod lama
 hilang saat pod baru masih starting (guardrails butuh sekitar satu menit memuat model), jadi ada
 jeda singkat tanpa layanan; lakukan di luar jam uji coba. Values lama tetap dipakai
 (`--reset-then-reuse-values`), termasuk tag image per service.
@@ -195,10 +195,10 @@ dari terminal Administrator.
 ## Cek cepat
 
 ```powershell
-kubectl -n nilam-ocr-npwp get deploy,pods,svc,pdb,networkpolicy
-kubectl -n nilam-ocr-npwp port-forward svc/nilam-ocr-npwp-orchestrator 8034:8034
-curl http://localhost:8034/ready
+kubectl -n nlm-k2 get deploy,pods,svc,pdb,networkpolicy
+kubectl -n nlm-k2 port-forward svc/nlm-k2-orchestrator 8040:8040
+curl http://localhost:8040/ready
 ```
 
-`port-forward` harus ke Service per komponen (atau `deploy/nilam-ocr-npwp-<service>`): pada Service
-pintu masuk `nilam-ocr-npwp`, kubectl memilih satu pod sembarang dari selector-nya.
+`port-forward` harus ke Service per komponen (atau `deploy/nlm-k2-<service>`): pada Service
+pintu masuk `nlm-k2`, kubectl memilih satu pod sembarang dari selector-nya.

@@ -8,7 +8,7 @@ info:
     as /v1/ekstraksi/extract. All endpoints except /health require an X-API-Key header.
 
 
-    ## Conventions (the same for every nilam-ocr service)
+    ## Conventions (the same for every nlm-k2 service)
 
 
     **Authentication.** Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.
@@ -69,15 +69,15 @@ info:
 servers:
 - url: /
   description: This host (where this page is served)
-- url: http://nilam-ocr-npwp-ekstraksi.{namespace}.svc.cluster.local:8030
+- url: http://nlm-k2-ekstraksi.{namespace}.svc.cluster.local:8042
   description: GKE, from inside the release's namespace (the other services of this pipeline)
   variables:
     namespace:
-      default: nilam-ocr-npwp
-      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nilam-ocr-npwp)'
-- url: http://ekstraksi:8030
+      default: nlm-k2
+      description: 'Namespace of the Helm release (deploy/helm/deploy.sh: nlm-k2)'
+- url: http://ekstraksi:8042
   description: The Docker Compose network
-- url: http://127.0.0.1:8030
+- url: http://127.0.0.1:8042
   description: Local development
 paths:
   /health:

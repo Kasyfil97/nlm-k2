@@ -7,7 +7,7 @@ from ocr_common.config import PipelineSettings
 
 
 class Settings(PipelineSettings):
-    port: int = 8030
+    port: int = 8042
 
     ekstraksi_backend: str = "mock"
     ekstraksi_ocr_url: str | None = None
@@ -17,7 +17,7 @@ class Settings(PipelineSettings):
     # OCR model will serve several document types in production and take its parameters per call.
     ekstraksi_ocr_params: dict[str, Any] = {}
 
-    structuring_service_url: str = "http://127.0.0.1:8032"
+    structuring_service_url: str = "http://127.0.0.1:8043"
     structuring_api_key: str | None = None
     structuring_timeout_seconds: float = 10.0
 

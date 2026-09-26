@@ -3,10 +3,10 @@ from pydantic import ValidationError
 
 from app.config import Settings
 
-GUARDRAILS = "http://nilam-ocr-npwp-guardrails:8031"
-EKSTRAKSI = "http://nilam-ocr-npwp-ekstraksi:8030"
-STRUCTURING = "http://nilam-ocr-npwp-structuring:8032"
-SCORING = "http://nilam-ocr-npwp-scoring:8033"
+GUARDRAILS = "http://nlm-k2-guardrails:8041"
+EKSTRAKSI = "http://nlm-k2-ekstraksi:8042"
+STRUCTURING = "http://nlm-k2-structuring:8043"
+SCORING = "http://nlm-k2-scoring:8044"
 LOCALHOST = "http://127.0.0.1:9999"
 
 
@@ -46,8 +46,8 @@ def test_localhost_services_are_refused_outside_local(setting, overrides):
 
 def test_localhost_services_are_fine_locally():
     settings = Settings(api_key="x", _env_file=None, environment="local")
-    assert settings.guardrails_service_url == "http://127.0.0.1:8031"
-    assert settings.port == 8034
+    assert settings.guardrails_service_url == "http://127.0.0.1:8041"
+    assert settings.port == 8040
 
 
 def test_skipping_guardrails_is_not_allowed_by_default():

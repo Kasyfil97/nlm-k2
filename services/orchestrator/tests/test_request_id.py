@@ -22,7 +22,7 @@ def test_calls_carry_the_request_id_of_the_form_not_of_the_header(client, auth):
         seen.append(request.headers.get(REQUEST_ID_HEADER))
         return httpx.Response(200, json={"data": ACCEPTED_REPORT})
 
-    remote = RemoteModelClient("http://guardrails:8031", 5.0, name="guardrails", transport=httpx.MockTransport(handler))
+    remote = RemoteModelClient("http://guardrails:8041", 5.0, name="guardrails", transport=httpx.MockTransport(handler))
     app.dependency_overrides[get_guardrails_client] = lambda: GuardrailsClient(remote)
     try:
         response = client.post(

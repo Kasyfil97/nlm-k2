@@ -218,7 +218,7 @@ async def test_a_stage_answering_404_is_no_job_and_401_is_500_not_passed_on():
         return httpx.Response(401, json={"message": "Invalid API key"})
 
     remote = RemoteModelClient(
-        "http://ekstraksi:8030",
+        "http://ekstraksi:8042",
         5.0,
         name="ekstraksi service",
         passthrough_statuses=(404,),

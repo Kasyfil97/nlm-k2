@@ -1,10 +1,10 @@
 SERVICES := orchestrator guardrails ekstraksi structuring scoring
 PY ?= python
-PORT_orchestrator := 8034
-PORT_guardrails := 8031
-PORT_ekstraksi := 8030
-PORT_structuring := 8032
-PORT_scoring := 8033
+PORT_orchestrator := 8040
+PORT_guardrails := 8041
+PORT_ekstraksi := 8042
+PORT_structuring := 8043
+PORT_scoring := 8044
 
 dev:
 	$(PY) -m pip install -r requirements-dev.txt
@@ -78,7 +78,7 @@ up-db:
 down:
 	docker compose -f docker-compose.yml -f docker-compose.db.yml down
 ps:
-	@docker ps --filter name=nilam-ocr- --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+	@docker ps --filter name=nlm-k2- --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 logs-%:
 	docker compose logs -f $*
 
