@@ -1,6 +1,19 @@
-"""The reject threshold of the guardrails model. It is owned by the central orchestrator, so it can be
-changed there without a deploy here; this service reads it from the orchestrator's endpoint and falls
-back to its own default."""
+"""The threshold that turns `probability_bad` into a verdict -- R15.
+
+Five rungs, highest first:
+
+1. the `threshold` form field of this request (§5.1), applied in `GuardrailsService.check`;
+2. the central orchestrator's endpoint, `GUARDRAILS_THRESHOLD_URL` + `GUARDRAILS_THRESHOLD_PATH`,
+   cached for `GUARDRAILS_THRESHOLD_CACHE_SECONDS` -- this is the rung that lets the threshold be
+   moved without a deploy here, which is why the verdict echoes the one it actually used;
+3. `GUARDRAILS_THRESHOLD` (§13.3);
+4. the value stored with the weights -- see the note on `default_threshold`;
+5. 0.5, the contract's default.
+
+K2Quality's own database-backed threshold and its `PUT /config` are gone with R15: a value a
+running service can rewrite in its own database is a second source of truth for the one number that
+decides whether a document enters the pipeline at all.
+"""
 
 import asyncio
 import logging
@@ -14,20 +27,29 @@ from ocr_common.errors import ServiceError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REJECT_THRESHOLD = 0.5
+#: §13.3. The last rung, and the only one that is a constant rather than a configured value.
+DEFAULT_THRESHOLD = 0.5
 
 
-def default_threshold(configured: float | None, classifier: Any) -> float:
-    """The threshold used when the orchestrator does not give one: GUARDRAILS_REJECT_THRESHOLD when set,
-    else the one stored in the model's checkpoint, else 0.5."""
+def default_threshold(configured: float | None, model: Any) -> float:
+    """Rungs 3 to 5: `GUARDRAILS_THRESHOLD`, else the model's own, else 0.5.
+
+    The model's own is `reject_threshold`, and it is `None` on every backend that has no stored
+    threshold -- which today is all of them: K2Quality keeps its operating point in `config.yaml`,
+    not in any of the six artifacts, so `kk_quality` reads an optional `decision_threshold` key from
+    `blur_cnn_meta.json` that the current export does not contain. `None` rather than `0.5` is what
+    keeps rung 4 honest: a rung that defaults to the value of the rung below it cannot be
+    distinguished from a chain that is quietly broken.
+    """
     if configured is not None:
         return configured
-    return float(getattr(classifier, "reject_threshold", DEFAULT_REJECT_THRESHOLD))
+    stored = getattr(model, "reject_threshold", None)
+    return DEFAULT_THRESHOLD if stored is None else float(stored)
 
 
 def parse_threshold(body: Any) -> float:
     """`{"reject_threshold": 0.5}` into 0.5. Raises ValueError for anything else, including a value
-    outside (0, 1): 0 would reject every page, 1 almost none."""
+    outside (0, 1): 0 would reject every document, 1 almost none."""
     value = body.get("reject_threshold") if isinstance(body, dict) else None
     if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
         raise ValueError(f"no numeric reject_threshold in {body!r}")
@@ -37,10 +59,11 @@ def parse_threshold(body: Any) -> float:
 
 
 class RejectThreshold:
-    """The threshold in force. With a client (GUARDRAILS_THRESHOLD_URL set), `GET` on the orchestrator's
-    endpoint, kept for `cache_seconds` so a document does not wait on an extra call. When that call fails
-    or answers something that is not a threshold, the last value the orchestrator gave stays in force
-    (the default if it never gave one), and the endpoint is tried again after `cache_seconds`."""
+    """Rungs 2 to 5. With a client (`GUARDRAILS_THRESHOLD_URL` set), `GET` on the orchestrator's
+    endpoint, kept for `cache_seconds` so a document does not wait on an extra call. When that call
+    fails or answers something that is not a threshold, the last value the orchestrator gave stays
+    in force (the default if it never gave one), and the endpoint is tried again after
+    `cache_seconds`."""
 
     def __init__(
         self,

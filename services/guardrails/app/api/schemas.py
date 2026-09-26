@@ -1,56 +1,61 @@
+"""The response shape of §5.2.
+
+These mirror `ocr_common.pipeline.schemas.GuardrailsDocument` / `GuardrailsResult`, which are frozen:
+the same block is what the orchestrator forwards to `/v1/ekstraksi/jobs` and what reaches scoring
+unchanged. They are restated here rather than imported because this is the *producing* end and its
+fields are required, while the pipeline copies are permissive by design -- they have to survive a
+field being added upstream.
+"""
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from ocr_common.web.schemas import SuccessEnvelope
 
-Verdict = Literal["accepted", "reject"]
-
-
-class PageResult(BaseModel):
-    page_index: int = Field(..., ge=0, description="0-based page number; an image is always page 0", examples=[0])
-    proba_approve: float = Field(..., ge=0, le=1, description="Model probability of `accepted`", examples=[0.9821])
-    proba_reject: float = Field(
-        ...,
-        ge=0,
-        le=1,
-        description="Model probability of `reject`; `proba_approve + proba_reject = 1`",
-        examples=[0.0179],
-    )
-    verdict: Verdict = Field(
-        ...,
-        description="`reject` when `proba_reject` reaches the reject threshold (`document.reject_threshold`)",
-        examples=["accepted"],
-    )
+Verdict = Literal["accepted", "reject", "unassessable"]
 
 
 class DocumentResult(BaseModel):
     verdict: Verdict = Field(
         ...,
-        description="Document verdict. Default policy `all`: accepted only when every page is accepted",
+        description=(
+            "`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it, and "
+            "`unassessable` when the model could not judge the image at all (undecodable, not an image, "
+            "or dimensions outside the range it was trained on). `unassessable` is a verdict and not an "
+            "error: this endpoint always answers 200"
+        ),
         examples=["accepted"],
     )
-    confidence: float = Field(
+    confidence: float | None = Field(
         ...,
         ge=0,
         le=1,
         description=(
-            "Confidence in the verdict. accepted -> the lowest `proba_approve` over the pages (the weakest page "
-            "decides); reject -> the highest `proba_reject` among the rejected pages"
+            "Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad` when "
+            "accepted, null when unassessable"
         ),
-        examples=[0.9821],
+        examples=[0.9713],
     )
-    n_pages: int = Field(..., ge=0, description="Pages judged (a PDF is capped at 20)", examples=[2])
-    n_approve: int = Field(..., ge=0, description="Pages with verdict `accepted`", examples=[2])
-    n_reject: int = Field(..., ge=0, description="Pages with verdict `reject`", examples=[0])
-    reject_threshold: float | None = Field(
+    probability_bad: float | None = Field(
+        ...,
+        ge=0,
+        le=1,
+        description=(
+            "Raw model output: the probability that the image is bad. Travels unchanged to scoring as the "
+            "`guardrail_probability` feature. Null when the verdict is `unassessable`"
+        ),
+        examples=[0.0287],
+    )
+    threshold_used: float | None = Field(
         None,
         gt=0,
         lt=1,
         description=(
-            "The reject threshold the pages were judged with: the central orchestrator's "
-            "(`GUARDRAILS_THRESHOLD_URL`), else the default (`GUARDRAILS_REJECT_THRESHOLD`, else the checkpoint's "
-            "0.5). Null with the `remote` backend, which applies its own"
+            "The threshold in force for this request: the `threshold` form field, else the central "
+            "orchestrator's (`GUARDRAILS_THRESHOLD_URL`), else `GUARDRAILS_THRESHOLD`, else the value "
+            "stored with the weights, else 0.5. Echoed because it can change without a deploy here. Null "
+            "with the `remote` backend when that service does not state its own"
         ),
         examples=[0.5],
     )
@@ -65,13 +70,13 @@ class GuardrailReport(BaseModel):
     reason: str | None = Field(
         None,
         description=(
-            "Why the document was rejected; null when `passed`. The model is a binary classifier, so the reason "
-            "can only state how many pages were rejected and how confidently, not *what* is wrong with them"
+            "Why the document was stopped, in Indonesian and shown to the end user as it stands; null when "
+            "`passed`. The model is binary and judges the image as a whole, so the reason cannot say which "
+            "part is wrong -- only whether the quality was too low or the image could not be judged at all"
         ),
         examples=[None],
     )
     document: DocumentResult
-    pages: list[PageResult] = Field(..., description="One entry per page, in page order")
 
 
 class GuardrailReportResponse(SuccessEnvelope):
