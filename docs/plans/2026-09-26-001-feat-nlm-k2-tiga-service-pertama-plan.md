@@ -290,7 +290,7 @@ tempat yang menuliskannya.
 
 ---
 
-- [x] **Unit 2a+2b: bentuk, tukar impor, penamaan** — selesai · [ ] **Unit 2c: kebijakan lapis config** — belum
+- [x] **Unit 2: Bentuk ulang `ocr_common` untuk KK** — selesai (2a+2b bentuk/impor/penamaan, 2c kebijakan config)
 
 **Goal:** Pustaka bersama membawa bentuk KK, bukan NPWP, dan suite ujinya membuktikannya.
 
@@ -351,6 +351,11 @@ tempat yang menuliskannya.
   placeholder (R29), saklar PDF (R34a).
 - `clients/fetch_url.py`: https-only, tanpa redirect, tolak alamat privat/loopback/link-local
   setelah resolusi DNS.
+  **Diperketat saat pelaksanaan:** `address_allowed()` lama berakhir dengan
+  `ip.is_global or bool(allowed_hosts)`, sehingga begitu ada allow-list, alamat privat RFC1918
+  lolos. Itu disengaja agar object store di dalam cluster terjangkau, tetapi digabung entri
+  wildcard (`.internal`) ia jadi lubang: penguasa DNS di bawah sufiks itu bisa mengarahkan nama
+  ke alamat internal mana pun. Alamat privat kini hanya untuk host yang terdaftar **persis**.
 
 **Execution note:** Tulis fixture emas lebih dulu sebagai uji yang gagal, lalu bentuk tipenya sampai
 fixture lolos. Fixture inilah gerbang R6 butir pertama, jadi ia artefak, bukan alat bantu.
