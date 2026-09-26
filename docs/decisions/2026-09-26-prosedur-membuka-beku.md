@@ -73,3 +73,14 @@ melewatkan sesuatu, dan itu dicatat, bukan sekadar dilayani. Dua kandidat yang s
 - **Kunci env di compose.** Sudah disediakan lebih dulu di Unit 6 justru untuk ini, tetapi
   daftarnya diturunkan dari §13 kontrak ditambah delta yang diketahui — bukan dari kode yang
   belum ditulis.
+
+## Catatan revisi beku
+
+| Tag | Isi | Kenapa tidak bisa menunggu |
+|---|---|---|
+| `freeze-1` | Gerbang R6, akhir fase 0 | — |
+| `freeze-2` | `openapi.main` menulis LF eksplisit; `TEST_API_KEY` ganda dibuang; contoh NIK di `OcrBoxPayload` pakai provinsi 99 | Butir pertama memblokir ketiga agen: setiap `make openapi-<service>` di Windows menulis CRLF ke pohon kerja, dan pohon kerja itu build context Docker |
+
+Ditemukan saat Unit 7, bukan saat gerbang R6 — karena R6 memeriksa isi berkas lewat git, yang sudah
+menormalkannya. Pemeriksaan yang ditambahkan: tidak ada berkas terlacak yang memuat CRLF di pohon
+kerja. Itu masuk daftar gerbang, bukan hanya diperbaiki sekali.
