@@ -358,8 +358,16 @@ K2Regex-v2 yang nyata, §8.3 belum ada apa-apa, tetapi §7.1 ditulis pada versi 
 aspirasi dengan mock yang ditulis dari aspirasi yang sama. Bukti penyangkalnya murah: jalankan jalur
 `fullpytorch` K2Extractor **satu kali** atas satu gambar contoh, catat bentuk keluaran harfiahnya,
 pastikan `poly` benar 4×2 pada bingkai yang sudah diluruskan, dan bangun fixture §7.1 dari
-pengamatan itu. Kalau spike tidak bisa dijalankan, nyatakan eksplisit bahwa §7.1 tidak tervalidasi
-dan R22b adalah jalur yang diperkirakan.
+pengamatan itu.
+
+**Spike sudah dijalankan** (26 Sep 2026) — hasilnya di
+[`docs/decisions/2026-09-26-spike-bentuk-ocr-71.md`](../decisions/2026-09-26-spike-bentuk-ocr-71.md).
+Ringkas: backend mengeluarkan `[{rec_texts, rec_scores, rec_polys}]`, `poly` benar 4×2 tetapi
+bertipe **float32** dan berupa segiempat **miring** — sehingga membuang `BoundingBox` bukan hanya
+boleh, melainkan perlu. Kemiringan itu juga **mengonfirmasi R18b**: koordinatnya ada di bingkai
+gambar asli, tidak diluruskan, jadi janji §7.1 tidak dipenuhi backend ini. Satu KK menghasilkan
+177 kotak, yang membenarkan `PIPELINE_HANDOFF_BY_REFERENCE=true`. Fixture §7.1 dibangun dari
+pengamatan ini, bukan dari contoh kontrak.
 
 **Patterns to follow:** `ocr_common/npwp.py` sebagai bentuk modul; `pipeline/schemas.py` sebagai
 kembaran Pydantic dari `types.py`.
