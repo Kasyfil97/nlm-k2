@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import ServiceError
+from ocr_common.kk import DOC_PROJECTION, MEMBER_PROJECTION
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +141,7 @@ class OrchestrationCallback:
 
 RESULT_COMPLETED = "completed"
 RESULT_FAILED = "failed"
-RESULT_FIELDS = ("nomor_npwp", "nama", "nama_badan")
 _FINAL_STAGE = "SCORING"
-_NAME_FIELDS = ("nama", "nama_badan")
 
 
 def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
@@ -152,12 +151,15 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
     Completed (SCORING `DONE`, `result` = the final result)::
 
         {"request_id", "status": "completed",
-         "result": {"nomor_npwp" | "nama" | "nama_badan": {"value": str, "confidence": float}},
+         "result": {"no_kk", "nama_kepala_keluarga",
+                    "anggota_keluarga": [{...seven fields...}]},
          "guardrails": {...the guardrails report...}}
 
-    `value` is "" when the field was not found and `confidence` is the trust model's probability that
-    the value is correct (0.0 when not found); the name probability goes to whichever of `nama` /
-    `nama_badan` holds the name. Failed (any stage `FAILED`, including a rejection)::
+    The nine contract fields, under their OUTGOING names. `value` is "" when the field was not found.
+    Unlike `data` of `extract-ocr`, `confidence` here is the trust model's raw probability rounded to
+    4 dp (0.0 when not found), not the 0/1 flag: this callback is for a consumer that wants the
+    number, and the threshold belongs to the caller. Failed (any stage `FAILED`, including a
+    rejection)::
 
         {"request_id", "status": "failed", "result": null, "guardrails": {},
          "error_code": "<STAGE>_FAILED" | "DOWNSTREAM_VALIDATION_ERROR", "error_message": str}
@@ -175,22 +177,34 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
     final = stage_body.get("result")
     if status != "DONE" or stage != _FINAL_STAGE or not final:
         return None
-    fields = final.get("fields") or {}
+    structuring = final.get("structuring") or {}
     scoring = final.get("scoring") or {}
-    probability = {"nomor_npwp": scoring.get("npwp_confidence")}
-    probability.update(dict.fromkeys(_NAME_FIELDS, scoring.get("name_confidence")))
-    result = {}
-    for name in RESULT_FIELDS:
-        value = (fields.get(name) or {}).get("value")
-        found = value is not None and str(value).strip() != ""
-        score = probability[name] if found else None
-        result[name] = {"value": str(value) if found else "", "confidence": round(float(score or 0.0), 4)}
+    members = structuring.get("anggota_keluarga") or []
+    scored_members = scoring.get("anggota_keluarga") or []
+    result: dict[str, Any] = {
+        out: _scored_field(structuring.get(internal), (scoring.get("fields") or {}).get(internal))
+        for out, internal in DOC_PROJECTION
+    }
+    result["anggota_keluarga"] = [
+        {out: _scored_field(member.get(internal), scores.get(internal)) for out, internal in MEMBER_PROJECTION}
+        # strict: scoring already ran `kk.contract_fields`, which fails the job on a length
+        # mismatch, so by the time a callback is built the two lists agree. Padding here would
+        # only hide a regression behind confidence 0.0.
+        for member, scores in zip(members, scored_members, strict=True)
+    ]
     return {
         "request_id": request_id,
         "status": RESULT_COMPLETED,
         "result": result,
         "guardrails": final.get("guardrails") or {},
     }
+
+
+def _scored_field(field: Any, score: Any) -> dict[str, Any]:
+    """One field of the result callback: the value, and the raw probability rather than the 0/1 flag."""
+    value = "" if not isinstance(field, dict) else str(field.get("value") or "").strip()
+    usable = bool(value) and isinstance(score, int | float) and not isinstance(score, bool)
+    return {"value": value, "confidence": round(float(score), 4) if usable else 0.0}
 
 
 class ResultCallback:

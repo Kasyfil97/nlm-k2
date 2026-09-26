@@ -32,7 +32,7 @@ def auth_headers() -> dict[str, str]:
     return {"X-API-Key": TEST_API_KEY}
 
 
-def image_upload(filename="npwp.jpg", content=b"\xff\xd8fake-jpeg-bytes", content_type="image/jpeg"):
+def image_upload(filename="kk.jpg", content=b"\xff\xd8fake-jpeg-bytes", content_type="image/jpeg"):
     """A multipart `file` field with a small fake JPEG."""
     return {"file": (filename, content, content_type)}
 

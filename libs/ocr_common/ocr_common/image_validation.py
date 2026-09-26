@@ -3,9 +3,9 @@
 from ocr_common.config import BaseServiceSettings
 from ocr_common.errors import BadRequest, PayloadTooLarge
 
-# Asked for by the ML team: an NPWP document is typically 1-2 MB, a few reach 2.1 MB, so anything
+# A Kartu Keluarga photo is typically larger than a tax card, so the cap is 5 MB (§13.1); anything
 # larger than the limit is refused before any model runs, with a message the client can show as is.
-PAYLOAD_TOO_LARGE_MESSAGE = "Ukuran dokumen melebihi batas {limit}, pastikan hanya mengunggah dokumen NPWP"
+PAYLOAD_TOO_LARGE_MESSAGE = "Ukuran dokumen melebihi batas {limit}, pastikan hanya mengunggah foto Kartu Keluarga"
 
 
 def upload_limit_label(max_upload_bytes: int) -> str:

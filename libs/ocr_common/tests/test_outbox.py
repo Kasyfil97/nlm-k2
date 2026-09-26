@@ -18,7 +18,7 @@ from ocr_common.web.envelope import envelope
 from ocr_common.web.security import verify_api_key
 
 RID = "REQ_outbox"
-PAYLOAD = {"request_id": RID, "ocr": {"full_text": "NPWP"}}
+PAYLOAD = {"request_id": RID, "ocr": {"texts": [{"text": "KARTU KELUARGA"}]}}
 
 
 class Sink:
@@ -62,7 +62,7 @@ async def _run(pipeline, *, fails: bool = False) -> None:
     async def work():
         if fails:
             raise ServiceError(503, "ekstraksi OCR model is unavailable")
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     await pipeline.submit(
         RID,
@@ -238,7 +238,9 @@ async def test_the_messages_and_the_job_are_written_in_one_transaction(pipeline)
 
     with pytest.raises(OperationalError):
         await stage.repository.complete(
-            RID, {"full_text": "NPWP"}, messages=stage._messages(RID, None, PAYLOAD, STAGE_STRUCTURING)
+            RID,
+            {"texts": [{"text": "KARTU KELUARGA"}]},
+            messages=stage._messages(RID, None, PAYLOAD, STAGE_STRUCTURING),
         )
 
     assert await stage.repository.get(RID) is None

@@ -7,7 +7,10 @@ from ocr_common.pipeline.results import load_upstream
 from ocr_common.pipeline.results_sql import SqlStageResults
 
 RID = "REQ_ref"
-OCR = {"engine": "mock", "blocks": [{"text": "NPWP : 12.345.678.9-012.345", "confidence": 0.9, "page": 0}]}
+OCR = {
+    "engine": "mock",
+    "texts": [{"text": "3273012345678901", "score": 0.9, "poly": [[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [0.0, 5.0]]}],
+}
 
 
 @pytest.fixture

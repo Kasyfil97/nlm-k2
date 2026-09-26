@@ -50,10 +50,10 @@ async def test_claim_is_idempotent(repository):
 
 async def test_complete_stores_result_and_is_not_reclaimable(repository):
     await repository.claim("REQ_2")
-    await repository.complete("REQ_2", {"blocks": [{"text": "NPWP"}]})
+    await repository.complete("REQ_2", {"texts": [{"text": "KARTU KELUARGA"}]})
     record = await repository.get("REQ_2")
     assert record["status"] == "DONE"
-    assert record["result"] == {"blocks": [{"text": "NPWP"}]}
+    assert record["result"] == {"texts": [{"text": "KARTU KELUARGA"}]}
     assert await repository.claim("REQ_2") is False
 
 
@@ -104,7 +104,7 @@ async def test_pipeline_success_writes_result_then_callback_then_handoff(reposit
     pipeline, callback = _pipeline(repository, next_stage)
 
     async def work():
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     accepted = await pipeline.submit(
         "REQ_10", work, handoff_payload=lambda result: {"ocr": result}, next_stage=STAGE_STRUCTURING
@@ -113,7 +113,7 @@ async def test_pipeline_success_writes_result_then_callback_then_handoff(reposit
     await pipeline.runner.drain(5)
 
     assert seen == [("DONE", ["DONE"])]
-    assert next_stage.payloads == [{"ocr": {"full_text": "NPWP"}}]
+    assert next_stage.payloads == [{"ocr": {"texts": [{"text": "KARTU KELUARGA"}]}}]
     assert callback.calls == [
         {"request_id": "REQ_10", "stage": "OCR", "status": "DONE", "result": None, "error_message": None}
     ]

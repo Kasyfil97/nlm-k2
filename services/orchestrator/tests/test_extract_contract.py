@@ -3,7 +3,7 @@ from typing import cast
 
 import pytest
 
-from ocr_common.npwp import contract_fields
+from ocr_common.kk import contract_fields
 from ocr_common.types import FinalResult
 
 from app.config import get_settings

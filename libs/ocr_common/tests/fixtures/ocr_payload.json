@@ -1,0 +1,99 @@
+{
+  "_source": "Diamati dari jalur fullpytorch K2Extractor pada satu KK nyata (955x663), 26 Sep 2026. Lihat docs/decisions/2026-09-26-spike-bentuk-ocr-71.md. Teksnya diganti nilai sintetis; bentuk, tipe, dan kemiringan poly dipertahankan apa adanya.",
+  "engine": "kk_ocr",
+  "model": "PP-OCRv5_server_det+PP-OCRv5_server_rec",
+  "elapsed_ms": 4182.7,
+  "text_regions_count": 4,
+  "avg_doc_score": 0.8171,
+  "min_doc_score": 0.2822,
+  "texts": [
+    {
+      "text": "KARTU KELUARGA",
+      "score": 0.9999,
+      "poly": [
+        [
+          291.0,
+          7.0
+        ],
+        [
+          306.0,
+          6.0
+        ],
+        [
+          309.0,
+          26.0
+        ],
+        [
+          294.0,
+          28.0
+        ]
+      ]
+    },
+    {
+      "text": "3273012345678901",
+      "score": 0.9991,
+      "poly": [
+        [
+          322.0,
+          10.0
+        ],
+        [
+          334.0,
+          10.0
+        ],
+        [
+          334.0,
+          25.0
+        ],
+        [
+          322.0,
+          25.0
+        ]
+      ]
+    },
+    {
+      "text": "BUDI SANTOSO",
+      "score": 0.9873,
+      "poly": [
+        [
+          120.5,
+          210.0
+        ],
+        [
+          318.0,
+          208.5
+        ],
+        [
+          318.5,
+          232.0
+        ],
+        [
+          121.0,
+          233.5
+        ]
+      ]
+    },
+    {
+      "text": "O",
+      "score": 0.2822,
+      "poly": [
+        [
+          640.0,
+          512.0
+        ],
+        [
+          655.0,
+          512.0
+        ],
+        [
+          655.0,
+          530.0
+        ],
+        [
+          640.0,
+          530.0
+        ]
+      ]
+    }
+  ]
+}

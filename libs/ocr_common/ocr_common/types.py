@@ -2,117 +2,158 @@
 
 They are the Python-side twin of the Pydantic payloads in `ocr_common.pipeline.schemas`: the schemas
 validate what arrives over HTTP, these annotate what the engines, services and the pipeline pass
-around in memory. At runtime they are plain dicts, so nothing changes in what is stored or sent."""
+around in memory. At runtime they are plain dicts, so nothing changes in what is stored or sent.
+
+Two shapes here differ structurally from a single-value document such as a tax card, and both are
+load-bearing:
+
+* A Kartu Keluarga carries a **variable-length member list**, so `anggota_keluarga` is a list at every
+  hop -- structuring, scoring and the outgoing contract. The lists are **positionally aligned**; a
+  length mismatch is an error, never a silent truncation (`kk.contract_fields`).
+* Every structured field carries **two scores**, not one. They fail differently and are deliberately
+  not fused: a low `ocr_conf` means the recogniser doubted the glyphs, a low `crf_conf` means the text
+  was read but its column placement is unclear. Fusing them into one P(correct) is scoring's job.
+"""
 
 from typing import Any, NotRequired, TypedDict
 
 
-class BoundingBox(TypedDict):
-    """Upright box around a text line, in pixels of the image the OCR model worked on."""
+class OcrBox(TypedDict):
+    """One recognised text line.
 
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-
-
-class OcrBlock(TypedDict):
-    """One recognised text line."""
+    `poly` is four points of two coordinates, not an upright box: the detector returns genuine
+    quadrilaterals (observed tilt of several degrees on a real card), so an `x1/y1/x2/y2` rectangle
+    cannot represent it without losing information.
+    """
 
     text: str
-    confidence: float
-    bbox: NotRequired[BoundingBox | None]
-    page: NotRequired[int]
+    score: float
+    poly: list[list[float]]
 
 
 class OcrEngineResult(TypedDict):
     """What an OCR engine (`app/ml/*` of ekstraksi) returns."""
 
-    blocks: list[OcrBlock]
+    texts: list[OcrBox]
     model: str | None
 
 
 class OcrResult(OcrEngineResult):
-    """The stored result of the OCR stage (`ocr_results.result`), forwarded to structuring and scoring."""
+    """The stored result of the OCR stage (`ocr_results.result`), forwarded to structuring and scoring.
+
+    The aggregates are derived from `texts` rather than reported by the model, and are `None` for an
+    empty `texts` -- an image with no readable text is a rejection at structuring, not a failure here.
+    """
 
     engine: str
     elapsed_ms: float
-    full_text: str
+    text_regions_count: int
+    avg_doc_score: float | None
+    min_doc_score: float | None
 
 
 class StructuredField(TypedDict):
-    """One named field read from the OCR lines; `value` is None when it was not found."""
+    """One named field read from the OCR lines.
 
-    value: str | None
-    confidence: float
-    source: NotRequired[str | None]
-    signals: NotRequired[dict[str, Any] | None]
+    `value` is `""` when the field was not found -- never `None`. Both scores are `None` in that case,
+    and `crf_conf` is additionally always `None` for document-level fields, which are found by regex
+    or position and never pass through Viterbi.
+    """
+
+    value: str
+    ocr_conf: float | None
+    crf_conf: float | None
+
+
+StructuredMember = dict[str, StructuredField]
 
 
 class StructuredDocument(TypedDict):
-    """What a structurer (`app/ml/*` of structuring) returns: one `StructuredField` per name in
-    `npwp.NPWP_FIELDS`, the document-level flag of the ML team's rules, and the rejection it implies.
+    """What a structurer (`app/ml/*` of structuring) returns: the flat K2Regex-v2 shape.
 
-    `flag` / `flag_reason` is raised by any of the rules' checks and is an input of the trust model.
-    `reject_reason` is set when one of the checks that reject the document fired (everything but a
-    single-word name and a letter in the number): the pipeline stops at structuring and the client
-    gets a 400 with that message. It is the first rejecting check in the rules' priority order, which
-    is not always `flag_reason` (a single-word name outranks the invalid-code checks there)."""
+    The eleven document fields are top-level keys -- there is no `fields` wrapper -- plus
+    `anggota_keluarga` and `reject_reason`. `reject_reason` is the first rejecting rule of the KK
+    validity gate; when it is set the pipeline stops at structuring and the client gets a 400 with
+    that message. It lives *in the result payload* on purpose: the orchestrator is stateless and only
+    sees stages through their API, so a reason kept anywhere else could never reach the client.
 
-    fields: dict[str, StructuredField]
-    flag: bool
-    flag_reason: str | None
+    There is no `flag` / `flag_reason` counterpart. nilam has one as a soft signal for its trust
+    model; K2Regex-v2 produces nothing equivalent, so it is deliberately not invented here.
+
+    The eleven document keys are spelled out rather than left as a loose mapping: they are what the
+    freeze pins down, and a typo in one of them is exactly the class of error the type exists to
+    catch. `kk.DOC_FIELDS` carries the same names at runtime.
+    """
+
+    nomor_kk: StructuredField
+    nama_kepala_keluarga: StructuredField
+    alamat: StructuredField
+    desa_kelurahan: StructuredField
+    rt: StructuredField
+    rw: StructuredField
+    kecamatan: StructuredField
+    kabupaten_kota: StructuredField
+    provinsi: StructuredField
+    kode_pos: StructuredField
+    tanggal_dikeluarkan: StructuredField
+    anggota_keluarga: list[StructuredMember]
     reject_reason: NotRequired[str | None]
 
 
-class StructuringResult(StructuredDocument):
-    """The stored result of the structuring stage: the structured document plus its document type."""
+StructuringResult = StructuredDocument
+"""The stored result of the structuring stage. Unlike nilam there is no `document_type` key: §7.3
+says the payload is exactly what the parser builds, and the parser does not emit one."""
+
+
+class ScoringResult(TypedDict):
+    """The stored result of the scoring stage: P(field is correct) after fusion and calibration.
+
+    Scores only the nine contract fields (2 document + 7 per member), under their **internal** names
+    -- the rename to the outgoing contract happens in the orchestrator. A field whose value is empty
+    scores `None`. `anggota_keluarga` is positionally aligned with the structuring result's list.
+    """
 
     document_type: str
-
-
-class FieldConfidences(TypedDict):
-    """Output of the trust model: probability that each extracted field is correct (None = no field)."""
-
-    npwp_confidence: float | None
-    name_confidence: float | None
-
-
-class ScoringResult(FieldConfidences):
-    """The stored result of the scoring stage: the confidences plus the exact payload that was scored."""
-
+    fields: dict[str, float | None]
+    anggota_keluarga: list[dict[str, float | None]]
+    model: NotRequired[str | None]
     payload: NotRequired[dict[str, Any]]
 
 
-class FinalField(TypedDict):
-    """A field of the final result: the value and the OCR score of the line it came from."""
-
-    value: str | None
-    confidence: float
-
-
 class FinalResult(TypedDict):
-    """What the pipeline produced for one request: carried by the SCORING callback and used to build
-    the orchestrator's `extract-ocr` data."""
+    """What the pipeline produced for one request: carried by the SCORING callback.
+
+    Keeps the structuring and scoring payloads whole rather than flattening them, so a consumer that
+    wants the eleven-plus-fifteen internal fields still has them; `kk.contract_fields` projects the
+    nine that leave.
+    """
 
     document_type: str
-    fields: dict[str, FinalField]
-    scoring: FieldConfidences
+    structuring: StructuringResult
+    scoring: ScoringResult
     guardrails: dict[str, Any] | None
-    flag: bool
-    flag_reason: str | None
 
 
 class ContractField(TypedDict):
-    """A field in the orchestrator's `extract-ocr` contract: the value and a 0/1 confidence flag."""
+    """A field of the orchestrator's `extract-ocr` contract.
 
-    value: str | None
+    `value` is a string, never `None`: a field that was not found is `{"value": "", "confidence": 0}`,
+    and the object itself is never replaced by null.
+    """
+
+    value: str
     confidence: int
 
 
-class ContractData(TypedDict):
-    """`data` of the orchestrator's `extract-ocr` contract. The rules' flag is internal (an input of the
-    trust model) and is not part of it."""
+ContractMember = dict[str, ContractField]
 
-    nomor_npwp: ContractField
-    nama: ContractField
+
+class ContractData(TypedDict):
+    """`data` of the orchestrator's `extract-ocr` contract: two document fields and a member list.
+
+    Note `no_kk`, not `nomor_kk` -- this is one of the two keys the projection renames.
+    """
+
+    no_kk: ContractField
+    nama_kepala_keluarga: ContractField
+    anggota_keluarga: list[ContractMember]

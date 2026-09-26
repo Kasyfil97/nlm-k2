@@ -35,7 +35,7 @@ class BaseServiceSettings(BaseSettings):
     service_base_url: str | None = None
     port: int = 8000
 
-    # 2,5 MB: an NPWP document is 1-2 MB, a few reach 2.1 MB (ML team, 23 Sep 2026); larger uploads are
+    # 5 MB (contract §13.1). A Kartu Keluarga photo is larger than a tax card: the corpus runs to
     # refused with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
     allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]

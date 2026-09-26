@@ -101,7 +101,7 @@ async def test_testing_pipeline_writes_only_the_testing_tables_and_sends_no_call
     assert isinstance(pipeline.outbox, SqlOutbox) and pipeline.outbox.table.name == "testing_pipeline_outbox"
 
     async def work():
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     await pipeline.submit(
         "REQ_T1",

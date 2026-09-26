@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ocr_common.config import PipelineSettings
-from ocr_common.npwp import DOCUMENT_TYPE, REJECTED_CODE
+from ocr_common.kk import DOCUMENT_TYPE, REJECTED_CODE
 
 if TYPE_CHECKING:
     from sqlalchemy import Table

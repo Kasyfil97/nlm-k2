@@ -74,8 +74,8 @@ def _fake_dns(monkeypatch, mapping: dict[str, list[str]]) -> list[str]:
 
 
 async def test_downloads_and_guesses_content_type_from_the_extension(port):
-    content, filename, content_type = await fetch(f"http://127.0.0.1:{port}/bench/npwp.jpg", limit=1000, policy=LOCAL)
-    assert (content, filename, content_type) == (BODY, "npwp.jpg", "image/jpeg")
+    content, filename, content_type = await fetch(f"http://127.0.0.1:{port}/bench/kk.jpg", limit=1000, policy=LOCAL)
+    assert (content, filename, content_type) == (BODY, "kk.jpg", "image/jpeg")
     assert (await fetch(f"http://127.0.0.1:{port}/a.png", limit=1000, policy=LOCAL))[2] == "image/png"
     assert (await fetch(f"http://127.0.0.1:{port}/a.pdf", limit=1000, policy=LOCAL))[2] == "application/pdf"
 

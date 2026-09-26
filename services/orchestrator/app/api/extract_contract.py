@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from ocr_common.npwp import REJECTED_CODE, contract_fields
+from ocr_common.kk import REJECTED_CODE, contract_fields
 from ocr_common.pipeline import STATUS_DONE, STATUS_FAILED
 from ocr_common.web.envelope import envelope
 

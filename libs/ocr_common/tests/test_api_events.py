@@ -17,10 +17,11 @@ from ocr_common.testing import RecordingCallback
 TABLE = "orchestration_api_events"
 RID = "OCR_api_events"
 DATA = {
-    "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-    "nama": {"value": "BUDI SANTOSO", "confidence": 0},
+    "no_kk": {"value": "3273012345678901", "confidence": 1},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0},
+    "anggota_keluarga": [],
 }
-REASON = "Kode provinsi pada NPWP tidak valid, mohon dicek kembali"
+REASON = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
 
 
 async def _repository(tmp_path, stage: str, outcome_factory):
@@ -59,18 +60,18 @@ async def test_claiming_writes_nothing(scoring):
 async def test_completing_appends_a_completed_get_ocr_result_row(scoring):
     repo, _ = scoring
     await repo.claim(RID)
-    await repo.complete(RID, {"npwp_confidence": 0.98}, outcome_data=DATA)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.98}, "anggota_keluarga": []}, outcome_data=DATA)
 
     [row] = await _rows(scoring)
     assert (row["endpoint"], row["request_id"], row["status_code"]) == ("GET_OCR_RESULT", RID, 200)
-    assert (row["downstream_status"], row["downstream_stage"], row["document_type"]) == ("COMPLETED", "SCORING", "npwp")
+    assert (row["downstream_status"], row["downstream_stage"], row["document_type"]) == ("COMPLETED", "SCORING", "kk")
     assert row["error_code"] is None
     assert row["ds"]
     data = row["result_data"]
-    assert data["result"] == {"document_type": "npwp", **DATA, "guardrails": 0}
+    assert data["result"] == {"document_type": "kk", **DATA, "guardrails": 0}
     assert (data["status"], data["document_type"], data["error_code"], data["error_message"]) == (
         "completed",
-        "npwp",
+        "kk",
         None,
         None,
     )
@@ -157,7 +158,7 @@ async def test_a_second_run_appends_and_the_newest_row_is_the_state(scoring):
     await repo.claim(RID)
     await repo.fail(RID, "boom")
     await repo.claim(RID)
-    await repo.complete(RID, {"npwp_confidence": 0.98}, outcome_data=DATA)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.98}, "anggota_keluarga": []}, outcome_data=DATA)
 
     rows = await _rows(scoring)
     assert [row["downstream_status"] for row in rows] == ["FAILED", "COMPLETED"]
@@ -170,7 +171,7 @@ async def test_the_event_and_the_job_are_written_in_one_transaction(scoring):
         await conn.run_sync(table.drop)
 
     with pytest.raises(OperationalError):
-        await repo.complete(RID, {"npwp_confidence": 0.98}, outcome_data=DATA)
+        await repo.complete(RID, {"fields": {"nomor_kk": 0.98}, "anggota_keluarga": []}, outcome_data=DATA)
 
     record = await repo.get(RID)
     assert record is not None
@@ -183,13 +184,13 @@ async def test_the_pipeline_passes_the_contract_data_of_the_last_stage(scoring):
     pipeline = StagePipeline(stage=STAGE_SCORING, repository=repo, callback=RecordingCallback())
 
     async def work():
-        return {"npwp_confidence": 0.98, "name_confidence": 0.41}
+        return {"fields": {"nomor_kk": 0.98, "nama_kepala_keluarga": 0.41}, "anggota_keluarga": []}
 
     await pipeline.submit(RID, work, outcome_data=lambda result: DATA)
     await pipeline.runner.drain(5)
 
     [row] = await _rows(scoring)
-    assert (row["downstream_status"], row["result_data"]["result"]["nomor_npwp"]) == ("COMPLETED", DATA["nomor_npwp"])
+    assert (row["downstream_status"], row["result_data"]["result"]["no_kk"]) == ("COMPLETED", DATA["no_kk"])
 
 
 async def test_double_write_fills_the_outcome_row_and_the_event_log(tmp_path):
@@ -203,7 +204,7 @@ async def test_double_write_fills_the_outcome_row_and_the_event_log(tmp_path):
         async with repo.engine.begin() as conn:
             await conn.run_sync(outcome_table.metadata.create_all)
         await repo.claim(RID)
-        await repo.complete(RID, {"npwp_confidence": 0.98}, outcome_data=DATA)
+        await repo.complete(RID, {"fields": {"nomor_kk": 0.98}, "anggota_keluarga": []}, outcome_data=DATA)
 
         async with repo.engine.connect() as conn:
             outcome = (await conn.execute(select(outcome_table))).mappings().one()

@@ -5,7 +5,7 @@ from typing import Any
 from prometheus_client import Counter
 
 from ocr_common.errors import NotFound
-from ocr_common.npwp import DOCUMENT_TYPE, final_result
+from ocr_common.kk import DOCUMENT_TYPE, final_result
 from ocr_common.pipeline import STAGE_SCORING, STAGE_STRUCTURING, STATUS_DONE
 
 from app.clients.ekstraksi import EkstraksiJobClient

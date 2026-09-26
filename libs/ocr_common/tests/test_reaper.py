@@ -8,7 +8,7 @@ from ocr_common.pipeline.reaper import StaleJobReaper
 from ocr_common.pipeline.repository_sql import SqlJobRepository
 
 LEASE = 60.0
-INPUT = {"document_type": "npwp", "guardrails": None, "file_url": "http://minio/npwp.jpg"}
+INPUT = {"document_type": "kk", "guardrails": None, "file_url": "http://minio/kk.jpg"}
 
 
 class Resumed:

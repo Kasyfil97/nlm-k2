@@ -4,7 +4,7 @@ from typing import Any
 from starlette.concurrency import run_in_threadpool
 
 from ocr_common.errors import UnprocessableEntity
-from ocr_common.npwp import DOCUMENT_TYPE
+from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.pipeline import STAGE_SCORING, HandoffPayload, StagePipeline, Work
 from ocr_common.pipeline.results import StageResults, load_upstream
 from ocr_common.types import OcrBlock, StructuringResult

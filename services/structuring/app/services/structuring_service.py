@@ -1,5 +1,5 @@
 from ocr_common.errors import BadRequest
-from ocr_common.npwp import DOCUMENT_TYPE
+from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.types import OcrBlock, StructuringResult
 
 from app.ml.base import Structurer

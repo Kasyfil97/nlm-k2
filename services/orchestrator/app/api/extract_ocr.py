@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE
-from ocr_common.npwp import DOCUMENT_TYPE
+from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
 from ocr_common.web.schemas import UNAUTHORIZED, error, success_examples

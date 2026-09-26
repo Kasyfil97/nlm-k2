@@ -4,7 +4,7 @@ from typing import Any
 
 from ocr_common.clients.fetch_url import STRICT_URL_POLICY, FetchUrlError, UrlPolicy, fetch
 from ocr_common.errors import BadRequest
-from ocr_common.npwp import DOCUMENT_TYPE
+from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.pipeline import STAGE_STRUCTURING, HandoffPayload, StagePipeline, Work
 from ocr_common.simulation import simulated_delay_seconds
 from ocr_common.types import OcrResult

@@ -12,8 +12,9 @@ from ocr_common.testing import RecordingCallback
 TABLE = "orchestration_extract_ocr"
 RID = "REQ_outcome"
 DATA = {
-    "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-    "nama": {"value": "BUDI SANTOSO", "confidence": 0},
+    "no_kk": {"value": "3273012345678901", "confidence": 1},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0},
+    "anggota_keluarga": [],
 }
 
 
@@ -46,7 +47,7 @@ async def test_claiming_a_job_marks_the_request_processing_at_that_stage(reposit
     assert await repo.claim(RID) is True
 
     row = await _row(repository)
-    assert (row["request_id"], row["document_type"]) == (RID, "npwp")
+    assert (row["request_id"], row["document_type"]) == (RID, "kk")
     assert (row["status_code"], row["downstream_status"], row["downstream_stage"]) == (202, "processing", "SCORING")
     assert (row["result_data"], row["error_code"], row["error_message"]) == (None, None, None)
     assert row["ds"]
@@ -55,7 +56,7 @@ async def test_claiming_a_job_marks_the_request_processing_at_that_stage(reposit
 async def test_completing_with_data_marks_the_request_completed(repository):
     repo, _ = repository
     await repo.claim(RID)
-    await repo.complete(RID, {"npwp_confidence": 0.7}, outcome_data=DATA)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.7}, "anggota_keluarga": []}, outcome_data=DATA)
 
     row = await _row(repository)
     assert (row["status_code"], row["downstream_status"], row["downstream_stage"]) == (200, "completed", "SCORING")
@@ -85,7 +86,7 @@ async def test_failing_records_the_stage_that_failed(repository):
 
 async def test_a_rejection_marks_the_request_failed_with_400_and_the_reason(repository):
     repo, _ = repository
-    reason = "Kode provinsi pada NPWP tidak valid, mohon dicek kembali"
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
     await repo.claim(RID)
     await repo.complete(RID, {"reject_reason": reason}, outcome_data=DATA, rejection=reason)
 
@@ -100,7 +101,7 @@ async def test_a_second_run_of_the_same_request_id_overwrites_its_row(repository
     await repo.claim(RID)
     await repo.fail(RID, "boom")
     await repo.claim(RID)
-    await repo.complete(RID, {"npwp_confidence": 0.7}, outcome_data=DATA)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.7}, "anggota_keluarga": []}, outcome_data=DATA)
 
     row = await _row(repository)
     assert (row["downstream_status"], row["error_code"]) == ("completed", None)
@@ -113,7 +114,7 @@ async def test_the_row_and_the_job_are_written_in_one_transaction(repository):
         await conn.run_sync(table.drop)
 
     with pytest.raises(OperationalError):
-        await repo.complete(RID, {"npwp_confidence": 0.7}, outcome_data=DATA)
+        await repo.complete(RID, {"fields": {"nomor_kk": 0.7}, "anggota_keluarga": []}, outcome_data=DATA)
 
     record = await repo.get(RID)
     assert record is not None
@@ -127,7 +128,7 @@ async def test_the_pipeline_passes_the_row_data_of_the_last_stage(repository):
     pipeline = StagePipeline(stage=STAGE_SCORING, repository=repo, callback=callback)
 
     async def work():
-        return {"npwp_confidence": 0.7296, "name_confidence": 0.41}
+        return {"fields": {"nomor_kk": 0.7296, "nama_kepala_keluarga": 0.41}, "anggota_keluarga": []}
 
     await pipeline.submit(RID, work, outcome_data=lambda result: DATA)
     await pipeline.runner.drain(5)
@@ -149,7 +150,7 @@ def test_the_outcome_row_is_off_until_the_table_is_configured():
 async def test_a_failed_handoff_marks_the_request_failed_at_the_next_stage(repository):
     repo, _ = repository
     await repo.claim(RID)
-    await repo.complete(RID, {"npwp_confidence": 0.7}, outcome_data=DATA)
+    await repo.complete(RID, {"fields": {"nomor_kk": 0.7}, "anggota_keluarga": []}, outcome_data=DATA)
 
     await repo.handoff_failed(RID, "STRUCTURING", "Handoff to STRUCTURING failed: structuring service is unavailable")
 

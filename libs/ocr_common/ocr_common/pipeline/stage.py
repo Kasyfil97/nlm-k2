@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from ocr_common.errors import InternalError, NotFound, ServiceError
-from ocr_common.npwp import REJECTED_CODE
+from ocr_common.kk import REJECTED_CODE
 from ocr_common.pipeline import metrics
 from ocr_common.pipeline.callbacks import NextStage, StageCallback
 from ocr_common.pipeline.outbox import Outbox, OutboxMessage, OutboxRelay, callback_message, handoff_message

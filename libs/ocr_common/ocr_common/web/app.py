@@ -61,10 +61,10 @@ dependency is unreachable, `504` = it did not answer in time (both are safe to r
 no request_id of its own, the `X-Request-ID` request header is used (and echoed in the response header);
 without it the service generates one.
 
-**Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+**Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by a
 callback to the central orchestrator (see *Webhooks*), and can be read at any time with
-`GET .../jobs/{request_id}`, which the orchestrator NPWP's `GET /v1/extract-ocr/{request_id}` combines
+`GET .../jobs/{request_id}`, which the orchestrator's `GET /v1/extract-ocr/{request_id}` combines
 over the three stages. Submitting the same request_id again is idempotent:
 `202` with `duplicate: true`, the work is not repeated, unless the earlier attempt `FAILED` or has been
 `PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default: the
@@ -92,7 +92,7 @@ def create_app(
 ) -> FastAPI:
     """Build the app of a service with everything every service has in common; see the module docstring.
 
-    `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator NPWP): its
+    `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator): its
     OpenAPI `servers` then start with the release's entry Service, the address the central orchestrator
     uses."""
     configure_logging(fmt=settings.effective_log_format, level=settings.log_level, service=service_name)
@@ -176,7 +176,7 @@ def add_stage_callback_webhook(app: FastAPI, *, body_model: type, sent: str) -> 
             "**Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are "
             "retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A "
             "callback that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the "
-            "orchestrator can reconcile with the orchestrator NPWP's `GET /v1/extract-ocr/{request_id}` and "
+            "orchestrator can reconcile with its own `GET /v1/extract-ocr/{request_id}` and "
             "should time a request out on its own. "
             "With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the result and "
             "retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS` (24 h by "
