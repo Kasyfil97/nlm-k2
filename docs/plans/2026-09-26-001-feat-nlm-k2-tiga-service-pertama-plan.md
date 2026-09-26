@@ -760,7 +760,7 @@ ke OpenAPI; `app/clients/ekstraksi.py` untuk bentuk klien tahap.
 
 ---
 
-- [ ] **Unit 8: Guardrails (agen B, port 8041)**
+- [x] **Unit 8: Guardrails (agen B, port 8041)**
 
 **Goal:** Penilai kualitas dokumen menjawab §5, selalu 200, dengan vonis di `data.passed`.
 
@@ -847,7 +847,7 @@ terpisah bila bobotnya tersedia (R20a — bukan syarat selesai).
 
 ---
 
-- [ ] **Unit 9: Ekstraksi (agen C, port 8042)**
+- [x] **Unit 9: Ekstraksi (agen C, port 8042)**
 
 **Goal:** Tahap OCR menerima job asinkron, menghasilkan `{text, score, poly}`, dan menyerahkannya ke
 structuring lewat outbox.
