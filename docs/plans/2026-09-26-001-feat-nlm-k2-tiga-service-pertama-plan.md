@@ -290,7 +290,7 @@ tempat yang menuliskannya.
 
 ---
 
-- [ ] **Unit 2: Bentuk ulang `ocr_common` untuk KK**
+- [x] **Unit 2a+2b: bentuk, tukar impor, penamaan** — selesai · [ ] **Unit 2c: kebijakan lapis config** — belum
 
 **Goal:** Pustaka bersama membawa bentuk KK, bukan NPWP, dan suite ujinya membuktikannya.
 
@@ -314,8 +314,13 @@ tempat yang menuliskannya.
   `openapi.yaml` yang diregenerasi R24 dan digabung R26. Ia mengiklankan
   `Document image (JPEG/PNG/PDF)` padahal §3.1 menolak PDF, dan menyatakan host `file_url` boleh
   "resolve to a public address when that is empty" — persis semantik yang dibalik R18a
-- Test: `libs/ocr_common/tests/**` (16 berkas, ~2.440 baris — ditulis ulang, bukan disesuaikan;
-  assertion-nya dibangun di atas bentuk NPWP)
+- Test: `libs/ocr_common/tests/**`. **Koreksi estimasi, terukur saat pelaksanaan:** suitenya memang
+  16 berkas / ~2.440 baris, tetapi hanya **lima uji** yang benar-benar menegaskan bentuk NPWP —
+  `test_outcomes`, `test_api_events`, `test_result_callback` ×2, dan `test_gateway_spec` yang
+  sebenarnya cuma butuh artefak Unit 10. Sisanya menguji mesin pipeline yang netral dokumen dan
+  lolos tanpa perubahan logika; yang berubah hanya muatan contohnya. Hasil akhir: 229 lolos,
+  1 di-skip. Perkiraan "tulis ulang seluruh suite" meleset jauh ke arah yang menguntungkan, jadi
+  fase 0 lebih kecil daripada yang ditaksir Key Decisions.
 - Create: `libs/ocr_common/tests/fixtures/` — fixture emas §5.2, §6.1/§7.1, §7.3, §8.3, §3.3.1
 
 **Approach:**
