@@ -1,7 +1,7 @@
 """Stub structuring: the §7.4 validity gate, the variable member list, and the two endpoints.
 
-Written for KK rather than adapted from the NPWP suite, because what matters here has no NPWP
-counterpart: a rejection that is a `DONE` job, and a member list whose length varies.
+Written fresh rather than adapted from the previous pipeline's suite, because what matters here
+has no counterpart there: a rejection that is a `DONE` job, and a member list whose length varies.
 """
 
 from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS

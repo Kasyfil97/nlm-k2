@@ -1,3 +1,9 @@
+# Nama container sengaja TIDAK disetel: `container_name` eksplisit tidak di-namespace oleh
+# COMPOSE_PROJECT_NAME, jadi dua agen yang menjalankan stack bersamaan akan bentrok pada nama, bukan
+# hanya pada port. Tanpa itu compose menamai sendiri `<project>-<service>-1`, dan `COMPOSE_PROJECT_NAME`
+# di `.env` masing-masing agen sudah cukup memisahkannya. Port host juga bisa disetel per agen
+# (`ORCHESTRATOR_HOST_PORT` dan seterusnya); port DI DALAM jaringan compose tetap tetap, karena
+# service saling memanggil lewat nama.
 x-common: &common
   restart: unless-stopped
   extra_hosts:
@@ -11,7 +17,6 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     image: nlm-k2-orchestrator:latest
-    container_name: nlm-k2-orchestrator
     env_file: services/orchestrator/.env
     environment:
       PORT: "8040"
@@ -20,7 +25,7 @@ services:
       STRUCTURING_SERVICE_URL: http://structuring:8043
       SCORING_SERVICE_URL: http://scoring:8044
     ports:
-      - "127.0.0.1:8040:8040"
+      - "127.0.0.1:${ORCHESTRATOR_HOST_PORT:-8040}:8040"
     depends_on:
       - guardrails
       - ekstraksi
@@ -31,12 +36,11 @@ services:
       context: .
       dockerfile: services/guardrails/Dockerfile
     image: nlm-k2-guardrails:latest
-    container_name: nlm-k2-guardrails
     env_file: services/guardrails/.env
     environment:
       PORT: "8041"
     ports:
-      - "127.0.0.1:8041:8041"
+      - "127.0.0.1:${GUARDRAILS_HOST_PORT:-8041}:8041"
 
   structuring:
     <<: *common
@@ -44,13 +48,12 @@ services:
       context: .
       dockerfile: services/structuring/Dockerfile
     image: nlm-k2-structuring:latest
-    container_name: nlm-k2-structuring
     env_file: services/structuring/.env
     environment:
       PORT: "8043"
       SCORING_SERVICE_URL: http://scoring:8044
     ports:
-      - "127.0.0.1:8043:8043"
+      - "127.0.0.1:${STRUCTURING_HOST_PORT:-8043}:8043"
     depends_on:
       - scoring
 
@@ -60,12 +63,11 @@ services:
       context: .
       dockerfile: services/scoring/Dockerfile
     image: nlm-k2-scoring:latest
-    container_name: nlm-k2-scoring
     env_file: services/scoring/.env
     environment:
       PORT: "8044"
     ports:
-      - "127.0.0.1:8044:8044"
+      - "127.0.0.1:${SCORING_HOST_PORT:-8044}:8044"
 
   ekstraksi:
     <<: *common
@@ -73,12 +75,11 @@ services:
       context: .
       dockerfile: services/ekstraksi/Dockerfile
     image: nlm-k2-ekstraksi:latest
-    container_name: nlm-k2-ekstraksi
     env_file: services/ekstraksi/.env
     environment:
       PORT: "8042"
       STRUCTURING_SERVICE_URL: http://structuring:8043
     ports:
-      - "127.0.0.1:8042:8042"
+      - "127.0.0.1:${EKSTRAKSI_HOST_PORT:-8042}:8042"
     depends_on:
       - structuring

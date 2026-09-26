@@ -9,6 +9,14 @@ PORT_scoring := 8044
 dev:
 	$(PY) -m pip install -r requirements-dev.txt
 
+# compose membaca services/<nama>/.env, yang di-gitignore. Tanpa berkas itu `make up` gagal dengan
+# "env file not found" sebelum satu container pun dibangun -- menyalinnya satu per satu adalah
+# footgun pertama yang ditemui siapa pun yang meng-clone repo ini.
+env:
+	@for s in $(SERVICES); do 		[ -f services/$$s/.env ] || { cp services/$$s/.env.example services/$$s/.env; echo "dibuat services/$$s/.env"; }; 	done
+	@[ -f .env ] || { cp .env.example .env; echo "dibuat .env"; }
+	@echo "Isi API_KEY di tiap services/<nama>/.env sebelum ENVIRONMENT selain local."
+
 test: test-lib $(SERVICES:%=test-%)
 
 # Lock file ber-hash untuk image Docker. Input: requirements.txt (pin langsung) + dependensi
@@ -22,24 +30,54 @@ lock-orchestrator:
 	$(LOCK) services/orchestrator/requirements.txt libs/ocr_common/pyproject.toml -o services/orchestrator/requirements.lock
 lock-guardrails:
 	$(LOCK) services/guardrails/requirements.txt libs/ocr_common/pyproject.toml --extra-index-url https://download.pytorch.org/whl/cpu --emit-index-url -o services/guardrails/requirements.lock
-lock-ekstraksi lock-structuring lock-scoring: lock-%:
+# Ekstraksi dipisah dari aturan pola di bawahnya: backend OCR-nya memuat torch, dan indeks CPU
+# PyTorch harus sudah ada di sini SEBELUM gerbang R6 membekukan Makefile -- kalau tidak, agen C
+# tidak bisa meregenerasi locknya tanpa membuka beku lebih dulu.
+lock-ekstraksi:
+	$(LOCK) services/ekstraksi/requirements.txt libs/ocr_common/pyproject.toml --extra db \
+		--extra-index-url https://download.pytorch.org/whl/cpu --emit-index-url \
+		-o services/ekstraksi/requirements.lock
+lock-structuring lock-scoring: lock-%:
 	$(LOCK) services/$*/requirements.txt libs/ocr_common/pyproject.toml --extra db -o services/$*/requirements.lock
 lock-db:
 	$(LOCK) db/requirements.txt libs/ocr_common/pyproject.toml -o db/requirements.lock
-# Gagal kalau ada lock yang ketinggalan dari requirements.txt / pyproject ocr_common (lock-nya ikut diperbarui).
-lock-check: lock
+# Gagal kalau ada lock yang ketinggalan dari requirements.txt / pyproject ocr_common.
+#
+# Dua hal yang tidak jelas dari bentuk aslinya:
+#
+#   `lock-check` meregenerasi KELIMA lock dan memeriksa semuanya, jadi definisi selesai satu agen
+#   menyentuh berkas milik agen lain -- dan resolusi `uv pip compile` bergantung waktu, sehingga dua
+#   agen bisa menghasilkan pin transitif berbeda untuk service yang bukan milik keduanya. Pakai
+#   `lock-check-<service>` di gerbang R24; `lock-check` penuh milik integrator di fase 0 dan fase 2.
+#
+#   `test -z "$(git status ...)"` LOLOS di luar repo git: git menulis fatal ke stderr dan stdout
+#   kosong, jadi gerbangnya hijau tanpa memeriksa apa pun. Karena itu keberadaan repo diperiksa dulu.
+_require_git:
+	@git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+		|| { echo "bukan repo git: lock-check akan lolos tanpa memeriksa apa pun. Jalankan 'git init'"; exit 1; }
+lock-check: _require_git lock
 	@test -z "$$(git status --porcelain -- services/*/requirements.lock db/requirements.lock)" \
-		|| { git status --short -- services/*/requirements.lock db/requirements.lock; echo "requirements.lock berubah atau belum di-commit; commit hasil 'make lock' di atas"; exit 1; }
+		|| { git status --short -- services/*/requirements.lock db/requirements.lock; \
+		echo "requirements.lock berubah atau belum di-commit; commit hasil 'make lock' di atas"; exit 1; }
+lock-check-%: _require_git lock-%
+	@test -z "$$(git status --porcelain -- services/$*/requirements.lock)" \
+		|| { git status --short -- services/$*/requirements.lock; \
+		echo "services/$*/requirements.lock berubah; commit hasil 'make lock-$*' di atas"; exit 1; }
 # Gerbang R6: tidak ada sisa istilah pipeline lama di lingkup yang diperiksa. Lingkupnya
 # penting -- lihat scripts/check_no_legacy_terms.py. `make check-legacy SCOPE=orchestrator`
 # untuk satu service (gerbang R24). Namanya sengaja tidak memuat istilah yang dicarinya.
 SCOPE ?= foundation
 check-legacy:
 	$(PY) scripts/check_no_legacy_terms.py $(SCOPE)
+# Bawaannya seluruh repo. Dengan worktree per agen itu sudah cukup terisolasi -- pohon satu agen
+# tidak memuat pekerjaan agen lain yang belum di-commit. `LINT_PATH` ada untuk memperpendek
+# putaran saat mengerjakan satu service, bukan sebagai pengganti pemeriksaan penuh.
+LINT_PATH ?= .
 lint:
-	$(PY) -m ruff check .
+	$(PY) -m ruff check $(LINT_PATH)
+	$(PY) -m ruff format --check $(LINT_PATH)
 format:
-	$(PY) -m ruff format . && $(PY) -m ruff check --fix .
+	$(PY) -m ruff format $(LINT_PATH) && $(PY) -m ruff check --fix $(LINT_PATH)
 typecheck: typecheck-lib $(SERVICES:%=typecheck-%)
 openapi: $(SERVICES:%=openapi-%) openapi-gateway
 
@@ -91,4 +129,4 @@ logs-%:
 smoke:
 	$(PY) scripts/smoke_e2e.py
 
-.PHONY: dev test check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke
+.PHONY: dev env test _require_git check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke
