@@ -64,15 +64,23 @@ class MockOcrEngine:
 
     def read(self, filename: str, content: bytes, content_type: str | None = None) -> OcrEngineResult:
         name = filename or ""
-        if ERROR_TRIGGER in name.lower():
+        levers = _LEVER.findall(name)
+        # The substring triggers are matched against the name with the `MOCK:` levers REMOVED.
+        # A lever's key may legitimately contain a trigger word, and the structuring mock has one
+        # that does: `kk-MOCK:blank_kk=1.jpg` contains `blank`, so before this the file meant to
+        # exercise §7.4 rule 2 (KK number missing) returned no text at all and hit rule 1 instead --
+        # leaving rule 2 unreachable from the orchestrator's front door, and silently so, because
+        # both rules answer 400. Found by the Unit 10 smoke test on its first real run.
+        plain = _LEVER.sub("", name).lower()
+        if ERROR_TRIGGER in plain:
             raise InternalError("Internal server error while processing OCR")
-        if BLANK_TRIGGER in name.lower():
+        if BLANK_TRIGGER in plain:
             # A complete, valid result that happens to have nothing in it. Both aggregates become
             # null in `ocr_aggregates`, and the rejection happens one stage later.
             return {"texts": [], "model": None}
 
         seed = int(hashlib.sha256(content).hexdigest()[:8], 16)
-        lines = [*_LEVER.findall(name), *_card_lines(seed)]
+        lines = [*levers, *_card_lines(seed)]
         return {"texts": [_box(index, text, seed) for index, text in enumerate(lines)], "model": "mock-kk-v1"}
 
 

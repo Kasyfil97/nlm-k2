@@ -236,3 +236,23 @@ def test_kk_ocr_says_which_file_is_missing_rather_than_failing_deep_in_torch():
     )
     with pytest.raises(InternalError, match="nonexistent"):
         build_predictor(config)
+
+
+def test_a_lever_key_that_contains_a_trigger_word_does_not_fire_it():
+    """`kk-MOCK:blank_kk=1.jpg` carries the structuring mock's lever for "the KK number is
+    missing", and that key contains `blank`. Before the triggers were matched against the name
+    with the levers removed, this file returned no text at all — so §7.4 rule 2 was unreachable
+    from the orchestrator's front door, and unreachable *silently*, because rule 1 answers 400 too.
+
+    The Unit 10 smoke test found it on its first real run against compose. This is the regression
+    test, and the collision it guards is between the two MOCKS, which is a dimension the existing
+    collision test (against the guardrails words) does not cover."""
+    result = MockOcrEngine().read(f"kk-MOCK:{BLANK_TRIGGER}_kk=1.jpg", b"bytes")
+    assert result["texts"], "the lever key swallowed the document"
+    assert any(f"MOCK:{BLANK_TRIGGER}_kk=1" in (box["text"] or "") for box in result["texts"]), (
+        "the lever must still reach structuring, which is the stage that reads it"
+    )
+
+
+def test_a_trigger_outside_a_lever_still_fires():
+    assert MockOcrEngine().read(f"kk-{BLANK_TRIGGER}.jpg", b"bytes")["texts"] == []

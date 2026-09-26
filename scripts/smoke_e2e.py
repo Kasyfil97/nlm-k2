@@ -127,6 +127,18 @@ def _image() -> bytes:
     return buffer.getvalue()
 
 
+def _print_contract_data(data: dict[str, Any]) -> None:
+    """Sembilan field §3.3.1. `anggota_keluarga` adalah LIST, bukan objek `{value, confidence}` --
+    memperlakukannya seperti dua field dokumen di atasnya adalah cara membaca bentuk dokumen lama ke
+    dalam bentuk KK, dan itulah persis yang dilakukan versi pertama skrip ini sampai ia dijalankan."""
+    for name in ("no_kk", "nama_kepala_keluarga"):
+        field = data.get(name) or {}
+        print(f"    {name:<22} {field.get('value')!r:<34} confidence={field.get('confidence')}")
+    for index, row in enumerate(data.get("anggota_keluarga") or []):
+        nama, nik = row["nama_lengkap"], row["nik"]
+        print(f"    [{index}] {nama['value']!r:<22} nik={nik['value']} conf={nik['confidence']}")
+
+
 def _rid() -> str:
     """Satu request_id, dicatat supaya pembersihan tahu baris mana miliknya."""
     request_id = f"REQ_{uuid.uuid4()}"
@@ -182,8 +194,7 @@ def async_pipeline(client: httpx.Client) -> bool:
     finished_in_time = submitted.status_code == 200 and body.get("job_status") == "completed"
     if finished_in_time:
         print("  selesai dalam waktu tunggu; data di respons 200:")
-        for name, field in body["data"].items():
-            print(f"    {name:<12} {field['value']!r:<35} confidence={field['confidence']}")
+        _print_contract_data(body["data"])
     else:
         print("  belum selesai saat waktu tunggu habis (202); lanjut polling")
 
@@ -423,7 +434,10 @@ def wait_timeout(client: httpx.Client) -> bool:
     menempuh jalur 202 mendapat sesuatu yang tidak pernah didapat pemanggil jalur langsung."""
     print("== waktu tunggu habis -> 202 ==")
     request_id = _rid()
-    delay = int(os.environ.get("SMOKE_DELAY_SECONDS") or 20)
+    # Harus DI ATAS PIPELINE_WAIT_SECONDS, yang bawaannya 30 (kontrak §13). Nilai 20 di sini pernah
+    # membuat jalur ini diam-diam menguji jalur 200: pipeline selesai dalam anggaran, jadi yang
+    # diperiksa bukan 202 melainkan pipeline yang lambat sedikit.
+    delay = int(os.environ.get("SMOKE_DELAY_SECONDS") or 40)
     started = time.monotonic()
     response = _submit(client, request_id, f"kk-delay{delay}s.jpg", _image())
     body = response.json()
@@ -548,8 +562,14 @@ def outcome_table(client: httpx.Client) -> bool:
             f"{row['downstream_stage'] or '-':<12} {row['error_code'] or ''}"
         )
     print(f"  baris: {len(rows)} dari {len(minted)} request; tanpa baris: {len(missing)}")
-    # Penolakan guardrails sengaja TIDAK menulis baris (§2.6): pipeline tidak pernah dimulai.
-    return all(row["downstream_status"] in {"completed", "failed", "processing"} for row in rows)
+    states = {row["downstream_status"] for row in rows}
+    known = states <= {"completed", "failed", "processing"}
+    # Tepat SATU request tidak boleh punya baris: yang ditolak guardrails. §2.6 -- pipeline tidak
+    # pernah dimulai, jadi tidak ada tahap yang menulis. Diperiksa sebagai angka, bukan sekadar
+    # dicetak: tanpa ini, tahap yang berhenti menulis barisnya sama sekali akan lolos di sini.
+    only_guardrails = len(missing) == 1
+    print(f"  keadaan: {sorted(states)}; tepat satu tanpa baris (penolakan guardrails): {only_guardrails}")
+    return known and only_guardrails
 
 
 def cleanup() -> None:
@@ -565,14 +585,30 @@ def cleanup() -> None:
 
     with psycopg.connect(DATABASE_URL) as connection, connection.cursor() as cursor:
         cursor.execute(f"DELETE FROM {OUTCOME_TABLE} WHERE request_id = ANY(%s)", (minted,))
-        removed = cursor.rowcount
-        for table in ("ocr_results", "structuring_results", "scoring_results", "pipeline_outbox"):
+        outcome_rows = cursor.rowcount
+        # Urutannya wajib: `*_results.request_id` punya foreign key ke `*_jobs`, jadi hasil dulu,
+        # baru jobnya. `pipeline_outbox` berdiri sendiri. Baris job ikut dihapus -- versi pertama
+        # hanya menghapus hasilnya, dan meninggalkan 21/18/9 baris job setelah satu kali jalan.
+        stage_rows = 0
+        for table in (
+            "ocr_results",
+            "structuring_results",
+            "scoring_results",
+            "ocr_jobs",
+            "structuring_jobs",
+            "scoring_jobs",
+            "pipeline_outbox",
+        ):
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))
+                stage_rows += cursor.rowcount
             except psycopg.errors.UndefinedTable:
                 connection.rollback()
         connection.commit()
-    print(f"bersih-bersih: {removed} baris tabel outcome dihapus untuk {len(minted)} request")
+    print(
+        f"bersih-bersih: {outcome_rows} baris tabel outcome dan {stage_rows} baris tahap dihapus "
+        f"untuk {len(minted)} request"
+    )
 
 
 def main() -> int:

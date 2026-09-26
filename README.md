@@ -60,10 +60,23 @@ Dua variabel opsional:
 | `SMOKE_DATABASE_URL` | jalur tabel outcome dan pembersihan barisnya. Tanpa ini keduanya **dilewati**, bukan lulus |
 | `SMOKE_DELAY_SECONDS` | lama tunda jalur 202; harus di atas `PIPELINE_WAIT_SECONDS` (bawaan 30) |
 
-Jalur dead letter tidak bisa memicu keadaannya sendiri: ia butuh stack yang dijalankan dengan
-`PIPELINE_OUTBOX_MAX_AGE_SECONDS` kecil dan tahap penerima dimatikan. R8 melarang menambahkan hook
-baru ke `ocr_common` untuk itu, jadi jalurnya memeriksa keadaan yang ada dan melewati diri sendiri
-kalau tidak ada.
+Jalur dead letter tidak bisa memicu keadaannya sendiri -- R8 melarang menambahkan hook baru ke
+`ocr_common`, tempat outbox tinggal -- jadi ia memeriksa keadaan yang ada dan **melewati** diri
+sendiri kalau tidak ada. Resepnya, yang sudah dijalankan dan terbukti:
+
+```bash
+printf 'PIPELINE_OUTBOX_MAX_AGE_SECONDS=2
+PIPELINE_OUTBOX_INTERVAL_SECONDS=1
+' >> services/ekstraksi/.env
+docker compose -f docker-compose.yml -f docker-compose.db.yml up -d --force-recreate ekstraksi
+docker stop nlm-k2-structuring-1          # penerima handoff dimatikan
+# kirim satu job ke POST /v1/ekstraksi/jobs, tunggu ~15 dtk
+```
+
+Baris outcome-nya jadi `failed` / `STRUCTURING` / `STRUCTURING_FAILED`, dan `GET /v1/ekstraksi/outbox`
+melaporkan `dead_letters: 1`. Setelah structuring dinyalakan lagi,
+`POST /v1/ekstraksi/outbox/release` mengirimkannya kembali: structuring dan scoring jadi `DONE` dan
+baris outcome-nya maju ke `completed` / `SCORING`. Jangan lupa mengembalikan kedua kunci env itu.
 
 ## Database
 

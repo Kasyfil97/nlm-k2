@@ -913,7 +913,7 @@ structuring lewat outbox.
 
 ### Fase 2 — integrator, serial
 
-- [ ] **Unit 10: Integrasi ujung ke ujung**
+- [x] **Unit 10: Integrasi ujung ke ujung**
 
 **Goal:** Pipeline lima service terbukti bekerja pada jalur yang dijanjikan kontrak.
 
