@@ -9,7 +9,7 @@ way out; the other seven keep their names, which is precisely what makes the mix
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from ocr_common.types import (
     ContractData,
@@ -129,7 +129,7 @@ def contract_fields(
     data["anggota_keluarga"] = [
         _member(member, scores, threshold) for member, scores in zip(members, scored_members, strict=True)
     ]
-    return data  # type: ignore[return-value]
+    return cast(ContractData, data)
 
 
 def _member(member: Mapping[str, Any], scores: Mapping[str, Any], threshold: float) -> ContractMember:

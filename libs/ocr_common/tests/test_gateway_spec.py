@@ -38,10 +38,10 @@ def _stale_specs() -> list[str]:
 def test_gateway_spec_is_up_to_date():
     builder = _builder()
     if stale := _stale_specs():
-        pytest.skip(f"spec belum dikonversi ke KK: {', '.join(stale)} (Unit 7-9); gateway dirakit di Unit 10")
+        pytest.skip(reason=f"spec belum dikonversi ke KK: {', '.join(stale)} (Unit 7-9); gateway dirakit di Unit 10")  # ty: ignore[unknown-argument]
     if not builder.TARGET.exists():
         pytest.skip(
-            "api/gateway.openapi.yaml belum ada: ia digenerate `make openapi-gateway` dari kelima "
+            reason="api/gateway.openapi.yaml belum ada: ia digenerate `make openapi-gateway` dari kelima "  # ty: ignore[unknown-argument]
             "openapi.yaml, yang baru lengkap setelah ketiga agen selesai (Unit 10 rencana batch 1)."
         )
     assert yaml.safe_load(builder.TARGET.read_text(encoding="utf-8")) == builder.build()
@@ -49,7 +49,7 @@ def test_gateway_spec_is_up_to_date():
 
 def test_gateway_spec_has_no_dangling_refs_and_documents_the_callback():
     if stale := _stale_specs():
-        pytest.skip(f"spec belum dikonversi ke KK: {', '.join(stale)} (Unit 7-9)")
+        pytest.skip(reason=f"spec belum dikonversi ke KK: {', '.join(stale)} (Unit 7-9)")  # ty: ignore[unknown-argument]
     built = _builder().build()
     text = yaml.safe_dump(built)
     names = set(_builder().REF.findall(text))

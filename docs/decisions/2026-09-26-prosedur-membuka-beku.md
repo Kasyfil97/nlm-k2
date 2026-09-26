@@ -81,6 +81,15 @@ melewatkan sesuatu, dan itu dicatat, bukan sekadar dilayani. Dua kandidat yang s
 | `freeze-1` | Gerbang R6, akhir fase 0 | — |
 | `freeze-2` | `openapi.main` menulis LF eksplisit; `TEST_API_KEY` ganda dibuang; contoh NIK di `OcrBoxPayload` pakai provinsi 99 | Butir pertama memblokir ketiga agen: setiap `make openapi-<service>` di Windows menulis CRLF ke pohon kerja, dan pohon kerja itu build context Docker |
 
+| `freeze-3` | `require_pii_audit()` pindah ke kelas yang punya fieldnya; tiga `# type: ignore` mypy diganti `cast`; `sorted(route.methods or ())`; penekanan `ty` di tiga pabrik settings uji | Tidak memblokir siapa pun: digerbangi setelah kedua agen fase 1 selesai, justru supaya tidak ada yang bekerja di atas revisi lama |
+
 Ditemukan saat Unit 7, bukan saat gerbang R6 — karena R6 memeriksa isi berkas lewat git, yang sudah
 menormalkannya. Pemeriksaan yang ditambahkan: tidak ada berkas terlacak yang memuat CRLF di pohon
 kerja. Itu masuk daftar gerbang, bukan hanya diperbaiki sekali.
+
+Gerbang R6 sebagaimana dijalankan di fase 0 **tidak memuat `make typecheck`**. Itu ketahuan di
+`freeze-3`: `ty` melaporkan 161 diagnostik di pustaka, tiga di antaranya di kode yang dikirim dan
+satu di antaranya cacat sungguhan (`require_pii_audit()` membaca field yang tidak ada di kelasnya,
+jadi service pertama di luar scoring yang memanggilnya akan dapat `AttributeError`, bukan
+`ValueError` yang dijanjikan). Dua hal masuk daftar gerbang karenanya: `make typecheck` penuh, dan
+kesadaran bahwa `# type: ignore` adalah sintaks mypy yang `ty` tidak baca sama sekali.

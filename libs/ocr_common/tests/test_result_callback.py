@@ -1,4 +1,5 @@
 import json
+from typing import cast
 
 import httpx
 import pytest
@@ -15,6 +16,7 @@ from ocr_common.pipeline.callbacks import (
 )
 from ocr_common.pipeline.factory import build_callback
 from ocr_common.testing import TEST_API_KEY
+from ocr_common.types import ScoringResult, StructuringResult
 
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 GUARDRAILS = {"passed": True, "reason": None, "document": {"verdict": "accepted", "confidence": 0.98}}
@@ -61,7 +63,7 @@ def _final(nomor_kk="3273012345678901", kk_confidence=0.98291, members=None, mem
         "fields": {"nomor_kk": kk_confidence, "nama_kepala_keluarga": 0.9512},
         "anggota_keluarga": [_member_scores()] if member_scores is None else member_scores,
     }
-    return dict(final_result("kk", GUARDRAILS, structuring, scoring))
+    return dict(final_result("kk", GUARDRAILS, cast(StructuringResult, structuring), cast(ScoringResult, scoring)))
 
 
 def test_scoring_done_becomes_the_completed_result_callback():

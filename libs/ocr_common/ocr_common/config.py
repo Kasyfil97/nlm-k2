@@ -113,22 +113,6 @@ class BaseServiceSettings(BaseSettings):
             "one would leave the download path dead (set ENVIRONMENT=local for local development)"
         )
 
-    def require_pii_audit(self) -> None:
-        """Raises outside local while the §8.5 audit is not implemented.
-
-        The check is on `PII_AUDIT_IMPLEMENTED`, not on whether `PII_ENCRYPTION_KEY` is set: any
-        Fernet-shaped string would satisfy the latter while nothing is encrypted and no audit row is
-        written, which is exactly the state the guard exists to block. Only the batch that actually
-        writes the encrypted, blind-indexed audit may flip this flag.
-        """
-        if self.is_local or self.pii_audit_implemented:
-            return
-        raise ValueError(
-            "PII_AUDIT_IMPLEMENTED=false: the encrypted audit with a blind index over nomor_kk is not "
-            f"implemented yet, so this service refuses to start with ENVIRONMENT={self.environment}. "
-            "It handles NIK and names; set ENVIRONMENT=local for development"
-        )
-
     def require_outside_local(self, **values: object) -> None:
         """Raises unless every given value is set, when not local; used by the subclasses' validators."""
         if self.is_local:
@@ -239,7 +223,7 @@ class PipelineSettings(BaseServiceSettings):
     pipeline_outbox_stale_after_seconds: float = Field(300.0, gt=0)
     pipeline_handoff_by_reference: bool = False
     # §8.5: flipped only by the batch that actually writes the encrypted, blind-indexed audit.
-    # `require_pii_audit()` explains why this exists rather than a check on PII_ENCRYPTION_KEY.
+    # `require_pii_audit()` below explains why this exists rather than a check on PII_ENCRYPTION_KEY.
     pii_audit_implemented: bool = False
     # Detak: sementara job berjalan ia memperbarui `updated_at`, supaya job yang sah-berjalan-lama
     # tidak terlihat basi bagi reaper. `0` = mati, dan itulah bawaannya untuk batch ini: mekanismenya
@@ -303,3 +287,22 @@ class PipelineSettings(BaseServiceSettings):
                 "result from the shared database instead of the hand-off body"
             )
         return self
+
+    # Hidup di sini, bukan di BaseServiceSettings: ia membaca `pii_audit_implemented`, dan sebuah
+    # guard di kelas yang tidak punya fieldnya akan melempar AttributeError alih-alih ValueError
+    # yang dijanjikannya, pada service pertama di luar scoring yang memanggilnya.
+    def require_pii_audit(self) -> None:
+        """Raises outside local while the §8.5 audit is not implemented.
+
+        The check is on `PII_AUDIT_IMPLEMENTED`, not on whether `PII_ENCRYPTION_KEY` is set: any
+        Fernet-shaped string would satisfy the latter while nothing is encrypted and no audit row is
+        written, which is exactly the state the guard exists to block. Only the batch that actually
+        writes the encrypted, blind-indexed audit may flip this flag.
+        """
+        if self.is_local or self.pii_audit_implemented:
+            return
+        raise ValueError(
+            "PII_AUDIT_IMPLEMENTED=false: the encrypted audit with a blind index over nomor_kk is not "
+            f"implemented yet, so this service refuses to start with ENVIRONMENT={self.environment}. "
+            "It handles NIK and names; set ENVIRONMENT=local for development"
+        )

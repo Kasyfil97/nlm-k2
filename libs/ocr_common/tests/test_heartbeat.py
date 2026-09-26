@@ -17,6 +17,15 @@ from ocr_common.testing import RecordingCallback
 RID = "REQ_heartbeat"
 
 
+async def job(repo) -> dict:
+    """Baris job-nya, dipastikan ada. `get` mengembalikan Optional, dan setiap pemakaian di berkas ini
+    terjadi setelah job diklaim -- jadi None di sini adalah kegagalan uji, bukan cabang yang perlu
+    ditangani setiap kali."""
+    row = await repo.get(RID)
+    assert row is not None, "job hilang"
+    return row
+
+
 def pipeline(repo, **overrides) -> StagePipeline:
     return StagePipeline(stage=STAGE_OCR, repository=repo, callback=RecordingCallback(), **overrides)
 
@@ -26,7 +35,12 @@ def pipeline(repo, **overrides) -> StagePipeline:
 
 def settings(**overrides) -> PipelineSettings:
     base = {"api_key": "a-real-key", "environment": "local", "_env_file": None}
-    return PipelineSettings(**{**base, **overrides})
+    # Soal penekanan di baris terakhir: sebaran **dict ke pydantic-settings membuat ty mencocokkan
+    # dict itu terhadap SETIAP parameter kata-kunci privatnya (_env_file, _cli_*, _secrets_dir,
+    # ~40 buah) dan mengeluh sekali per parameter -- satu baris ini sendiri menghasilkan ~50
+    # diagnostik. Itu batas pemeriksa tipe terhadap sebaran, bukan cacat: setiap kunci di sini
+    # harfiah dan diuji nilainya oleh uji di bawahnya.
+    return PipelineSettings(**{**base, **overrides})  # ty: ignore[invalid-argument-type]
 
 
 def test_the_heartbeat_is_off_by_default():
@@ -60,9 +74,9 @@ async def test_a_running_job_keeps_its_lease_fresh():
     stage = pipeline(repo, heartbeat_seconds=0.01, max_runtime_seconds=5)
 
     async def work():
-        seen.append((await repo.get(RID))["updated_at"])
+        seen.append((await job(repo))["updated_at"])
         await asyncio.sleep(0.08)  # beberapa kali interval detak
-        seen.append((await repo.get(RID))["updated_at"])
+        seen.append((await job(repo))["updated_at"])
         return {"texts": []}
 
     await stage.submit(RID, work)
@@ -82,10 +96,10 @@ async def test_the_beat_stops_with_the_job_and_cannot_keep_a_dead_lease_warm():
     await stage.submit(RID, _slow_done)
     await stage.runner.drain(5)
 
-    settled = (await repo.get(RID))["updated_at"]
+    settled = (await job(repo))["updated_at"]
     assert not [t for t in asyncio.all_tasks() if t.get_name().startswith("heartbeat:")]
     await asyncio.sleep(0.05)
-    assert (await repo.get(RID))["updated_at"] == settled, "tidak ada detak setelah job selesai"
+    assert (await job(repo))["updated_at"] == settled, "tidak ada detak setelah job selesai"
 
 
 async def test_the_beat_stops_when_the_job_fails_too():
@@ -98,7 +112,7 @@ async def test_the_beat_stops_when_the_job_fails_too():
     await stage.submit(RID, boom)
     await stage.runner.drain(5)
 
-    assert (await repo.get(RID))["status"] == STATUS_FAILED
+    assert (await job(repo))["status"] == STATUS_FAILED
     assert not [t for t in asyncio.all_tasks() if t.get_name().startswith("heartbeat:")]
 
 
@@ -108,11 +122,11 @@ async def test_touch_never_resurrects_a_settled_job():
     repo = InMemoryJobRepository(lease_seconds=60)
     await repo.claim(RID)  # langsung ke repository, bukan lewat submit(), jadi jobnya dibuat di sini
     await repo.complete(RID, {"texts": []})
-    settled = (await repo.get(RID))["updated_at"]
+    settled = (await job(repo))["updated_at"]
 
     await repo.touch(RID)
 
-    assert (await repo.get(RID))["updated_at"] == settled
+    assert (await job(repo))["updated_at"] == settled
 
 
 async def test_touch_on_an_unknown_request_is_harmless():
@@ -133,7 +147,7 @@ async def test_a_job_past_the_ceiling_still_reaches_a_terminal_state():
     await stage.submit(RID, forever)
     await stage.runner.drain(5)
 
-    record = await repo.get(RID)
+    record = await job(repo)
     assert record["status"] == STATUS_FAILED
     assert "PIPELINE_JOB_MAX_RUNTIME_SECONDS" in record["error_message"]
     assert not [t for t in asyncio.all_tasks() if t.get_name().startswith("heartbeat:")]
@@ -146,7 +160,7 @@ async def test_without_a_ceiling_the_work_is_not_wrapped():
     await stage.submit(RID, lambda: _done())
     await stage.runner.drain(5)
 
-    assert (await repo.get(RID))["result"] == {"texts": []}
+    assert (await job(repo))["result"] == {"texts": []}
 
 
 async def _done():

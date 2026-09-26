@@ -19,7 +19,12 @@ JPEG = b"\xff\xd8fake-jpeg-bytes"
 
 def settings(**overrides) -> BaseServiceSettings:
     base = {"api_key": "a-real-looking-key", "environment": "local", "_env_file": None}
-    return BaseServiceSettings(**{**base, **overrides})
+    # Soal penekanan di baris terakhir: sebaran **dict ke pydantic-settings membuat ty mencocokkan
+    # dict itu terhadap SETIAP parameter kata-kunci privatnya (_env_file, _cli_*, _secrets_dir,
+    # ~40 buah) dan mengeluh sekali per parameter -- satu baris ini sendiri menghasilkan ~50
+    # diagnostik. Itu batas pemeriksa tipe terhadap sebaran, bukan cacat: setiap kunci di sini
+    # harfiah dan diuji nilainya oleh uji di bawahnya.
+    return BaseServiceSettings(**{**base, **overrides})  # ty: ignore[invalid-argument-type]
 
 
 def deployed(**overrides) -> BaseServiceSettings:
@@ -177,7 +182,12 @@ def pipeline(**overrides) -> PipelineSettings:
         "orchestration_outcome_table": "orchestration_extract_ocr",
         "_env_file": None,
     }
-    return PipelineSettings(**{**base, **overrides})
+    # Soal penekanan di baris terakhir: sebaran **dict ke pydantic-settings membuat ty mencocokkan
+    # dict itu terhadap SETIAP parameter kata-kunci privatnya (_env_file, _cli_*, _secrets_dir,
+    # ~40 buah) dan mengeluh sekali per parameter -- satu baris ini sendiri menghasilkan ~50
+    # diagnostik. Itu batas pemeriksa tipe terhadap sebaran, bukan cacat: setiap kunci di sini
+    # harfiah dan diuji nilainya oleh uji di bawahnya.
+    return PipelineSettings(**{**base, **overrides})  # ty: ignore[invalid-argument-type]
 
 
 def test_pii_audit_guard_blocks_deployment_while_the_audit_is_unimplemented():
