@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 9, 26 September 2026.
+Status: draf 10, 26 September 2026.
 
 ---
 
@@ -254,8 +254,8 @@ bukan lewat database, dan karena itu tidak memerlukan `DATABASE_URL`.
 |---|---|---|---|
 | `request_id` | string | ya | dibuat pemanggil, maks. 100 karakter |
 | `document_type` | string | tidak | default `kk`; selain itu 400 `UNSUPPORTED_DOCUMENT_TYPE` |
-| `file` | file | salah satu | JPEG atau PNG, maks. `MAX_UPLOAD_BYTES` (default 5 MB). **PDF ditolak 400** |
-| `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti |
+| `file` | file | salah satu | JPEG atau PNG, maks. `MAX_UPLOAD_BYTES` (default 5 MB). **PDF ditolak 400** kecuali `PDF_ENABLED` (§13.1), yang mati secara bawaan |
+| `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
 | `skip_guardrails` | boolean | tidak | default `false`. `true` melewati model guardrails **saja**; cek file dan aturan structuring tetap berlaku. 403 kalau `GUARDRAILS_SKIP_ALLOWED` mati |
 
@@ -539,8 +539,32 @@ Saat ditolak:
 }
 ```
 
+Saat gambarnya tidak bisa dinilai sama sekali — tidak bisa didekode, atau dimensinya di luar rentang
+yang dilatihkan ke checkpoint:
+
+```json
+{
+  "data": {
+    "passed": false,
+    "reason": "Gambar tidak bisa dibaca, mohon unggah ulang foto Kartu Keluarga",
+    "document": {
+      "verdict": "unassessable",
+      "confidence": null,
+      "probability_bad": null,
+      "threshold_used": 0.5
+    }
+  }
+}
+```
+
 - `probability_bad` adalah keluaran mentah model XGBoost `K2Quality` (`is_bad` = `probability >= threshold`).
 - `confidence` = keyakinan pada vonis: `probability_bad` kalau `reject`, `1 - probability_bad` kalau `accepted`.
+- **`unassessable` adalah vonis, bukan galat.** §5.2 mewajibkan selalu `200`, dan inti model melempar
+  di lusinan tempat pada jalur ini; memetakannya ke `500` akan melanggar aturan itu. Ia dipisahkan dari
+  `reject` karena "kami menilai ini buruk" dan "kami tidak bisa menilainya" butuh alarm dan perbaikan
+  yang berbeda. `passed` tetap `false`: pipeline tidak boleh jalan atas gambar yang belum dinilai.
+- `confidence` dan `probability_bad` **null** pada `unassessable`. Tahap scoring harus menanganinya,
+  bukan mengasumsikan ada angka — meski pada praktiknya dokumen itu tidak pernah sampai ke sana.
 - `reason` berbahasa Indonesia dan dipakai langsung sebagai `message` pada respons 400 orchestrator.
 - **Blok `data` ini diteruskan apa adanya** ke `/v1/ekstraksi/jobs` sebagai field form `guardrails`, lalu
   mengalir ke structuring dan scoring tanpa diubah. `probability_bad` menjadi fitur `guardrail_probability`
@@ -986,9 +1010,9 @@ supaya penambahan field di hulu tidak memecah hilir.
 |---|---|---|
 | `passed` | bool | true: dokumen boleh lanjut ke OCR |
 | `reason` | string \| null | alasan penolakan, bahasa Indonesia; null kalau lolos |
-| `document.verdict` | `accepted` \| `reject` | |
-| `document.confidence` | float 0–1 | keyakinan pada vonis |
-| `document.probability_bad` | float 0–1 | keluaran mentah model; fitur trust model |
+| `document.verdict` | `accepted` \| `reject` \| `unassessable` | `unassessable` = gambar tidak bisa dinilai; tetap `200`, `passed: false` |
+| `document.confidence` | float 0–1 \| null | keyakinan pada vonis; null kalau `unassessable` |
+| `document.probability_bad` | float 0–1 \| null | keluaran mentah model; fitur trust model; null kalau `unassessable` |
 | `document.threshold_used` | float | ambang yang berlaku saat penilaian |
 
 ### `OcrPayload`
@@ -1130,8 +1154,9 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `LOG_FORMAT` | tidak | `json`; `local`: `text` | |
 | `LOG_LEVEL` | tidak | `INFO` | |
 | `MAX_UPLOAD_BYTES` | tidak | `5242880` | 5 MB; lebih besar → 413 |
-| `ALLOWED_CONTENT_TYPES` | tidak | `image/jpeg,image/png` | PDF sengaja tidak termasuk |
-| `FILE_URL_ALLOWED_HOSTS` | produksi: ya | kosong | host yang boleh diunduh; kosong = hanya alamat publik. **Harus diisi di orchestrator dan ekstraksi**, karena keduanya mengunduh |
+| `ALLOWED_CONTENT_TYPES` | tidak | `image/jpeg,image/png` | PDF sengaja tidak termasuk; menambahkannya dengan tangan **tidak** membuka jalur PDF |
+| `PDF_ENABLED` | tidak | `false` | satu-satunya yang memasukkan `application/pdf`, dan ia memasukkannya di intake. Mati: PDF ditolak `400` sebagai tipe tak didukung dan PyMuPDF tidak pernah diimpor. Hidup tanpa PyMuPDF terpasang: service menolak start. Hidup: batas `MAX_DOCUMENT_PAGES` berlaku |
+| `FILE_URL_ALLOWED_HOSTS` | produksi: ya | kosong | host yang boleh diunduh; **kosong = tolak semua**, bukan "hanya alamat publik". **Harus diisi di orchestrator dan ekstraksi**, karena keduanya mengunduh, dan keduanya menolak start tanpa daftar ini di luar `ENVIRONMENT=local` |
 | `GUARDRAILS_SERVICE_URL` | ya | – | mis. `http://nlm-k2-guardrails:8041` |
 | `GUARDRAILS_API_KEY` | tidak | = `API_KEY` | |
 | `GUARDRAILS_TIMEOUT_SECONDS` | tidak | `20` | tanpa retry |
@@ -1203,3 +1228,31 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 8. **Nasib `GET /get_request_id`.** `request_id` kini dibuat Orkestrasi pusat, jadi endpoint itu tidak
    diperlukan. Kalau pemanggil lama belum bisa membuatnya sendiri, endpoint itu bisa dipertahankan sebagai
    pembantu (tanpa mekanisme sekali-pakai) selama masa transisi.
+
+---
+
+## Riwayat revisi
+
+### draf 10 — 26 September 2026
+
+Menyerap empat perilaku yang sudah diputuskan pelaksanaannya tetapi dibantah draf 9. Alasan
+menyerapnya, bukan sekadar mencatatnya sebagai catatan terbuka: R23 mensyaratkan **satu** sumber
+kebenaran kontrak. Dua di antaranya hampir menyebabkan kegagalan yang baru muncul saat integrasi —
+agen yang patuh pada draf 9 akan menulis model respons yang menolak `unassessable`, sementara agen
+lain mengirimkannya.
+
+1. **Vonis ketiga `unassessable`** (§5.2, §10). Gambar yang tidak bisa dinilai adalah vonis, bukan
+   galat, karena §5.2 mewajibkan selalu `200`. `confidence` dan `probability_bad` jadi nullable.
+2. **`FILE_URL_ALLOWED_HOSTS` kosong menolak semua** (§3.1, §13.1), bukan "hanya alamat publik".
+   Gagal tertutup, dan kedua service yang mengunduh menolak start tanpa daftar itu di luar `local`.
+3. **`PDF_ENABLED`** (§3.1, §13.1). Jalur PDF dipertahankan tetapi mati bawaan, dan saklar itu
+   satu-satunya yang memasukkan `application/pdf` — di intake, bukan lebih dalam.
+4. **Contoh nomor.** Contoh di dokumen ini masih memakai `3273...` (Kota Bandung). Kodenya memakai
+   provinsi `99`, yang tidak pernah diberikan Indonesia, karena nomor berbentuk sah dari wilayah nyata
+   bisa jadi milik seseorang (`ocr_common/synthetic_kk.py`). **Contoh di sini belum diganti**: mengubah
+   setiap nomor di satu dokumen panjang saat tiga agen sedang membacanya adalah diff yang salah waktu.
+   Dicatat di sini supaya perbedaannya disengaja, bukan kejutan.
+
+Koreksi kode terhadap kontrak yang ditemukan pada revisi ini, tanpa mengubah kontrak: default
+`PIPELINE_WAIT_SECONDS` di kode adalah 15 (terbawa dari struktur yang disalin) sementara §13
+mendaftarkan 30. Kodenya yang diperbaiki.

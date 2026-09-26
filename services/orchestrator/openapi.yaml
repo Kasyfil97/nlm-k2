@@ -171,7 +171,7 @@ paths:
       summary: Judge a document, run the pipeline, answer with the OCR result or 202
       description: '**The call the central orchestrator makes.** Checks the file, has the guardrails service
         judge it, hands it to the OCR stage when it passes, then waits for OCR -> structuring -> scoring
-        for up to `PIPELINE_WAIT_SECONDS` (15 s by default), counted from when this request arrived. The
+        for up to `PIPELINE_WAIT_SECONDS` (30 s by default), counted from when this request arrived. The
         response follows the central orchestrator''s `extract-ocr` contract ("Finished" meaning finished
         within the wait):
 

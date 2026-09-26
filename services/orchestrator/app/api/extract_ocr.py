@@ -162,7 +162,7 @@ def _parse_params(raw: str | None) -> Any:
     description=(
         "**The call the central orchestrator makes.** Checks the file, has the guardrails service judge it, "
         "hands it to the OCR stage when it passes, then waits for OCR -> structuring -> scoring for up to "
-        "`PIPELINE_WAIT_SECONDS` (15 s by default), counted from when this request arrived. The response follows "
+        "`PIPELINE_WAIT_SECONDS` (30 s by default), counted from when this request arrived. The response follows "
         'the central orchestrator\'s `extract-ocr` contract ("Finished" meaning finished within the wait):\n\n'
         + _CONTRACT_TABLE
         + "`data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven per "

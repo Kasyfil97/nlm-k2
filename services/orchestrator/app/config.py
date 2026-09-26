@@ -32,7 +32,10 @@ class Settings(BaseServiceSettings):
     scoring_timeout_seconds: float = 10.0
     pipeline_retry_attempts: int = 3
     pipeline_retry_delay_seconds: float = 0.5
-    pipeline_wait_seconds: float = Field(15.0, ge=0)
+    # 30, bukan 15: itu yang didaftarkan kontrak §13, dan angka 15 hanya terbawa dari struktur
+    # yang disalin. Anggarannya dihitung sejak request tiba dan tidak pernah di-reset, jadi
+    # pemeriksaan guardrails yang lambat memakan bagian dari angka ini, bukan menambah waktu.
+    pipeline_wait_seconds: float = Field(30.0, ge=0)
     pipeline_poll_interval_seconds: float = Field(0.5, gt=0)
 
     # Rate limit and CORS. Kontrak §12 mendaftarkan keduanya "dipertahankan apa adanya", tetapi struktur

@@ -50,7 +50,7 @@ def test_finished_within_the_wait_is_200_with_the_final_result(client, auth, stu
     assert body["data"] == EXPECTED_DATA
     [(request_id, timeout)] = stub_waiter.calls
     assert request_id == RID
-    assert 10 < timeout <= 15
+    assert 25 < timeout <= 30, "the budget is PIPELINE_WAIT_SECONDS minus the time already spent"
 
 
 def test_still_running_when_the_wait_runs_out_is_202(client, auth, stub_waiter):
@@ -278,13 +278,13 @@ async def test_a_slow_guardrails_check_that_eats_the_budget_answers_202(stub_wai
         name="guardrails service",
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"data": ACCEPTED_REPORT})),
     )
-    settings = get_settings().model_copy(update={"pipeline_wait_seconds": 15})
+    settings = get_settings().model_copy(update={"pipeline_wait_seconds": 30})
     service = ExtractOcrService(
         GuardrailsClient(guardrails), EkstraksiJobClient(remote, attempts=1, delay=0), stub_waiter, settings
     )
 
-    # Arrived 20 s ago: the whole 15 s budget is already gone.
-    outcome = await service.submit(RID, "kk", "kk.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 20)
+    # Arrived 40 s ago: the whole 30 s budget is already gone.
+    outcome = await service.submit(RID, "kk", "kk.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 40)
 
     [(_, timeout)] = stub_waiter.calls
     assert timeout <= 0, "the waiter is still called, and answers PROCESSING without polling"

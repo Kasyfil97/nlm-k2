@@ -64,8 +64,10 @@ def test_skipping_guardrails_is_not_allowed_by_default():
     assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").guardrails_skip_allowed is False
 
 
-def test_pipeline_wait_defaults_to_15_seconds_and_can_be_changed():
-    assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").pipeline_wait_seconds == 15.0
+def test_pipeline_wait_defaults_to_the_30_seconds_the_contract_documents():
+    # Kontrak §13 mendaftarkan 30. Uji ini ada karena nilainya pernah 15 di kode dan 30 di
+    # kontrak selama satu unit penuh tanpa ada yang melihatnya.
+    assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").pipeline_wait_seconds == 30.0
     assert (
         Settings(
             api_key=TEST_API_KEY, _env_file=None, environment="local", pipeline_wait_seconds=8
