@@ -535,6 +535,17 @@ class KKQualityModel:
     name = "kk_quality"
 
     def __init__(self, weights_dir: str, device: str = "cpu", threads: int | None = None, pdf_enabled: bool = False):
+        # Before `_load_runtime()`, deliberately: a weights directory that is not there is a
+        # configuration error, and it should say so in milliseconds rather than after several
+        # seconds of importing torch -- which is also what makes this branch testable anywhere.
+        base = Path(weights_dir)
+        missing = [name for name in REQUIRED_ARTIFACTS if not (base / name).is_file()]
+        if missing:
+            raise RuntimeError(
+                f"Guardrails weights incomplete in {base} (GUARDRAILS_WEIGHTS_DIR): missing {', '.join(missing)}. "
+                f"Fetch all of {', '.join(REQUIRED_ARTIFACTS)}"
+            )
+
         _load_runtime()
         from PIL import Image
 
@@ -543,13 +554,6 @@ class KKQualityModel:
         # per-pixel checks in `_check_declared_dimensions` are what actually bound the input.
         Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
-        base = Path(weights_dir)
-        missing = [name for name in REQUIRED_ARTIFACTS if not (base / name).is_file()]
-        if missing:
-            raise RuntimeError(
-                f"Guardrails weights incomplete in {base} (GUARDRAILS_WEIGHTS_DIR): missing {', '.join(missing)}. "
-                f"Fetch all of {', '.join(REQUIRED_ARTIFACTS)}"
-            )
         self._verify_hashes(base)
 
         if device != "cpu" and not (device.startswith("cuda") and torch.cuda.is_available()):
