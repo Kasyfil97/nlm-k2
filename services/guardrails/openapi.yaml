@@ -42,14 +42,14 @@ info:
     without it the service generates one.
 
 
-    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+    **Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 
     .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
     a
 
     callback to the central orchestrator (see *Webhooks*), and can be read at any time with
 
-    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+    `GET .../jobs/{request_id}`, which the orchestrator''s `GET /v1/extract-ocr/{request_id}` combines
 
     over the three stages. Submitting the same request_id again is idempotent:
 
@@ -309,19 +309,20 @@ components:
         file:
           anyOf:
           - type: string
-            format: binary
+            contentMediaType: application/octet-stream
           - type: string
           - type: 'null'
           title: File
-          description: Document image (JPEG/PNG/PDF). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
         file_url:
           anyOf:
           - type: string
           - type: 'null'
           title: File Url
-          description: URL this service fetches the document image from (e.g. a presigned MinIO GET).
-            Omit when uploading file. The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`,
-            or resolve to a public address when that is empty; redirects are not followed.
+          description: 'URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when
+            uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
+            list denies every URL rather than allowing public ones. https only, redirects are not followed,
+            and a host that resolves to a private or loopback address is refused even when it is listed.'
       type: object
       title: Body_checkDocument
     DocumentResult:

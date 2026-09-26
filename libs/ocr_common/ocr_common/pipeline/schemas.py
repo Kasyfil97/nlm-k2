@@ -89,7 +89,7 @@ class GuardrailsResult(_Forwarded):
 class OcrBoxPayload(_Forwarded):
     """One recognised text line."""
 
-    text: str = Field(..., description="The recognised text", examples=["3273012345678901"])
+    text: str = Field(..., description="The recognised text", examples=["9924187486671285"])
     score: float = Field(..., ge=0, le=1, description="Recognition score of this line", examples=[0.9991])
     poly: list[list[float]] = Field(
         ...,

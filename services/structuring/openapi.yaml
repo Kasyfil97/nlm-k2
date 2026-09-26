@@ -1089,7 +1089,7 @@ components:
           title: Text
           description: The recognised text
           examples:
-          - '3273012345678901'
+          - '9924187486671285'
         score:
           type: number
           maximum: 1.0
