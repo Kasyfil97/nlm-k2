@@ -1,11 +1,27 @@
-"""Normalisation of what the OCR model services return into the block shape of this service."""
+"""Turning what a PP-OCR engine returns into the frozen §7.1 boxes.
+
+Both engines that read a real card produce the same intermediate shape -- one dict with three
+parallel lists, `{"rec_texts": [...], "rec_scores": [...], "rec_polys": [...]}`. The in-process
+torch path returns it directly (K2Extractor `_to_paddle_result`, confirmed by the §7.1 spike), and
+the ML team's model service returns the same three keys per page over HTTP. So the conversion lives
+here once instead of twice, and `{text, score, poly}` is produced in exactly one place.
+
+The conversion is the stage's own job, not something inherited: §7.1 says so, and K2Extractor's
+`transform_ocr_result` converts the same lists into the *old* `[(poly, (text, score))]` shape that
+§12 records as superseded.
+"""
 
 from typing import Any
 
-from ocr_common.types import BoundingBox
+from ocr_common.types import OcrBox
+
+#: §7.1 / `OcrBoxPayload`: four points of two coordinates. Not a count we may relax -- structuring
+#: assigns cells to columns from this geometry, and the detector genuinely returns tilted quads.
+POLY_POINTS = 4
 
 
 def model_name(models: Any) -> str | None:
+    """`detection+recognition` as the engine reports it, or whichever single name it has."""
     if not isinstance(models, dict):
         return None
     detection, recognition = models.get("detection"), models.get("recognition")
@@ -14,20 +30,47 @@ def model_name(models: Any) -> str | None:
     return detection or recognition or models.get("pipeline") or None
 
 
-def confidence(score: Any) -> float:
+def score_of(value: Any) -> float:
+    """A recognition score clamped into [0, 1]. `OcrBoxPayload` bounds it, so a model that reports
+    1.0000000001 (float32 rounding does happen) must not become a 422 at the next stage."""
     try:
-        return round(min(max(float(score), 0.0), 1.0), 4)
+        return round(min(max(float(value), 0.0), 1.0), 4)
     except (TypeError, ValueError):
         return 0.0
 
 
-def bbox(poly: Any) -> BoundingBox | None:
-    """Upright box around a polygon of [x, y] points; None when the polygon is missing or malformed."""
+def poly_of(value: Any) -> list[list[float]] | None:
+    """Four `[x, y]` points as plain floats, or None when the polygon is missing or malformed.
+
+    Floats, not integers: the spike measured `float32` coordinates on every one of 177 boxes, and
+    rounding them to whole pixels would quietly coarsen the geometry structuring reads columns from.
+    `float(point[0])` also unwraps numpy scalars, which is what the torch path hands over.
+    """
     try:
-        xs = [float(point[0]) for point in poly]
-        ys = [float(point[1]) for point in poly]
-    except (TypeError, ValueError, IndexError):
+        points = [[float(point[0]), float(point[1])] for point in value]
+    except (TypeError, ValueError, IndexError, KeyError):
         return None
-    if not xs or not ys:
-        return None
-    return {"x1": round(min(xs)), "y1": round(min(ys)), "x2": round(max(xs)), "y2": round(max(ys))}
+    return points if len(points) == POLY_POINTS else None
+
+
+def boxes_from_rec_lists(texts: Any, scores: Any, polys: Any) -> list[OcrBox]:
+    """`rec_texts` / `rec_scores` / `rec_polys` as one list of §7.1 boxes.
+
+    A box is dropped when its text is empty after stripping, or when its polygon is not four points:
+    the next stage's schema requires exactly four, so passing a malformed one on would turn this
+    stage's success into structuring's 422. Losing one box is the smaller, visible failure -- the
+    count is in `text_regions_count`.
+    """
+    if not isinstance(texts, list) or not isinstance(scores, list) or not isinstance(polys, list):
+        return []
+    if not (len(texts) == len(scores) == len(polys)):
+        return []
+
+    boxes: list[OcrBox] = []
+    for text, score, poly in zip(texts, scores, polys, strict=True):
+        line = str(text or "").strip()
+        points = poly_of(poly)
+        if not line or points is None:
+            continue
+        boxes.append({"text": line, "score": score_of(score), "poly": points})
+    return boxes

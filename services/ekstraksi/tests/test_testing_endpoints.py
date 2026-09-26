@@ -13,13 +13,12 @@ from app.dependencies import (
     get_testing_pipeline,
 )
 from app.services.job_service import EkstraksiJobService
-
-GUARDRAILS = {"passed": True, "reason": None}
+from tests.conftest import GUARDRAILS
 
 
 def _submit(client, auth, request_id):
-    data = {"request_id": request_id, "document_type": "npwp", "guardrails": json.dumps(GUARDRAILS)}
-    return client.post("/v1/ekstraksi/jobs-test", headers=auth, data=data, files=image_upload("npwp.jpg"))
+    data = {"request_id": request_id, "document_type": "kk", "guardrails": json.dumps(GUARDRAILS)}
+    return client.post("/v1/ekstraksi/jobs-test", headers=auth, data=data, files=image_upload("kk.jpg"))
 
 
 def test_testing_endpoint_is_off_by_default(client, auth):
@@ -55,5 +54,6 @@ def test_testing_endpoint_runs_the_same_job(auth):
         job = wait_for_job(client, "/v1/ekstraksi/jobs-test/REQ_T1")
 
     assert job["status"] == "DONE"
+    assert job["result"]["texts"], "the same §7.1 payload as the live endpoint"
     assert [payload["request_id"] for payload in next_stage.payloads] == ["REQ_T1"]
     assert callback.calls == []

@@ -80,9 +80,17 @@ class EkstraksiJobService:
     ) -> tuple[Work, Handoff]:
         async def work() -> OcrResult:
             content, filename, content_type = await self._load(source)
+            # `delay20s-kk.jpg` makes this job outlive PIPELINE_WAIT_SECONDS so the orchestrator's
+            # 202 path can be walked without a slow model. It lives here rather than in the mock
+            # backend because it is a property of the job, not of the model, and `simulate_delay`
+            # is `settings.simulation_hooks_enabled` -- the file name is caller-controlled input,
+            # so the hook is gated at the config layer and exists only with ENVIRONMENT=local.
             delay = simulated_delay_seconds(filename, enabled=self._simulate_delay)
             if delay:
                 await asyncio.sleep(delay)
+            # `extract` puts an in-process model in the threadpool: this coroutine runs on the
+            # event loop, and the Unit 3 heartbeat that keeps this job's lease warm only beats
+            # while the loop is free.
             return await self._ekstraksi.extract(filename, content_type, content)
 
         def handoff(ocr: Mapping[str, Any]) -> dict[str, Any]:
