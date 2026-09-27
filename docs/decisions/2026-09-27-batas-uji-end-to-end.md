@@ -61,6 +61,36 @@ transaksi, idempotensi, lease, outbox, dead letter, dan bentuk kontrak.
 
 1. **Port K2Regex-v2 ke `services/structuring`** — ini satu-satunya yang membuat `data` berasal dari
    gambar. Sampai itu ada, §7.4 tidak bisa diuji terhadap dokumen sungguhan.
+
+   **Yang dibutuhkan bukan service-nya, melainkan satu berkas di dalamnya.** Kelima service nlm-k2
+   sudah lengkap dan jalan; yang kosong adalah *backend* di salah satunya. Bandingkan isi `app/ml/`:
+
+   | Service | soket (`base.py`) | `mock.py` | backend asli |
+   |---|---|---|---|
+   | guardrails | 78 | 33 | `kk_quality.py` **761** (inti K2Quality; bobotnya belum ada) |
+   | ekstraksi | 53 | 131 | `kk_ocr.py` **215** + `remote.py` **129** — `remote` sudah jalan ke VM |
+   | structuring | 22 | 117 | **tidak ada** |
+   | scoring | 16 | 62 | **tidak ada** |
+
+   Otak yang hilang itu adalah `K2Regex-v2/src/services/kk_layout_parser.py`, 1.638 baris: zoning
+   lewat marker `(1)..(17)`, deteksi batas kolom dengan pencocokan header fuzzy lalu snap ke koridor
+   kosong, anchoring baris lewat nomor urut, normalisasi kosakata tertutup ke nilai kanonik Dukcapil,
+   dan validasi silang NIK terhadap tanggal lahir serta jenis kelamin. Tidak ada satu pun dari itu
+   yang bisa disimpulkan dari bentuk kontrak — ia harus diambil.
+
+   **Bentuk beku §7.3 di repo ini memang dipotong menurut keluaran parser itu**, dan itu bisa
+   diperiksa: **11 dari 11** `DOC_FIELDS` dan **15 dari 15** `MEMBER_FIELDS` ada dengan nama yang
+   sama persis di parser (yang punya dua lebih, `no_paspor` dan `no_kitap`, sengaja tidak diambil),
+   dan `crf_conf` — skor kedua di `StructuredField` — berasal dari sana. Soketnya sudah dibentuk
+   untuk plug ini; yang belum ada hanya plug-nya.
+
+   Preseden persisnya guardrails sebelum Unit 8: service-nya sudah ada, agen B memasukkan inti
+   K2Quality ke dalamnya sebagai satu berkas dan membuang routes, database, dan config-nya. Tidak ada
+   service yang ditambah. `structuring` hari ini berada di posisi guardrails saat itu.
+
+   Catatan: berkas parser di K2Regex-v2 sendiri adalah *vendored snapshot* dari sebuah prototipe
+   (`docs/brainstorms/2026-09-22-kk-full-schema-parser.py`, dipaku lewat SHA-256), jadi sumber
+   sebenarnya adalah prototipe itu — yang justru memperkuat bahwa yang diambil adalah logikanya.
 2. **Inti K2Quality dengan enam artefak bobotnya** di guardrails, supaya penolakan mutu berdasar
    gambar, bukan nama berkas. Kodenya sudah ada (`app/ml/kk_quality.py`); bobotnya belum.
 3. **Trust model terkalibrasi** di scoring.

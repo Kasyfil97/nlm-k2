@@ -58,11 +58,20 @@ class StructuredField(TypedDict):
     `value` is `""` when the field was not found -- never `None`. Both scores are `None` in that case,
     and `crf_conf` is additionally always `None` for document-level fields, which are found by regex
     or position and never pass through Viterbi.
+
+    `features` is the trust model's input vector for this field, and it is present only for the nine
+    scored contract fields. It exists because the two scores alone do not separate a correct value
+    from a wrong one -- over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a
+    coin -- while the parser internals that do carry the signal are computed and then discarded. The
+    names are pinned by `kk.MEMBER_CELL_FEATURES` and `kk.DOC_CELL_FEATURES`; scoring assembles them
+    and never recomputes one, because a feature computed in two places is how a model ends up good in
+    training and bad in production.
     """
 
     value: str
     ocr_conf: float | None
     crf_conf: float | None
+    features: NotRequired[dict[str, float] | None]
 
 
 StructuredMember = dict[str, StructuredField]
@@ -118,6 +127,8 @@ class ScoringResult(TypedDict):
     anggota_keluarga: list[dict[str, float | None]]
     model: NotRequired[str | None]
     payload: NotRequired[dict[str, Any]]
+    thresholds: NotRequired[dict[str, float]]
+    bin_edges: NotRequired[dict[str, list[float]]]
 
 
 class FinalResult(TypedDict):
@@ -137,12 +148,21 @@ class FinalResult(TypedDict):
 class ContractField(TypedDict):
     """A field of the orchestrator's `extract-ocr` contract.
 
-    `value` is a string, never `None`: a field that was not found is `{"value": "", "confidence": 0}`,
-    and the object itself is never replaced by null.
+    `value` is a string, never `None`, and the object itself is never replaced by null: a field that
+    was not found is `{"value": "", "confidence": 0.0, "bin": 1, "auto": False}`.
+
+    `confidence` is the calibrated P(this value is exactly correct) as a float. It replaced a 1/0
+    flag, which threw away the one thing a consumer needs to triage: a field at 0.52 and a field at
+    0.99 are not the same claim. `bin` is the model's ten-bin placement, and `auto` says the field
+    cleared its own field-specific threshold -- the gate calibrated so that every field above it was
+    correct on held-out data. Read `auto` to decide whether a human has to look; read `confidence`
+    to decide what to look at first.
     """
 
     value: str
-    confidence: int
+    confidence: float
+    bin: int
+    auto: bool
 
 
 ContractMember = dict[str, ContractField]
