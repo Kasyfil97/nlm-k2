@@ -12,7 +12,17 @@ PROD: dict[str, Any] = {
     "database_url": "postgresql+asyncpg://u:p@10.0.0.5:5432/db",
     "orchestration_url": "http://orkestrasi:8000",
     "scoring_service_url": "http://scoring:8044",
+    # Now that a backend reading the document exists, `mock` is refused here the way it is in the
+    # other model-bearing services -- so a production configuration has to name the real one.
+    "structuring_backend": "kk_regex",
 }
+
+
+def test_the_mock_backend_is_refused_outside_local():
+    """It invents a household, so in production it would answer a stranger's card with a stranger."""
+    with pytest.raises(ValidationError, match="STRUCTURING_BACKEND=mock"):
+        mock_backend: dict[str, Any] = {**PROD, "structuring_backend": "mock"}
+        Settings(api_key=TEST_API_KEY, _env_file=None, **mock_backend)
 
 
 def test_production_configuration_is_accepted():

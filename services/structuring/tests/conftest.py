@@ -8,6 +8,11 @@ from ocr_common.testing import auth_headers, set_test_env
 # PIPELINE_HANDOFF_BY_REFERENCE (mis. untuk `make smoke`) dulu membuat seluruh suite gagal saat
 # impor conftest, dengan pesan validasi yang tidak menyebut-nyebut uji.
 set_test_env(
+    # Suite ini menguji stub `mock` dan tuas `MOCK:`-nya. Tanpa dipaku di sini ia membaca
+    # STRUCTURING_BACKEND dari `.env` pengembang -- dan sebuah `.env` yang menunjuk `kk_regex`
+    # (yang memang benar untuk menjalankan stack) membuat lima uji gagal karena backend lain.
+    # `test_kk_regex.py` membangun backendnya sendiri langsung, jadi tidak terpengaruh.
+    STRUCTURING_BACKEND="mock",
     PIPELINE_HANDOFF_BY_REFERENCE="false",
     PIPELINE_OUTBOX="false",
     ORCHESTRATION_OUTCOME_TABLE="",

@@ -24,6 +24,7 @@ from ocr_common.testing_endpoints import testing_path
 
 from app.config import Settings, get_settings
 from app.ml.base import Structurer
+from app.ml.kk_regex import KKRegexStructurer
 from app.ml.mock import MockStructurer
 from app.services.job_service import StructuringJobService
 from app.services.structuring_service import StructuringService
@@ -33,11 +34,11 @@ logger = logging.getLogger(__name__)
 DB_TABLE_PREFIX = "structuring"
 
 # STRUCTURING_BACKEND -> how to build it. Add a backend here and, if it needs settings, in config.py.
-# `mock` is the only one in this batch; the K2Regex-v2 port joins it later. It is not gated by
-# `reject_mock_backend_outside_local` here the way the model-bearing services are, because until the
-# real parser lands there is nothing else to fall back to -- that gate arrives with the port.
+# `kk_regex` takes no settings: the parser reads its template from beside its own source, so there is
+# no weights directory to point at and nothing to misconfigure.
 STRUCTURER_BACKENDS: dict[str, Factory[Structurer]] = {
     "mock": lambda settings: MockStructurer(),
+    "kk_regex": lambda settings: KKRegexStructurer(),
 }
 
 

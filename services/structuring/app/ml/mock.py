@@ -23,11 +23,16 @@ from typing import cast
 
 from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
 from ocr_common.synthetic_kk import household, nomor_kk
-from ocr_common.types import OcrBox, StructuredField, StructuringResult
+from ocr_common.types import OcrBox, StructuringResult
 
-#: §7.4, in priority order. The first condition that holds is the one reported.
-NO_TEXT = "Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga"
-NOT_A_KK = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
+# §7.4 and the frozen empty shape live in `validity` now that a second backend applies them. They
+# are re-exported here because the reasons read as part of this module's behaviour to its callers.
+from app.ml.validity import NO_TEXT, NOT_A_KK
+from app.ml.validity import empty as _empty
+from app.ml.validity import field as _field
+from app.ml.validity import reject_reason as _reject_reason
+
+__all__ = ["NOT_A_KK", "NO_TEXT", "MockStructurer"]
 
 _LEVER = re.compile(r"MOCK:(\w+)=([^\s]*)")
 
@@ -86,32 +91,3 @@ class MockStructurer:
 
 def _levers(texts: list[OcrBox]) -> dict[str, str]:
     return {key: value for box in texts for key, value in _LEVER.findall(box.get("text") or "")}
-
-
-def _empty(reason: str) -> StructuringResult:
-    """The complete object with nothing in it: every key present, every value `""`, no members."""
-    document: dict[str, object] = {name: _field("") for name in DOC_FIELDS}
-    document["anggota_keluarga"] = []
-    document["reject_reason"] = reason
-    return cast(StructuringResult, document)
-
-
-def _reject_reason(head: str, members: list[dict]) -> str | None:
-    """§7.4 rules two and three, first match wins. Rule one (no boxes at all) is handled before any
-    field is built, because it has nothing to build them from.
-
-    The order is not cosmetic: an empty `texts` satisfies all three conditions at once, so only the
-    ordering makes that case deterministic.
-    """
-    if not head or head == "Not found":
-        return NOT_A_KK
-    if not any(m["nik"]["value"] and m["nama_lengkap"]["value"] for m in members):
-        return NOT_A_KK
-    return None
-
-
-def _field(value: str, ocr_conf: float | None = None, crf_conf: float | None = None) -> StructuredField:
-    """`value` is never None, and both scores are None when there is no value (§7.3)."""
-    if not value:
-        return {"value": "", "ocr_conf": None, "crf_conf": None}
-    return {"value": value, "ocr_conf": ocr_conf, "crf_conf": crf_conf}
