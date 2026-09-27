@@ -19,6 +19,11 @@ PostgreSQL sungguhan. Dokumen ini ada supaya angka itu tidak dibaca lebih besar 
 | **Ekstraksi field dari teks** | **tidak** | structuring `mock` **mengarang** field; ia tidak membaca teks OCR sama sekali |
 | **Trust model per field** | **tidak** | scoring `mock` menurunkan skor dari skor structuring, bukan dari model terkalibrasi |
 
+> **Pembaruan, 27 September 2026 (sore).** Ketiga baris "tidak" di atas sudah tertutup; yang tersisa
+> satu hal lain. Lihat [Yang berubah sore itu](#yang-berubah-sore-itu) di bawah -- bagian-bagian
+> sebelumnya sengaja dibiarkan apa adanya, karena yang dicatat di sana adalah pengukuran, dan
+> mengeditnya menghapus buktinya.
+
 ## Buktinya, bukan klaimnya
 
 Tiga gambar berbeda dikirim lewat `POST /v1/extract-ocr` dengan ekstraksi memakai model sungguhan:
@@ -97,3 +102,43 @@ transaksi, idempotensi, lease, outbox, dead letter, dan bentuk kontrak.
 4. Satu uji yang **hanya bisa ditulis setelah (1)**: dokumen bukan-KK harus dijawab `400`, dan kartu
    yang berbeda harus menghasilkan `data` yang berbeda. Keduanya akan gagal hari ini, dan itu sebabnya
    keduanya belum ditulis sebagai uji — bukan karena terlupa.
+
+## Yang berubah sore itu
+
+Ketiganya sekarang memakai model sungguhan, dan seluruh stack dijalankan tanpa satu pun `mock`:
+guardrails `kk_quality`, ekstraksi `remote` ke VM PP-OCRv6, structuring `kk_regex`, scoring
+`calibrated`.
+
+Diuji dengan satu Kartu Keluarga asli (foto, bukan render):
+
+| Dokumen | HTTP | `guardrails` | Yang terjadi |
+|---|---|---|---|
+| kartu itu | **200** | 0 | kesembilan field kontrak benar, dibaca dari gambar |
+| Surat Keterangan Domisili Usaha | **400** | 1 | §7.4 aturan dua: tidak ada nomor KK |
+| kartu yang sama, blur r=4 | **400** | 1 | ditolak guardrails sebelum sampai structuring |
+
+Baris kedua adalah yang dulu dijawab `200` dengan KK yang sempurna. Gerbang §7.4 sekarang hidup
+secara semantik, bukan hanya struktural, karena ia memeriksa field yang benar-benar diekstraksi.
+
+Amplop dan bentuk `data` diperiksa field demi field terhadap §3.3: sepuluh kunci amplop, dua field
+dokumen dan tujuh per anggota, setiap field `{value, confidence, bin, auto}` dengan `value` selalu
+string, `confidence` float 0..1, `bin` 1..10, `auto` bool. Semuanya cocok.
+
+### Yang MASIH belum terbukti
+
+**Angka `confidence` belum berarti apa-apa.** Parser tidak memancarkan `kk.MEMBER_CELL_FEATURES` --
+nilai-nilainya ada di dalam Viterbi-nya dan dibuang di sana. `calibrated` memberi `None` pada field
+tanpa vektor alih-alih menebak, dan kontrak menuliskan itu sebagai `confidence 0.0, bin 1,
+auto false`. Jadi hari ini setiap field meminta mata manusia. Itu bukan kegagalan diam-diam: ia
+terpasang begitu dengan sengaja, dan `test_no_field_carries_a_feature_vector_yet` adalah uji yang
+harus PECAH begitu instrumentasinya ada.
+
+**Satu perilaku yang perlu diputuskan tim.** Pada kartu uji, tanggal lahir yang tercetak
+(`12-03-1954`) bertentangan dengan NIK-nya (yang berarti `01-07-1960`). Parser menulis ulang field
+itu dari NIK. Itu keputusan yang bisa dibela, tetapi hasilnya adalah nilai yang **tidak tercetak di
+dokumen**, dan §7.3 tidak punya tempat untuk jejak audit. Untuk sekarang perbaikan semacam itu
+dicatat di log (nama field saja, tidak pernah nilainya). Apakah `data` perlu membawanya keluar --
+dan apakah `confidence` field yang diperbaiki harus dipotong -- belum diputuskan.
+
+**`make smoke` sekarang perlu `STRUCTURING_BACKEND=mock`.** Delapan jalurnya digerakkan lewat tuas
+`MOCK:` pada teks OCR; `kk_regex` membaca teks itu sebagai teks, bukan sebagai tuas.
