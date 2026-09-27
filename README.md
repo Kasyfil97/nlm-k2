@@ -21,6 +21,13 @@ menunggu sebentar lalu menjawab 200, atau 202 kalau pipeline belum selesai.
 Batch pertama sedang berjalan: orchestrator, guardrails, dan ekstraksi. Structuring dan scoring
 hadir sebagai stub supaya siklus 202→200 bisa diuji ujung ke ujung.
 
+> **Baca ini sebelum membaca `make smoke` yang hijau.** Yang teruji ujung ke ujung adalah **pipanya**
+> — transaksi, idempotensi, lease, outbox, dead letter, tabel outcome, bentuk kontrak — dan model OCR
+> sungguhan. Yang **belum** teruji adalah **isinya**: structuring masih stub yang mengarang field dan
+> tidak membaca teks OCR, jadi tidak ada satu pun field di `data` yang pernah diekstraksi dari sebuah
+> gambar, dan dokumen yang bukan Kartu Keluarga pun dijawab `200`. Batasnya diukur dan ditulis di
+> [`docs/decisions/2026-09-27-batas-uji-end-to-end.md`](docs/decisions/2026-09-27-batas-uji-end-to-end.md).
+
 - Requirements: [`docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md`](docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md)
 - Rencana implementasi: [`docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md`](docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md)
 
