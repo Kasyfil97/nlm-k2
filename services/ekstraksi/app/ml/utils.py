@@ -53,6 +53,23 @@ def poly_of(value: Any) -> list[list[float]] | None:
     return points if len(points) == POLY_POINTS else None
 
 
+def box_of(entry: Any) -> OcrBox | None:
+    """One `{text, score, poly}` object validated into a §7.1 box, or None when it cannot be one.
+
+    The PP-OCRv6 VM already emits this shape, so there is nothing to convert -- but "already the
+    right shape" is a claim about a remote service, so the same two rules still apply as for the
+    parallel lists: no empty text, and exactly four polygon points. Passing a three-point polygon on
+    would turn this stage's success into structuring's 422.
+    """
+    if not isinstance(entry, dict):
+        return None
+    line = str(entry.get("text") or "").strip()
+    points = poly_of(entry.get("poly"))
+    if not line or points is None:
+        return None
+    return {"text": line, "score": score_of(entry.get("score")), "poly": points}
+
+
 def boxes_from_rec_lists(texts: Any, scores: Any, polys: Any) -> list[OcrBox]:
     """`rec_texts` / `rec_scores` / `rec_polys` as one list of §7.1 boxes.
 

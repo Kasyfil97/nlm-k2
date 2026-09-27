@@ -18,9 +18,17 @@ class Settings(PipelineSettings):
     ekstraksi_ocr_url: str | None = None
     ekstraksi_ocr_api_key: str | None = None
     ekstraksi_ocr_timeout_seconds: float = 30.0
-    # Extra form fields sent with every /v1/predict/json call (JSON object). The ML team's OCR model
-    # will serve several document types in production and take its parameters per call.
+    # The path on that service. Default is the contract's `/v1/predict/json`; the PP-OCRv6 VM the
+    # ML team actually hosts serves `/ocr`, so this is a setting rather than a constant.
+    ekstraksi_ocr_path: str = "/v1/predict/json"
+    # Extra FORM fields sent with every call (JSON object). The ML team's OCR model will serve
+    # several document types in production and take its parameters per call.
     ekstraksi_ocr_params: dict[str, Any] = {}
+    # Extra QUERY parameters (JSON object). Separate from the form fields because the two services
+    # differ on where the knobs go: the PP-OCRv6 VM reads
+    # `use_doc_orientation_classify` / `use_doc_unwarping` / `use_textline_orientation` from the
+    # query string and ignores form fields entirely. Booleans are sent as `true` / `false`.
+    ekstraksi_ocr_query: dict[str, Any] = {}
 
     # --- `kk_ocr` only: where the runtime and the weights are --------------------------------
     # The `.pth` weights are not committed; `scripts/fetch_weights.py` brings them in.

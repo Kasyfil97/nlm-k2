@@ -5,6 +5,8 @@ would otherwise be found one service downstream: a polygon that is not four poin
 outside [0, 1], a line that recognised as whitespace.
 """
 
+from typing import Any
+
 import pytest
 
 from ocr_common.errors import InternalError
@@ -256,3 +258,100 @@ def test_a_lever_key_that_contains_a_trigger_word_does_not_fire_it():
 
 def test_a_trigger_outside_a_lever_still_fires():
     assert MockOcrEngine().read(f"kk-{BLANK_TRIGGER}.jpg", b"bytes")["texts"] == []
+
+
+# --- the PP-OCRv6 VM shape -----------------------------------------------------------------
+
+#: A response captured from the VM the ML team hosts (`GET /health` reports PP-OCRv6_medium_det +
+#: PP-OCRv6_medium_rec). Trimmed to two boxes; the numbers are verbatim, including the score with
+#: more precision than §7.1 keeps and the integer polygon points.
+VM_BODY: dict[str, Any] = {
+    "models": {
+        "detection": "PP-OCRv6_medium_det",
+        "recognition": "PP-OCRv6_medium_rec",
+        "pipeline": "PaddleOCR",
+        "device": "gpu",
+    },
+    "num_pages": 1,
+    "pages": [
+        {
+            "page_index": 0,
+            "width": 1000,
+            "height": 620,
+            "texts": [
+                {
+                    "text": "KARTU KELUARGA",
+                    "score": 0.9991727471351624,
+                    "poly": [[38, 43], [353, 43], [353, 73], [38, 73]],
+                },
+                {
+                    "text": "No.9924187486671285",
+                    "score": 0.9999954700469971,
+                    "poly": [[38, 110], [406, 110], [406, 142], [38, 142]],
+                },
+            ],
+        }
+    ],
+    "filename": "kk.jpg",
+}
+
+
+def test_the_vm_shape_is_read_as_section_71_boxes():
+    boxes = parse_pages(VM_BODY, "ekstraksi OCR model")
+    assert boxes == [
+        {"text": "KARTU KELUARGA", "score": 0.9992, "poly": [[38.0, 43.0], [353.0, 43.0], [353.0, 73.0], [38.0, 73.0]]},
+        {
+            "text": "No.9924187486671285",
+            "score": 1.0,
+            "poly": [[38.0, 110.0], [406.0, 110.0], [406.0, 142.0], [38.0, 142.0]],
+        },
+    ]
+
+
+def test_the_vm_model_name_is_reported_as_detection_plus_recognition():
+    assert parse_model(VM_BODY) == "PP-OCRv6_medium_det+PP-OCRv6_medium_rec"
+
+
+def test_page_dimensions_are_ignored():
+    """They must be. With `use_doc_orientation_classify=true` the VM returns `poly` in the
+    orientation-corrected frame while still reporting the submitted dimensions, so a sideways photo
+    comes back with polys that do not fit the page it names — measured: a 620x1000 submission
+    answered `page=620x1000` with a poly bounding box reaching x=812. §7.1 carries no page
+    dimensions, and this pins that the stage does not start carrying them."""
+    sideways = {**VM_BODY, "pages": [{**VM_BODY["pages"][0], "width": 620, "height": 1000}]}
+    assert parse_pages(sideways, "ekstraksi OCR model") == parse_pages(VM_BODY, "ekstraksi OCR model")
+
+
+def test_a_malformed_box_in_the_vm_shape_is_dropped_not_passed_on():
+    """Three polygon points would be a 422 at structuring. Losing the box is the smaller, visible
+    failure, and `text_regions_count` records it."""
+    page = {
+        "texts": [
+            {"text": "OK", "score": 0.9, "poly": [[0, 0], [1, 0], [1, 1], [0, 1]]},
+            {"text": "three points", "score": 0.9, "poly": [[0, 0], [1, 0], [1, 1]]},
+            {"text": "   ", "score": 0.9, "poly": [[0, 0], [1, 0], [1, 1], [0, 1]]},
+        ]
+    }
+    boxes = parse_pages({"pages": [page]}, "ekstraksi OCR model")
+    assert [box["text"] for box in boxes] == ["OK"]
+
+
+def test_a_page_with_neither_shape_is_an_internal_error():
+    with pytest.raises(InternalError):
+        parse_pages({"pages": [{"page_index": 0}]}, "ekstraksi OCR model")
+
+
+def test_booleans_go_on_the_wire_lowercase():
+    """The VM parses these query parameters as strings; Python's `str(True)` is `"True"`, which it
+    does not accept, so a silently ignored parameter would look like a model that does not correct
+    orientation."""
+    engine = RemoteOcrEngine(
+        object(),  # ty: ignore[invalid-argument-type]
+        path="/ocr",
+        query={"use_doc_orientation_classify": True, "use_doc_unwarping": False, "split": 0},
+    )
+    assert engine._query == {
+        "use_doc_orientation_classify": "true",
+        "use_doc_unwarping": "false",
+        "split": "0",
+    }
