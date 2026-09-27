@@ -826,6 +826,59 @@ webhooks:
               schema: {}
 components:
   schemas:
+    BoundedOcrBoxPayload:
+      properties:
+        text:
+          type: string
+          maxLength: 2048
+          title: Text
+          description: The recognised text
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+          description: Recognition score of this line
+          examples:
+          - 0.9991
+        poly:
+          items:
+            items:
+              type: number
+            type: array
+            maxItems: 2
+            minItems: 2
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Poly
+          description: 'Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright
+            box: the detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle
+            would lose information. Structuring depends on this geometry to assign cells to columns'
+          examples:
+          - - - 291.0
+              - 7.0
+            - - 306.0
+              - 6.0
+            - - 309.0
+              - 26.0
+            - - 294.0
+              - 28.0
+      additionalProperties: true
+      type: object
+      required:
+      - text
+      - score
+      - poly
+      title: BoundedOcrBoxPayload
+      description: '`OcrBoxPayload` with the per-item text bound of this endpoint.
+
+
+        Subclassed rather than tightened in `ocr_common`, because the cap belongs to this door: the
+
+        stage-to-stage payload carries whatever our own OCR produced, and refusing it there would turn
+
+        an odd recognition into a pipeline failure instead of an odd field.'
     ErrorResponse:
       properties:
         status_code:
@@ -1103,6 +1156,8 @@ components:
             items:
               type: number
             type: array
+            maxItems: 2
+            minItems: 2
           type: array
           maxItems: 4
           minItems: 4
@@ -1454,8 +1509,9 @@ components:
       properties:
         texts:
           items:
-            $ref: '#/components/schemas/OcrBoxPayload'
+            $ref: '#/components/schemas/BoundedOcrBoxPayload'
           type: array
+          maxItems: 5000
           minItems: 1
           title: Texts
           description: OCR text boxes in reading order (top to bottom)

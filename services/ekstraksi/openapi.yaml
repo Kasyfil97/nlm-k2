@@ -901,6 +901,8 @@ components:
             items:
               type: number
             type: array
+            maxItems: 2
+            minItems: 2
           type: array
           maxItems: 4
           minItems: 4

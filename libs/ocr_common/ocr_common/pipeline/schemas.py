@@ -6,7 +6,7 @@ these validate what arrives over HTTP. Every model allows extra keys, so adding 
 never breaks a downstream service.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +22,16 @@ core raises on this path in a dozen places. Keeping it distinct from `reject` ma
 
 class _Forwarded(BaseModel):
     model_config = ConfigDict(extra="allow")
+
+
+Coordinate = Annotated[list[float], Field(min_length=2, max_length=2)]
+"""One point of a `poly`: exactly two numbers.
+
+The field said "four points of two coordinates" and only checked the four. A point could carry ten
+thousand numbers and pass -- which matters because these polygons are the one part of the payload
+whose size nothing else bounds, and structuring walks every one of them. Enforcing the second half
+of the sentence is a bug fix, not a new limit: a three-coordinate point was never a valid §7.1 box.
+"""
 
 
 # --- guardrails (§5.2) ---------------------------------------------------------------------
@@ -91,7 +101,7 @@ class OcrBoxPayload(_Forwarded):
 
     text: str = Field(..., description="The recognised text", examples=["9924187486671285"])
     score: float = Field(..., ge=0, le=1, description="Recognition score of this line", examples=[0.9991])
-    poly: list[list[float]] = Field(
+    poly: list[Coordinate] = Field(
         ...,
         min_length=4,
         max_length=4,

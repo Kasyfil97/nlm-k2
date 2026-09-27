@@ -1,6 +1,7 @@
 from typing import cast
 
 from fastapi import APIRouter, Depends, Request
+from starlette.concurrency import run_in_threadpool
 
 from ocr_common.types import OcrBox
 from ocr_common.web.envelope import envelope
@@ -97,5 +98,10 @@ async def structure(
     service: StructuringService = Depends(get_structuring_service),
 ):
     texts = [cast(OcrBox, box.model_dump()) for box in body.texts]
-    data = service.structure(texts)
+    # Off the event loop, like the job path does. The parser is CPU-bound and pure Python: a card
+    # takes tens of milliseconds, but nothing here bounds how long an adversarial payload takes, and
+    # on the loop that time is not this request's alone -- it stalls `/health`, the outbox relay and
+    # every job this worker is carrying. K2Regex-v2 runs the same call through `asyncio.to_thread`
+    # for the same reason. `StructureRequest` bounds the input; this bounds the blast radius.
+    data = await run_in_threadpool(service.structure, texts)
     return envelope(200, "Success", data, get_request_id(request))

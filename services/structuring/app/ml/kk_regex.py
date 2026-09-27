@@ -20,8 +20,23 @@ Provenance of the copy:
   `7cd62c4f5466b6fe7fc5963075f7e96b4bc1ea28c0d6cca586b4b0ac04677048`.
 
 `kk_template.json` travels with it (upstream `2ed7fa34...`, vendored `0c108595...`). The parser finds
-it next to itself, so it must stay in `app/vendor`; `test_kk_regex.py` fails if it does not, because
-without it the column boundaries fall back to headers alone.
+it next to itself, so it must stay in `app/vendor`.
+
+## Configuration is checked at start-up, not logged
+
+Three conditions have to hold for the parser to be the one whose accuracy was measured, and none of
+them shows up in a single document -- a misconfigured parser reads a card perfectly well and is
+several points worse across a corpus. So they are start-up failures, reported together:
+
+* `kk_template.json` resolves, or column boundaries fall back to headers alone;
+* `CRF_KOLOM` is on, or columns are assigned by x-range and a row can be placed in an order the
+  card cannot print;
+* **no** `kk_kolom_model.json` resolves. That one reads backwards: the hand-tuned emission weights
+  are the 89.02% configuration, and a stray trained model costs about 2.4 points silently. The
+  first version of this file logged its presence as "trained" and carried on.
+
+`test_kk_regex_baseline.py` re-checks all three without a corpus, and with one re-runs 200 real
+documents against K2Regex-v2's own hash baseline.
 
 ## What it fills in, and what it leaves empty
 
@@ -64,17 +79,20 @@ class KKRegexStructurer:
     name = "kk_regex"
 
     def __init__(self) -> None:
-        # Loaded eagerly so a missing template is a start-up failure rather than a quiet accuracy
-        # loss on every document: the parser's own loader answers `{}` and carries on.
-        if not kk_layout_parser.load_template():
-            raise RuntimeError(
-                "kk_template.json not found next to kk_layout_parser.py; the parser would fall back "
-                "to header-only column boundaries and lose accuracy silently"
-            )
-        logger.info(
-            "kk_regex structurer ready (template loaded, column model %s)",
-            "trained" if kk_layout_parser.load_model_kolom() else "absent -- geometric emissions",
-        )
+        """Refuse to start unless the parser is in the configuration it was measured in.
+
+        All three checks guard the same failure: a parser that runs, answers a plausible card, and
+        is quietly several points less accurate than the one the corpus figures describe. None of
+        them is visible in a single document, which is why they are start-up failures and not logs.
+        """
+        problems = [
+            problem
+            for check in (_template_present, _crf_enabled, _no_trained_column_model)
+            if (problem := check()) is not None
+        ]
+        if problems:
+            raise RuntimeError("kk_regex refuses to start: " + "; ".join(problems))
+        logger.info("kk_regex structurer ready (template resolved, CRF column assignment on, hand-tuned emissions)")
 
     def structure(self, texts: list[OcrBox]) -> StructuringResult:
         if not texts:
@@ -111,6 +129,46 @@ class KKRegexStructurer:
         document["reject_reason"] = reject_reason(_text(parsed.get("nomor_kk")), members)
         _log_repairs(meta)
         return cast(StructuringResult, document)
+
+
+def _template_present() -> str | None:
+    """`kk_template.json` next to the parser. Its own loader answers `{}` and carries on."""
+    if kk_layout_parser.load_template():
+        return None
+    return (
+        "kk_template.json does not resolve next to kk_layout_parser.py, so column boundaries would "
+        "fall back to headers alone"
+    )
+
+
+def _crf_enabled() -> str | None:
+    """`CRF_KOLOM` off replaces the Viterbi with plain x-range membership.
+
+    It is a constant in the vendored file rather than a setting, so this can only trip after a
+    re-vendor -- which is exactly when it should.
+    """
+    if kk_layout_parser.CRF_KOLOM:
+        return None
+    return "CRF_KOLOM is off in the vendored parser, so columns would be assigned by x-range alone"
+
+
+def _no_trained_column_model() -> str | None:
+    """A resolvable `kk_kolom_model.json` is a FAULT, and this is the least obvious of the three.
+
+    The hand-tuned emission weights are the configuration the parser's 89.02% field accuracy was
+    measured in. A stray `kk_kolom_model.json` anywhere on its search path silently swaps in trained
+    pointwise weights and drops it to about 86.65% -- with no other signal at all. K2Regex-v2 fails
+    startup on it for that reason, and so does this.
+
+    Worth stating plainly because the intuition runs the other way: here the trained artefact is the
+    worse one, and an earlier version of this file logged its presence as "trained" and carried on.
+    """
+    if not kk_layout_parser.load_model_kolom():
+        return None
+    return (
+        "kk_kolom_model.json resolves on the parser search path; remove it -- the hand-tuned weights "
+        "are the measured configuration and the model file costs about 2.4 points of field accuracy"
+    )
 
 
 def _log_repairs(meta: dict[str, Any]) -> None:

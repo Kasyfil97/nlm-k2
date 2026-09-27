@@ -33,9 +33,13 @@ next to its own source file, so the two must stay together; `tests/test_kk_regex
 do not, because without the template the column boundaries fall back to headers alone and accuracy
 drops without anything going wrong visibly.
 
-`kk_kolom_model.json` — the trained emission weights — is **not** vendored, because upstream does not
-ship one. Without it the parser scores emissions geometrically, which is its own documented
-fallback. If one is trained, it belongs here beside the other two.
+`kk_kolom_model.json` — trained pointwise emission weights — must **not** be present. This reads
+backwards and is the parser's sharpest edge: its 89.02% field accuracy is the number for the
+*hand-tuned* weights, i.e. for `load_model_kolom()` finding nothing. A stray copy anywhere on the
+parser's search path (its own directory, the working directory, or up to three levels above either)
+silently swaps the trained weights in and drops accuracy to about 86.65%, with no other signal at
+all. K2Regex-v2 fails startup on it, and `app/ml/kk_regex.py` does the same; if a trained model is
+ever the better one, that is a re-vendor, not a file someone drops in.
 
 The adapter that maps this into the pipeline's §7.3 shape is
 [`app/ml/kk_regex.py`](../ml/kk_regex.py); it is ordinary repository code and is linted and typed

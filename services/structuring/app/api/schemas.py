@@ -10,6 +10,31 @@ from ocr_common.pipeline.schemas import (
 )
 from ocr_common.web.schemas import REQUEST_ID_EXAMPLE, JobStatusBase, SuccessEnvelope
 
+#: Upper bounds on one synchronous request, carried over from K2Regex-v2 (`input_limits`), which
+#: fronts the same parser on an endpoint the ML team calls directly.
+#:
+#: They are cost bounds, not shape rules. The parser is pure Python with several loops over every
+#: box, and nothing inside it gives up: without a cap the work a single request can ask for is
+#: unbounded, and K2Regex-v2's own note is that the caps -- not its 30-second timeout -- are the
+#: real bound, because a timeout returns 504 while the thread keeps running.
+#:
+#: A real Kartu Keluarga is ~180 boxes of a few characters each, so both leave three orders of
+#: magnitude of headroom. Over either, the whole request is refused 422 rather than the offending
+#: item quietly dropped: a card silently missing a line reads as a card the parser could not read.
+MAX_OCR_ITEMS = 5000
+MAX_TEXT_CHARS = 2048
+
+
+class BoundedOcrBoxPayload(OcrBoxPayload):
+    """`OcrBoxPayload` with the per-item text bound of this endpoint.
+
+    Subclassed rather than tightened in `ocr_common`, because the cap belongs to this door: the
+    stage-to-stage payload carries whatever our own OCR produced, and refusing it there would turn
+    an odd recognition into a pipeline failure instead of an odd field.
+    """
+
+    text: str = Field(..., max_length=MAX_TEXT_CHARS, description="The recognised text")
+
 
 class StructureRequest(BaseModel):
     """Body of the legacy synchronous `POST /v1/ocr_postprocess`.
@@ -19,7 +44,12 @@ class StructureRequest(BaseModel):
     endpoint must not inherit the constraint -- see `StructuringJobRequest`.
     """
 
-    texts: list[OcrBoxPayload] = Field(..., min_length=1, description="OCR text boxes in reading order (top to bottom)")
+    texts: list[BoundedOcrBoxPayload] = Field(
+        ...,
+        min_length=1,
+        max_length=MAX_OCR_ITEMS,
+        description="OCR text boxes in reading order (top to bottom)",
+    )
 
 
 class StructureResponse(SuccessEnvelope):
