@@ -108,6 +108,8 @@ db-revision:
 db-external:
 	$(PY) db/external/apply.py
 
+# Keluar 2 = URI tidak di-set, yang bukan kegagalan: bobot memang tidak wajib untuk backend mock.
+# Set <NAMA>_MODEL_URI ke direktori lokal atau awalan gs:// untuk benar-benar mengambilnya.
 weights:
 	$(PY) scripts/fetch_weights.py || [ $$? -eq 2 ]
 
