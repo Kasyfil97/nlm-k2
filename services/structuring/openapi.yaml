@@ -1601,6 +1601,25 @@ components:
             Viterbi did not place
           examples:
           - null
+        features:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Features
+          description: 'The trust model''s input vector for this field, present only for the NINE scored
+            contract fields and null everywhere else. It exists because the two scores above do not separate
+            a correct value from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502,
+            no better than a coin, while the parser internals that do carry the signal are computed and
+            then discarded. Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES`
+            (document fields); scoring assembles them and never recomputes one, because the same feature
+            computed in two places is how a model ends up good in training and bad in production'
+          examples:
+          - emis_assigned_min: 0.0
+            lebar_rel: 0.87
+            marg_min: 0.9967
+            margin_min: 0.9934
       additionalProperties: true
       type: object
       title: StructuredFieldPayload

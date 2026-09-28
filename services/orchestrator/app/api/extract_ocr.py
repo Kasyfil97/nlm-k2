@@ -46,26 +46,31 @@ UPLOAD_LIMIT = upload_limit_label(DEFAULT_MAX_UPLOAD_BYTES)
 
 _PARAMS = {"nik": "9901011203850001", "refno": "PK19039Y8U"}
 _DATA = {
-    "no_kk": {"value": "9901012609260001", "confidence": 1},
-    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
+    "no_kk": {"value": "9901012609260001", "confidence": 0.9913, "bin": 10, "auto": True},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0.9041, "bin": 9, "auto": True},
     "anggota_keluarga": [
         {
-            "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
-            "nik": {"value": "9901011203850001", "confidence": 1},
-            "pendidikan": {"value": "S1", "confidence": 1},
-            "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
-            "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
-            "ayah": {"value": "SUTRISNO", "confidence": 1},
-            "ibu": {"value": "SITI AMINAH", "confidence": 1},
+            "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 0.9886, "bin": 10, "auto": True},
+            "nik": {"value": "9901011203850001", "confidence": 0.9902, "bin": 10, "auto": True},
+            "pendidikan": {"value": "S1", "confidence": 0.9951, "bin": 10, "auto": True},
+            "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 0.9833, "bin": 10, "auto": True},
+            "status_hubungan_dalam_rumah_tangga": {
+                "value": "KEPALA KELUARGA",
+                "confidence": 0.9914,
+                "bin": 10,
+                "auto": True,
+            },
+            "ayah": {"value": "SUTRISNO", "confidence": 0.9602, "bin": 9, "auto": True},
+            "ibu": {"value": "SITI AMINAH", "confidence": 0.9418, "bin": 8, "auto": False},
         },
         {
-            "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 1},
-            "nik": {"value": "9901015506880002", "confidence": 1},
-            "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 1},
-            "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
-            "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
-            "ayah": {"value": "AHMAD DAHLAN", "confidence": 1},
-            "ibu": {"value": "RATNA SARI", "confidence": 1},
+            "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 0.9077, "bin": 6, "auto": False},
+            "nik": {"value": "9901015506880002", "confidence": 0.9701, "bin": 9, "auto": True},
+            "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 0.9724, "bin": 9, "auto": False},
+            "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0.6318, "bin": 2, "auto": False},
+            "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0.9130, "bin": 6, "auto": False},
+            "ayah": {"value": "AHMAD DAHLAN", "confidence": 0.9355, "bin": 8, "auto": True},
+            "ibu": {"value": "RATNA SARI", "confidence": 0.8802, "bin": 5, "auto": False},
         },
     ],
 }
@@ -167,10 +172,12 @@ def _parse_params(raw: str | None) -> Any:
         + _CONTRACT_TABLE
         + "`data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven per "
         "member. Structuring extracts 11 document fields and 15 per member; only these leave, and the rest "
-        "stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is `{value, confidence}`, where "
-        '`value` is `""` when not found -- never null -- and `confidence` is `1` when the trust model gives '
-        "it a probability of at least `FIELD_CONFIDENCE_THRESHOLD` (0.5 by default), else `0`. "
-        "`params` is returned as sent.\n\n"
+        "stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is "
+        "`{value, confidence, bin, auto}`: `value` is empty when not found -- never null -- `confidence` is "
+        "the trust model's calibrated P(this value is exactly correct), `bin` places it in one of ten bins "
+        "whose top one is cut where held-out precision reached 100%, and `auto` is true when the field "
+        "cleared the threshold calibrated for that field specifically. Read `auto` to decide whether a "
+        "human must look, `confidence` to decide what to look at first. `params` is returned as sent.\n\n"
         "**Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring. "
         "Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member with "
         "both a NIK and a name. `message` is the gate's Indonesian reason. A rejected document is still a "

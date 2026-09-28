@@ -74,9 +74,25 @@ STAGES = ("ekstraksi", "structuring", "scoring")
 #: Nama tahap sebagaimana tertulis di baris job dan baris outcome, per nama service.
 STAGE_NAMES = {"ekstraksi": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
 
+def _psycopg_url(url: str) -> str:
+    """Buang sufiks driver SQLAlchemy supaya psycopg bisa membacanya.
+
+    Seluruh repo ini menulis `DATABASE_URL` dalam bentuk SQLAlchemy
+    (`postgresql+asyncpg://...`) -- itu yang ada di setiap `.env` dan di compose -- jadi menyalin
+    nilainya ke `SMOKE_DATABASE_URL` adalah hal yang paling wajar dilakukan. psycopg memakai libpq
+    dan menolak bentuk itu dengan `missing "=" after ...`.
+
+    Kenapa ini bukan sekadar kenyamanan: galatnya muncul di `cleanup()`, **setelah** semua jalur
+    uji selesai dan baris-barisnya dibuat. Jadi kegagalannya persis kebalikan dari maksud skrip ini
+    -- ia meninggalkan baris uji di tabel outcome, yang di produksi milik Orkestrasi pusat.
+    """
+    prefix, sep, rest = url.partition("://")
+    return f"{prefix.split('+', 1)[0]}{sep}{rest}" if sep else url
+
+
 #: Dipakai jalur dead letter dan pembersihan. Kosong = keduanya dilewati, bukan gagal: keduanya
 #: butuh akses langsung ke database compose, yang tidak selalu ada dari tempat skrip ini jalan.
-DATABASE_URL = os.environ.get("SMOKE_DATABASE_URL", "")
+DATABASE_URL = _psycopg_url(os.environ.get("SMOKE_DATABASE_URL", ""))
 OUTCOME_TABLE = os.environ.get("ORCHESTRATION_OUTCOME_TABLE", "orchestration_extract_ocr")
 
 #: Setiap request_id yang dibuat skrip ini, supaya barisnya bisa dihapus lagi di akhir.

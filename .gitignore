@@ -17,12 +17,18 @@ weights/*
 .DS_Store
 .vscode/
 .idea/
+*.jpg
+*.png
 
 *.egg-info/
 
 services/*/weights/*
 !services/*/weights/.gitkeep
-!services/scoring/weights/trust_model.joblib
+# Artefak trust model KK: ikut repo supaya build context Docker lengkap tanpa langkah unduh
+# terpisah (Dockerfile-nya menolak build kalau berkas ini tidak ada). Warisan NPWP
+# (trust_model.joblib) sudah dibuang bersama model yang tidak pernah dipakai untuk KK.
+!services/scoring/weights/kk_trust_model.joblib
+!services/scoring/weights/README.md
 
 
 # Keluaran lokal tools: log port-forward tracker dan hasil run k6.

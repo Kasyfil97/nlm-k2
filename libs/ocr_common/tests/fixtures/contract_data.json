@@ -1,25 +1,105 @@
 {
-  "_source": "Keluaran contract_fields() atas structuring_result.json + scoring_result.json dengan FIELD_CONFIDENCE_THRESHOLD = 0.5. Inilah proyeksi §3.3.1, dan inilah yang harus identik antara orchestrator dan tahap scoring.",
-  "no_kk": {"value": "3273012345678901", "confidence": 1},
-  "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
+  "_source": "Keluaran contract_fields() atas structuring_result.json + scoring_result.json. Ambang per field dan tepi bin diambil dari hasil scoring itu sendiri; FIELD_CONFIDENCE_THRESHOLD = 0.5 hanya berlaku untuk field yang tidak punya ambang sendiri. Inilah proyeksi §3.3.1, dan inilah yang harus identik antara orchestrator dan tahap scoring.",
+  "no_kk": {
+    "value": "3273012345678901",
+    "confidence": 0.9412,
+    "bin": 10,
+    "auto": true
+  },
+  "nama_kepala_keluarga": {
+    "value": "BUDI SANTOSO",
+    "confidence": 0.8871,
+    "bin": 9,
+    "auto": true
+  },
   "anggota_keluarga": [
     {
-      "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
-      "nik": {"value": "3273011203850001", "confidence": 1},
-      "pendidikan": {"value": "S1", "confidence": 1},
-      "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
-      "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
-      "ayah": {"value": "SUTRISNO", "confidence": 1},
-      "ibu": {"value": "SITI AMINAH", "confidence": 1}
+      "nama_lengkap": {
+        "value": "BUDI SANTOSO",
+        "confidence": 0.9702,
+        "bin": 10,
+        "auto": true
+      },
+      "nik": {
+        "value": "3273011203850001",
+        "confidence": 0.9655,
+        "bin": 10,
+        "auto": true
+      },
+      "pendidikan": {
+        "value": "S1",
+        "confidence": 0.841,
+        "bin": 9,
+        "auto": true
+      },
+      "jenis_pekerjaan": {
+        "value": "KARYAWAN SWASTA",
+        "confidence": 0.7733,
+        "bin": 8,
+        "auto": true
+      },
+      "status_hubungan_dalam_rumah_tangga": {
+        "value": "KEPALA KELUARGA",
+        "confidence": 0.9218,
+        "bin": 10,
+        "auto": true
+      },
+      "ayah": {
+        "value": "SUTRISNO",
+        "confidence": 0.8064,
+        "bin": 9,
+        "auto": true
+      },
+      "ibu": {
+        "value": "SITI AMINAH",
+        "confidence": 0.7951,
+        "bin": 8,
+        "auto": true
+      }
     },
     {
-      "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 1},
-      "nik": {"value": "3273015506880002", "confidence": 1},
-      "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 1},
-      "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
-      "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
-      "ayah": {"value": "AHMAD DAHLAN", "confidence": 1},
-      "ibu": {"value": "RATNA SARI", "confidence": 1}
+      "nama_lengkap": {
+        "value": "SITI NURHALIZA",
+        "confidence": 0.9333,
+        "bin": 10,
+        "auto": true
+      },
+      "nik": {
+        "value": "3273015506880002",
+        "confidence": 0.951,
+        "bin": 10,
+        "auto": true
+      },
+      "pendidikan": {
+        "value": "SLTA/SEDERAJAT",
+        "confidence": 0.7126,
+        "bin": 8,
+        "auto": true
+      },
+      "jenis_pekerjaan": {
+        "value": "MENGURUS RUMAH TANGGA",
+        "confidence": 0.3184,
+        "bin": 4,
+        "auto": false
+      },
+      "status_hubungan_dalam_rumah_tangga": {
+        "value": "ISTRI",
+        "confidence": 0.9047,
+        "bin": 10,
+        "auto": true
+      },
+      "ayah": {
+        "value": "AHMAD DAHLAN",
+        "confidence": 0.7702,
+        "bin": 8,
+        "auto": true
+      },
+      "ibu": {
+        "value": "RATNA SARI",
+        "confidence": 0.7588,
+        "bin": 8,
+        "auto": true
+      }
     }
   ]
 }

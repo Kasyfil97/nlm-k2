@@ -12,13 +12,37 @@ class ContractField(BaseModel):
         "is never replaced by null",
         examples=["3273012345678901"],
     )
-    confidence: Literal[0, 1] = Field(
+    confidence: float = Field(
+        ...,
+        ge=0,
+        le=1,
+        description=(
+            "Calibrated P(this value is exactly correct), from the trust model. `0.0` when there is no value "
+            "or no score. This used to be a 1/0 flag; a float is what lets a caller tell a field at 0.52 "
+            "apart from one at 0.99, which the flag made indistinguishable"
+        ),
+        examples=[0.9874],
+    )
+    bin: int = Field(
+        ...,
+        ge=1,
+        le=10,
+        description=(
+            "The model's ten-bin placement of `confidence`, 1 lowest. The bins are not equal width: the top "
+            "one is cut exactly where held-out precision reached 100%, so `bin: 10` is the strongest claim "
+            "this pipeline makes about a field"
+        ),
+        examples=[10],
+    )
+    auto: bool = Field(
         ...,
         description=(
-            "1 when the trust model gives this value a probability of being correct of at least "
-            "`FIELD_CONFIDENCE_THRESHOLD` (0.5 by default); 0 when it is lower, or when there is no value"
+            "True when `confidence` cleared the threshold calibrated **for this field specifically** -- the "
+            "point above which every field of this kind was correct on held-out data. Thresholds differ per "
+            "field by design (`ayah` 0.935, `pendidikan` 0.993), so one global number cannot replace this. "
+            "Read `auto` to decide whether a human must look; read `confidence` to decide what to look at first"
         ),
-        examples=[1],
+        examples=[True],
     )
 
 

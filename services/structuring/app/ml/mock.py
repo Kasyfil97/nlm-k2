@@ -21,7 +21,14 @@ from __future__ import annotations
 import re
 from typing import cast
 
-from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
+from ocr_common.kk import (
+    DOC_CELL_FEATURES,
+    DOC_FIELDS,
+    MEMBER_CELL_FEATURES,
+    MEMBER_FIELDS,
+    SCORED_DOC_FIELDS,
+    SCORED_MEMBER_FIELDS,
+)
 from ocr_common.synthetic_kk import household, nomor_kk
 from ocr_common.types import OcrBox, StructuringResult
 
@@ -72,8 +79,10 @@ class MockStructurer:
     def _document(self, head: str, members: int, levers: dict[str, str]) -> StructuringResult:
         people = household(members, seed=int(levers.get("seed", "0")))
         document: dict[str, object] = {
-            "nomor_kk": _field(head, 0.9991),
-            "nama_kepala_keluarga": _field(people[0].nama_lengkap if people else "", 0.9873),
+            "nomor_kk": _field(head, 0.9991, features=_features(DOC_CELL_FEATURES, 1)),
+            "nama_kepala_keluarga": _field(
+                people[0].nama_lengkap if people else "", 0.9873, features=_features(DOC_CELL_FEATURES, 2)
+            ),
         }
         for name in DOC_FIELDS:
             document.setdefault(name, _field(_DOC_VALUES.get(name, ""), 0.97))
@@ -81,8 +90,24 @@ class MockStructurer:
         # between this list and scoring's, which is exactly what the variable length exists to expose.
         document["anggota_keluarga"] = [
             {
-                name: _field(getattr(person, name), round(0.99 - index * 0.031, 4), round(0.97 - index * 0.043, 4))
-                for name in MEMBER_FIELDS
+                name: _field(
+                    getattr(person, name),
+                    round(0.99 - index * 0.031, 4),
+                    round(0.97 - index * 0.043, 4),
+                    # Only the seven SCORED fields carry a vector; the other eight are extracted and
+                    # never scored, and inventing features for them would suggest otherwise.
+                    # Langkah per anggota adalah len(MEMBER_FIELDS), bukan jumlah field yang
+                    # diskor: dengan langkah yang lebih kecil dari posisi terbesar, offset anggota
+                    # ke-n bertabrakan dengan anggota ke-(n+1) -- dan vektor yang identik antar sel
+                    # membuat pergeseran indeks tak terlihat, satu-satunya hal yang seluruh berkas
+                    # ini ada untuk mengekspos.
+                    features=(
+                        _features(MEMBER_CELL_FEATURES, index * len(MEMBER_FIELDS) + position + 3)
+                        if name in SCORED_MEMBER_FIELDS
+                        else None
+                    ),
+                )
+                for position, name in enumerate(MEMBER_FIELDS)
             }
             for index, person in enumerate(people)
         ]
@@ -91,3 +116,26 @@ class MockStructurer:
 
 def _levers(texts: list[OcrBox]) -> dict[str, str]:
     return {key: value for box in texts for key, value in _LEVER.findall(box.get("text") or "")}
+
+
+def _features(names: tuple[str, ...], offset: int) -> dict[str, float]:
+    """A complete feature vector with plausible but synthetic values.
+
+    What matters here is **completeness**, not realism: scoring reads every name in
+    `kk.MEMBER_CELL_FEATURES` / `kk.DOC_CELL_FEATURES`, and a missing one becomes NaN in a model that
+    was never trained to read it as absent. So the mock emits every key, and the assertion that the
+    key sets match is a test rather than a hope.
+
+    The numbers are not realistic and are not meant to be. Until the K2Regex-v2 port replaces this
+    backend, a confidence computed from them says nothing about a document -- it only proves the
+    vector travelled intact. `offset` keeps every cell's vector distinct so an index shift between
+    this list and scoring's cannot hide.
+    """
+    return {name: round((offset * 7 + index * 13) % 100 / 100.0, 4) for index, name in enumerate(names)}
+
+
+#: Guard against the drift this file exists to prevent: the mock must emit exactly the names the
+#: trust model reads. Checked at import so a rename in `ocr_common.kk` fails loudly here.
+assert set(_features(MEMBER_CELL_FEATURES, 0)) == set(MEMBER_CELL_FEATURES)
+assert set(_features(DOC_CELL_FEATURES, 0)) == set(DOC_CELL_FEATURES)
+assert len(SCORED_DOC_FIELDS) == 2 and len(SCORED_MEMBER_FIELDS) == 7

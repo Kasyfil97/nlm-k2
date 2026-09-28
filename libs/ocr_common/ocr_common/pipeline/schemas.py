@@ -178,6 +178,19 @@ class StructuredFieldPayload(_Forwarded):
         ),
         examples=[None],
     )
+    features: dict[str, float] | None = Field(
+        None,
+        description=(
+            "The trust model's input vector for this field, present only for the NINE scored contract fields "
+            "and null everywhere else. It exists because the two scores above do not separate a correct value "
+            "from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a "
+            "coin, while the parser internals that do carry the signal are computed and then discarded. "
+            "Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES` "
+            "(document fields); scoring assembles them and never recomputes one, because the same feature "
+            "computed in two places is how a model ends up good in training and bad in production"
+        ),
+        examples=[{"marg_min": 0.9967, "margin_min": 0.9934, "emis_assigned_min": 0.0, "lebar_rel": 0.87}],
+    )
 
 
 class StructuredMemberPayload(_Forwarded):
@@ -278,6 +291,26 @@ class ScoringPayload(_Forwarded):
     model: str | None = Field(None, description="Identity of the trust model", examples=["kk-trust-isotonic-v1"])
     payload: dict[str, Any] | None = Field(
         None, description="Exactly what was scored, as an audit trail, so the numbers can be reproduced"
+    )
+    thresholds: dict[str, float] | None = Field(
+        None,
+        description=(
+            "The confidence above which a field of that name was correct on every held-out sample -- one per "
+            "scored field, keyed by INTERNAL name. They travel in the result rather than in configuration "
+            "because they are a property of the trained model, not of the deployment, and because this is what "
+            "makes the orchestrator's `auto` and the outcome row's `auto` identical by construction instead of "
+            "by keeping two env vars in step. A field absent here falls back to `FIELD_CONFIDENCE_THRESHOLD`"
+        ),
+        examples=[{"nik": 0.9637, "ayah": 0.9353, "pendidikan": 0.9929}],
+    )
+    bin_edges: dict[str, list[float]] | None = Field(
+        None,
+        description=(
+            "Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model families have "
+            "their own. Deliberately NOT equal width: the top bin is cut exactly where held-out precision "
+            "reached 100%, which no fixed grid lands on. Null falls back to ten equal-width bins"
+        ),
+        examples=[{"anggota_keluarga": [0.0, 0.631, 0.776, 0.839, 0.899, 0.925, 0.943, 0.965, 0.979, 0.9874, 1.0]}],
     )
 
 

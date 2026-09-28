@@ -90,13 +90,21 @@ class ScoringJobService:
                 ocr_result = await self._results.get("ocr", request_id)
             payload = self._confidence.payload_from_chain(guardrails, ocr_result, chain["structuring"])
             result = await run_in_threadpool(self._confidence.predict, payload)
-            return {
+            stored: dict[str, Any] = {
                 "document_type": document_type,
                 "fields": result["fields"],
                 "anggota_keluarga": result["anggota_keluarga"],
                 "model": result.get("model"),
                 "payload": payload,
             }
+            # The thresholds and bin edges are STORED with the scores, not just used here. The
+            # orchestrator rebuilds the same `data` from this row through `contract_fields`, and §8.5
+            # requires the two to agree exactly; carrying the model's own numbers in the result makes
+            # that true by construction, where a shared env var would only make it likely.
+            for key in ("thresholds", "bin_edges"):
+                if result.get(key):
+                    stored[key] = result[key]
+            return cast(ScoringResult, stored)
 
         def final(scoring: Mapping[str, Any]) -> FinalResult:
             # Dicast: keduanya JSON yang sudah divalidasi model muatannya di tahap asalnya,

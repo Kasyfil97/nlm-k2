@@ -100,8 +100,12 @@ dokumen ketika potongan teksnya tidak terbaca. Gerbang itu **tidak ada** di nlm-
 - Di tingkat dokumen tersisa `guardrail_probability` dari model guardrails, plus `avg_doc_score` /
   `min_doc_score` yang diturunkan dari skor rekognisi.
 - Dokumen buram yang lolos guardrails tetap diproses sampai selesai dan dijawab `200`; yang menandainya
-  hanyalah `confidence: 0` per field dari tahap scoring. Penyaringan akhir bergantung pada trust model
-  dan ambang di sisi pemanggil, bukan pada gerbang keras.
+  hanyalah `confidence` rendah dan `auto: false` per field dari tahap scoring. Penyaringan akhir bergantung
+  pada trust model dan ambang di sisi pemanggil, bukan pada gerbang keras.
+- Terukur, `ocr_conf` memang menanggung peran itu dengan cukup baik: ia fitur **terpenting** di trust model
+  (permutation importance 0.0743, ~27× `crf_conf`). Yang belum terpecahkan adalah kasus "OCR yakin tapi
+  salah" — semua fitur teks yang ada bersifat self-consistency atau leksikon, tidak satu pun bukti
+  independen bahwa bacaannya benar.
 
 Kalau nanti gerbang itu dibutuhkan, tempat masuknya adalah tahap async baru **setelah structuring** —
 parser sudah tahu kotak mana yang menghasilkan tiap field, jadi yang dinilai hanya potongan yang relevan.
@@ -310,26 +314,26 @@ mode itu `1` hanya bisa berasal dari aturan structuring.
   "status_desc": "OK",
   "message": "OCR extraction completed successfully",
   "data": {
-    "no_kk":                {"value": "3273012345678901", "confidence": 1},
-    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
+    "no_kk":                {"value": "3273012345678901", "confidence": 0.9913, "bin": 10, "auto": true},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0.9041, "bin": 9, "auto": true},
     "anggota_keluarga": [
       {
-        "nama_lengkap":                       {"value": "BUDI SANTOSO", "confidence": 1},
-        "nik":                                {"value": "3273011203850001", "confidence": 1},
-        "pendidikan":                         {"value": "S1", "confidence": 1},
-        "jenis_pekerjaan":                    {"value": "KARYAWAN SWASTA", "confidence": 1},
-        "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
-        "ayah":                               {"value": "SUTRISNO", "confidence": 1},
-        "ibu":                                {"value": "SITI AMINAH", "confidence": 1}
+        "nama_lengkap":                       {"value": "BUDI SANTOSO", "confidence": 0.9886, "bin": 10, "auto": true},
+        "nik":                                {"value": "3273011203850001", "confidence": 0.9902, "bin": 10, "auto": true},
+        "pendidikan":                         {"value": "S1", "confidence": 0.9951, "bin": 10, "auto": true},
+        "jenis_pekerjaan":                    {"value": "KARYAWAN SWASTA", "confidence": 0.9833, "bin": 10, "auto": true},
+        "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 0.9914, "bin": 10, "auto": true},
+        "ayah":                               {"value": "SUTRISNO", "confidence": 0.9602, "bin": 9, "auto": true},
+        "ibu":                                {"value": "SITI AMINAH", "confidence": 0.9418, "bin": 8, "auto": false}
       },
       {
-        "nama_lengkap":                       {"value": "SITI NURHALIZA", "confidence": 1},
-        "nik":                                {"value": "3273015506880002", "confidence": 1},
-        "pendidikan":                         {"value": "SLTA/SEDERAJAT", "confidence": 1},
-        "jenis_pekerjaan":                    {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
-        "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
-        "ayah":                               {"value": "AHMAD DAHLAN", "confidence": 1},
-        "ibu":                                {"value": "RATNA SARI", "confidence": 1}
+        "nama_lengkap":                       {"value": "SITI NURHALIZA", "confidence": 0.9077, "bin": 6, "auto": false},
+        "nik":                                {"value": "3273015506880002", "confidence": 0.9701, "bin": 9, "auto": true},
+        "pendidikan":                         {"value": "SLTA/SEDERAJAT", "confidence": 0.9724, "bin": 9, "auto": false},
+        "jenis_pekerjaan":                    {"value": "MENGURUS RUMAH TANGGA", "confidence": 0.6318, "bin": 2, "auto": false},
+        "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0.9130, "bin": 6, "auto": false},
+        "ayah":                               {"value": "AHMAD DAHLAN", "confidence": 0.9355, "bin": 8, "auto": true},
+        "ibu":                                {"value": "RATNA SARI", "confidence": 0.8802, "bin": 5, "auto": false}
       }
     ]
   },
@@ -346,11 +350,29 @@ Aturan isi `data`:
 
 - **Hanya sembilan field yang keluar**: 2 field dokumen (`no_kk`, `nama_kepala_keluarga`) dan 7 field per
   anggota. Tidak ada field lain, walau tahap structuring mengekstraksi lebih banyak.
-- Bentuk tiap field selalu `{"value": <string>, "confidence": 0 | 1}` — **tidak pernah** `null` sebagai
-  pengganti objek. Field yang tidak ditemukan: `{"value": "", "confidence": 0}`.
-- `confidence` bernilai `1` kalau probabilitas dari tahap scoring ≥ `FIELD_CONFIDENCE_THRESHOLD`
-  (default 0.5), `0` kalau di bawahnya atau nilainya kosong. Probabilitas mentahnya tidak diekspos di sini
-  (ada di `GET /v1/scoring/jobs/{request_id}` untuk debugging).
+- Bentuk tiap field selalu `{"value": <string>, "confidence": <float>, "bin": <1..10>, "auto": <bool>}` —
+  **tidak pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan:
+  `{"value": "", "confidence": 0.0, "bin": 1, "auto": false}`.
+- **`confidence` adalah probabilitas terkalibrasi bahwa nilai itu PERSIS benar** (kapital & spasi
+  dirapikan), langsung dari tahap scoring. Satu angka untuk dua hal sekaligus: penempatan kolom benar
+  DAN teks OCR benar, karena keduanya harus benar agar string akhirnya sama.
+  Sebelumnya kunci ini bendera `0 | 1`; itu membuang satu-satunya hal yang dibutuhkan untuk triase —
+  field di 0.52 dan field di 0.99 bukan klaim yang sama. Tidak pernah `null`: pembaca tidak boleh harus
+  menguji null sebelum membandingkan.
+- **`bin`** menempatkan `confidence` di salah satu dari sepuluh bin model, 1 terendah. Tepinya **sengaja
+  tidak selebar sama**: bin teratas dipotong tepat di titik presisi 100% terukur pada data held-out, dan
+  tidak ada kisi 0.1 yang jatuh pas di situ. `bin: 10` adalah klaim terkuat yang pipeline ini buat.
+- **`auto`** bernilai `true` kalau `confidence` melewati ambang yang dikalibrasi **khusus untuk field itu**
+  — titik di atas mana setiap field sejenis benar pada data held-out. Ambangnya berbeda per field karena
+  memang harus: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan satu angka
+  global menjatuhkan cakupan yang bisa dipakai ke nol. Ambangnya ikut di dalam hasil scoring
+  ([8.3](#83-hasil-tahap-scoring)), bukan di konfigurasi, supaya `auto` di sini identik dengan `auto` di
+  baris outcome **secara konstruksi** — tidak ada env var yang harus dijaga sinkron. Field tanpa ambang
+  sendiri jatuh ke `FIELD_CONFIDENCE_THRESHOLD`.
+- Baca `auto` untuk memutuskan apakah manusia harus melihat; baca `confidence` untuk memutuskan apa yang
+  dilihat lebih dulu.
+- **100% bukan jaminan.** Angka presisi bin teratas diukur pada data held-out (200/200 sel saat draf ini),
+  dan batas bawah Clopper-Pearson 95%-nya **98.51%** — itu angka yang boleh dijanjikan ke pemanggil.
 - **Kedua kunci dokumen dan ketujuh kunci tiap anggota selalu ada**, walau nilainya `""`.
 - `anggota_keluarga` adalah array dengan urutan sesuai baris pada kartu.
 
@@ -754,6 +776,10 @@ Aturan bentuk — ini yang mengikat, bukan contoh di atas:
 - Keduanya **tidak dilebur**: keduanya gagal dengan cara berbeda — `ocr_conf` rendah berarti mesin
   rekognisi ragu pada teksnya, `crf_conf` rendah berarti teksnya terbaca tapi tidak jelas masuk kolom mana.
   Peleburan keduanya menjadi satu P(benar) adalah tugas tahap scoring.
+- **`features`** = vektor masukan trust model untuk field itu, **hanya ada pada sembilan field kontrak**
+  dan `null` di semua field lain. Nama-namanya dipatok `ocr_common.kk.MEMBER_CELL_FEATURES` (46 nama, sel
+  anggota) dan `DOC_CELL_FEATURES` (13 nama, field dokumen). Lihat
+  [7.3.1](#731-kenapa-ada-features-dan-kenapa-ia-lahir-di-sini).
 - **`reject_reason`** = alasan pertama yang menolak dokumen, bahasa Indonesia; `null` kalau dokumen
   diterima. Perannya dijelaskan di [7.4](#74-gerbang-validitas-kk).
 - Tiap anggota selalu membawa kelima-belas kunci, walau nilainya `""`.
@@ -788,6 +814,43 @@ Tiga hal yang perlu diperhatikan saat mengimplementasikannya:
    penting sebagai fitur, tambahkan penanda `corrected` per field (aditif, tidak memecah kontrak ini).
 
 `GET /v1/structuring/jobs/{request_id}` membungkus objek ini di `data.result` mengikuti envelope 2.1.
+
+### 7.3.1 Kenapa ada `features`, dan kenapa ia lahir di sini
+
+**Kedua skor di atas tidak cukup.** Diukur atas 1686 sel berlabel tangan dari 97 dokumen, `crf_conf`
+mencapai AUC **0.502** terhadap benar/salah — tidak lebih baik dari koin. Sebabnya struktural dan sudah
+diketahui: marginal forward-backward dinormalisasi atas himpunan kolom yang ada, **tanpa state "bukan kolom
+mana pun"**, jadi ia mengukur ketegasan pilihan relatif terhadap kolom lain di baris yang sama, bukan
+probabilitas nilainya benar. Ia pun saturasi mendekati 1.0 pada sel yang posisinya bersih.
+
+Sinyal yang bekerja **sudah dihitung parser lalu dibuang**: skor emisi mentah, geometri sel, jarak ke
+kandidat vocab runner-up, dan hasil cek silang terhadap NIK. Dengan vektor itu, model yang sama naik ke AUC
+**0.855**, dan itulah yang membuat bin teratas berpresisi 100% mungkin sama sekali.
+
+Vektornya lahir **di structuring**, bukan dirakit ulang di scoring, dan itu bukan pilihan gaya: fitur yang
+dihitung di dua tempat adalah cara paling andal menghasilkan model yang bagus saat latih lalu buruk saat
+dipakai. Scoring hanya menyusunnya menjadi matriks.
+
+Tiga fitur terpenting, dari permutation importance (penurunan AUC saat diacak, rata-rata 5 fold):
+
+| Fitur | Pengaruh | Catatan |
+|---|---|---|
+| `ocr_min` (= `ocr_conf`) | 0.0743 | **dominan**; sudah ada di kontrak ini |
+| `confusable_ratio` | 0.0393 | rasio karakter mudah tertukar (`O/0`, `I/1`, `S/5`) pada nilainya |
+| `emis_assigned_min` | 0.0345 | skor emisi MENTAH, bukan marginal yang sudah dinormalisasi |
+| `marg_min` (≈ `crf_conf`) | 0.0027 | angka yang dulu satu-satunya dikirim, ~27× lebih lemah dari `ocr_min` |
+
+Yang perlu dicatat untuk yang akan mem-port K2Regex-v2: fitur turunan marginal (`margin_min`, entropi,
+logit margin) **tidak membantu** — diuji dan nol pengaruhnya. Yang berguna dari CRF justru emisi mentah.
+
+Empat fitur tidak datang dari sini karena structuring tidak memilikinya, dan scoring menambahkannya
+sendiri: untuk sel anggota `ocr_min` dan `crf_conf` (dari field itu sendiri), untuk field dokumen
+`ocr_conf` plus `avg_doc_score` / `min_doc_score` / `text_regions_count` dari agregat OCR.
+
+**Selama structuring belum mem-port K2Regex-v2, `features` dari backend `mock` bersifat sintetis.** Ia
+lengkap dan setiap sel berbeda — cukup untuk membuktikan vektornya sampai utuh dan penyelarasan
+posisionalnya benar — tapi confidence yang dihitung darinya tidak mengatakan apa pun tentang sebuah
+dokumen. Batas itu sama dengan yang sudah dicatat untuk isi `data`.
 
 ### 7.4 Gerbang validitas KK
 
@@ -874,13 +937,66 @@ Sama dengan 6.2, dengan `"stage": "SCORING"`.
       "ayah": 0.8064, "ibu": 0.7951
     }
   ],
-  "model": "kk-trust-isotonic-v1",
+  "model": "kk-trust-hgb-isotonic-v1",
+  "thresholds": {
+    "nama_lengkap": 0.9652, "nik": 0.9637, "pendidikan": 0.9929, "jenis_pekerjaan": 0.9811,
+    "status_hubungan_dalam_keluarga": 0.9786, "ayah": 0.9353, "ibu": 0.9671,
+    "nama_kepala_keluarga": 0.8596
+  },
+  "bin_edges": {
+    "fields": [0.0, 0.583, 0.827, 0.831, 0.832, 0.86, 0.867, 0.902, 0.944, 1.0],
+    "anggota_keluarga": [0.0, 0.631, 0.776, 0.839, 0.899, 0.925, 0.943, 0.965, 0.979, 0.9874, 1.0]
+  },
   "payload": { "...fitur persis yang diskor, sebagai jejak audit..." }
 }
 ```
 
-Tiap angka adalah **P(nilai field ini benar)**, hasil fusi sinyal + kalibrasi isotonic. Field yang nilainya
-kosong mendapat `null`. Tidak ada skor dokumen dan tidak ada keputusan terima/tolak: ambang milik pemanggil.
+Tiap angka adalah **P(nilai field ini PERSIS sama dengan kebenaran)** — kapital & spasi dirapikan — hasil
+fusi sinyal + kalibrasi isotonic. Satu angka untuk dua hal sekaligus: penempatan kolom benar DAN teks OCR
+benar, karena keduanya harus benar agar string akhirnya sama. Field yang nilainya kosong mendapat `null`,
+dan begitu juga field yang tidak bisa diskor secara jujur (lihat di bawah). Tidak ada skor dokumen dan
+tidak ada keputusan terima/tolak: ambang milik pemanggil.
+
+**`thresholds`** = confidence di atas mana setiap sampel held-out field itu benar, satu per field kontrak,
+memakai nama internal. Ia ikut di dalam hasil **bukan di konfigurasi**, karena ia properti model yang
+dilatih, bukan properti deployment — dan karena itulah yang membuat `auto` di respons `extract-ocr`
+identik dengan `auto` di baris outcome secara konstruksi, bukan dengan menjaga dua env var tetap sinkron.
+Ambang harus berbeda per field: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan
+satu angka global menjatuhkan cakupan pada presisi 100% ke nol. Field yang **tidak ada** di sini tidak
+punya titik seperti itu di data latih — `nomor_kk` salah satunya, hanya 5 sel bersih dari 97 — dan jatuh ke
+`FIELD_CONFIDENCE_THRESHOLD`. Ketiadaannya adalah informasi, bukan cacat.
+
+**`bin_edges`** = tepi bin dari rendah ke tinggi, terpisah untuk kedua keluarga model. Sengaja tidak
+selebar sama: bin teratas dipotong tepat di titik presisi 100% terukur, yang tidak jatuh pas di kisi mana
+pun. `null` pada keduanya berarti sepuluh bin lebar sama.
+
+**Dua keluarga model, bukan satu.** Sel anggota punya `crf_conf` dan seluruh internal CRF; field dokumen
+tidak punya `crf_conf` sama sekali, jadi buktinya datang dari tempat lain (`kepala_votes` — empat saksi
+independen yang `consensus()` pilih satu — plus agregat OCR). Satu model atas keduanya harus belajar
+mengabaikan separuh masukannya tergantung sebuah flag, dan diukur atas campuran dua base rate yang jauh
+berbeda.
+
+**Field yang nilainya ada tapi `features`-nya tidak akan diskor `null`, bukan diberi angka terkaan.** Itu
+keadaan ketika structuring belum memancarkan vektor fitur ([7.3.1](#731-kenapa-ada-features-dan-kenapa-ia-lahir-di-sini)),
+dan mengarang confidence di situ adalah satu-satunya kegagalan yang tahap ini ada untuk mencegah: angka
+yang terlihat berwibawa dan dihitung dari apa pun. Nama field yang terdampak ditulis ke log sebagai
+`WARNING`.
+
+**Angka yang terukur saat draf ini** (1686 sel berlabel, 97 dokumen, GroupKFold per dokumen, isotonic
+bersarang):
+
+| | anggota | dokumen |
+|---|---|---|
+| sel berlabel | 1686 | 162 |
+| akurasi exact | 86.89% | 83.95% |
+| AUC out-of-fold | **0.855** | 0.815 |
+| AUC `crf_conf` mentah, sebagai pembanding | 0.502 | 0.619 (`ocr_conf`) |
+| cakupan pada presisi 100%, ambang per field | **26.6%** (449 sel, nol salah) | 30.9% (50 sel) |
+| batas bawah Clopper-Pearson 95% | **99.34%** | 94.18% |
+
+Angka 100% itu **diukur pada held-out, bukan dijamin**. Yang boleh dijanjikan ke pemanggil adalah batas
+bawah Clopper-Pearson-nya. Untuk menjanjikan 99.9% dibutuhkan ~3000 sel berurutan tanpa satu pun salah di
+bin teratas; yang tersedia sekarang 1686 sel seluruhnya.
 
 **Scoring hanya menilai sembilan field kontrak** (2 dokumen + 7 anggota), bukan seluruh 11 + 15 yang
 diekstraksi structuring. Alasannya: tiap field butuh kalibratornya sendiri, dan melatih 26 kalibrator untuk
@@ -923,21 +1039,31 @@ Content-Type: application/json
 ```
 
 Blok per field di sini adalah **potongan langsung** dari hasil structuring (7.3) — nama kunci dan maknanya
-sama persis, jadi scoring tidak perlu menerjemahkan apa pun. `n_anggota` diturunkan dari panjang
-`anggota_keluarga`. Semua nilai boleh `null`; field yang nilainya `null` mendapat confidence `null`.
-Endpoint ini tidak membuat job dan tidak menyentuh database — untuk kalibrasi dan evaluasi model.
+sama persis, jadi scoring tidak perlu menerjemahkan apa pun, **termasuk `features`** yang di contoh ini
+dipersingkat. `n_anggota` diturunkan dari panjang `anggota_keluarga`. Semua nilai boleh `null`; field yang
+nilainya `null` mendapat confidence `null`. Endpoint ini tidak membuat job dan tidak menyentuh database —
+untuk kalibrasi dan evaluasi model.
 
 Tiga catatan untuk tim ML:
 
 - **Field dokumen dan field anggota adalah dua keluarga model.** `crf_conf` selalu `null` untuk field
-  dokumen, jadi kalibratornya bekerja dengan `ocr_conf` plus fitur tingkat dokumen
-  (`guardrail_probability`, `avg/min_doc_score`, `n_anggota`). Field anggota punya dua sinyal per field.
+  dokumen, jadi kalibratornya bekerja dengan `ocr_conf`, `DOC_CELL_FEATURES`, dan fitur tingkat dokumen
+  (`avg/min_doc_score`, `text_regions_count`). Field anggota punya dua skor plus 46 fitur per sel.
+- **Kirimkan `features`.** Tanpa blok itu setiap field anggota diskor `null`: dua skor saja tidak memisahkan
+  nilai benar dari nilai salah (`crf_conf` AUC 0.502), jadi endpoint ini tidak akan mengarang angka untuk
+  menutupinya. Nama-namanya di `ocr_common.kk.MEMBER_CELL_FEATURES` / `DOC_CELL_FEATURES`.
+- **`guardrail_probability` belum dipakai model mana pun.** Korpus GT tidak punya hasil guardrails, jadi
+  kolomnya selalu kosong saat latih dan dibuang. Ia tetap diterima di badan request supaya tidak perlu
+  perubahan kontrak nanti, tapi begitu guardrails masuk GT model harus **dilatih ulang** — bukan sekadar
+  diberi kolomnya.
 - **Tidak ada sinyal legibilitas terpisah** ([1.1](#11-tidak-ada-penilaian-legibilitas-per-field)), jadi
-  `ocr_conf` harus menanggung peran itu sendirian. Kalau evaluasi menunjukkan trust model tidak bisa
-  memisahkan "OCR yakin tapi salah" dari "OCR yakin dan benar", itu indikasi bahwa gerbang legibilitas
-  perlu dipertimbangkan lagi.
+  `ocr_conf` harus menanggung peran itu sendirian — dan terukur, ia memang fitur terpenting yang ada
+  (permutation importance 0.0743, ~27× `crf_conf`).
 - **Tidak ada fitur `flag`**: hasil structuring tidak memancarkannya, jadi sinyal "ada yang mencurigakan"
   harus diturunkan dari fitur-fitur di atas, bukan dari penanda siap pakai.
+- **Plafon yang diketahui.** Semua fitur teks yang ada bersifat self-consistency atau leksikon; tidak satu
+  pun bukti independen bahwa OCR-nya benar. Yang paling mungkin menembusnya adalah kesepakatan recognizer
+  kedua (atau rec yang sama dengan preprocessing berbeda), bukan model yang lebih besar.
 
 ### 8.5 Menutup request
 
@@ -1002,7 +1128,9 @@ supaya penambahan field di hulu tidak memecah hilir.
 | Field | Tipe | Keterangan |
 |---|---|---|
 | `value` | string | `""` kalau tidak ditemukan, tidak pernah `null` |
-| `confidence` | 0 \| 1 | 1 kalau P(benar) ≥ `FIELD_CONFIDENCE_THRESHOLD` |
+| `confidence` | float 0–1 | P(nilai ini persis benar) dari trust model; `0.0` kalau tidak ada nilai atau tidak ada skor. **Tidak pernah `null`** |
+| `bin` | int 1–10 | bin model atas `confidence`; tepinya tidak selebar sama, bin teratas dipotong di titik presisi 100% terukur |
+| `auto` | bool | `confidence` melewati ambang yang dikalibrasi untuk field itu ([8.3](#83-hasil-tahap-scoring)); field tanpa ambang sendiri memakai `FIELD_CONFIDENCE_THRESHOLD` |
 
 ### `GuardrailsResult`
 
@@ -1169,7 +1297,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/ekstraksi/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
-| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | ambang `confidence` 0/1 di `data`. **Harus sama dengan nilai di scoring** ([8.5](#85-menutup-request)) |
+| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `auto` di `data`, dipakai hanya bila field itu tidak punya ambang sendiri di hasil scoring. Harus sama dengan nilai di scoring ([8.5](#85-menutup-request)) |
 | `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
 
 Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat API, bukan lewat database.
@@ -1188,7 +1316,9 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 | `PIPELINE_OUTBOX_MAX_BACKOFF_SECONDS` / `_MAX_AGE_SECONDS` | tidak | `300` / `86400` | batas backoff, dan umur sebelum pesan jadi dead letter |
 | `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` | tidak | `300` | relay menulis `WARNING` selama pesan tertua lebih tua dari ini |
 | `ORCHESTRATION_OUTCOME_TABLE` | **produksi: ya** | kosong | nama tabel outcome milik Orkestrasi pusat ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)). Kosong = tidak menulis, dan keadaan akhir hanya terbaca lewat polling — hanya untuk dev |
-| `FIELD_CONFIDENCE_THRESHOLD` | scoring saja | `0.5` | dipakai merakit `result_data`. **Harus sama dengan orchestrator** |
+| `FIELD_CONFIDENCE_THRESHOLD` | scoring saja | `0.5` | **cadangan**, dipakai hanya untuk field yang tidak punya ambang sendiri di hasil scoring ([8.3](#83-hasil-tahap-scoring)). Tetap harus sama dengan orchestrator; ambang per field tidak perlu disinkronkan karena ikut di dalam hasil |
+| `SCORING_BACKEND` | scoring saja | `mock` | `mock` mengarang angka dan **ditolak di luar `ENVIRONMENT=local`**; `calibrated` memuat artefak terlatih |
+| `SCORING_MODEL_PATH` | scoring, `calibrated` | `weights/kk_trust_model.joblib` | artefak joblib: dua keluarga model, masing-masing dengan urutan kolom, tepi bin, dan ambang per field-nya sendiri. Ketiganya bukan konfigurasi — semuanya berpindah bersama bobotnya |
 | `PII_ENCRYPTION_KEY` | scoring, produksi: ya | – | Fernet, untuk enkripsi hasil sebelum audit ([8.5](#85-menutup-request)) |
 | `TESTING_ENDPOINTS` | tidak | `false` | `true` = orchestrator dan ketiga tahap membuka kembaran `-test` dari endpoint pipeline, memakai tabel `testing_*`, tanpa menulis tabel outcome. Untuk load test tim ML di dev; `false` = route-nya 404 |
 
@@ -1211,9 +1341,11 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 2. **Ambang guardrails menanggung beban lebih besar.** Tanpa gerbang legibilitas per field,
    `GUARDRAILS_THRESHOLD` (default 0.5) adalah satu-satunya gerbang keras untuk mutu gambar. Ambang itu
    dikalibrasi ketika masih ada gerbang kedua di hilir, jadi perlu ditinjau ulang.
-3. **Ambang `FIELD_CONFIDENCE_THRESHOLD` per field.** Satu ambang global untuk sembilan field kontrak
-   kemungkinan terlalu kasar — `nik` dan `ayah`/`ibu` punya distribusi yang jauh berbeda. Ambang per field
-   bisa ditambahkan tanpa mengubah bentuk respons, tapi harus ditambahkan di orchestrator **dan** scoring.
+3. ~~**Ambang `FIELD_CONFIDENCE_THRESHOLD` per field.**~~ **Selesai di draf 11.** Dugaannya benar dan
+   terukur lebih tajam dari perkiraan: satu ambang global menjatuhkan cakupan pada presisi 100% ke **nol**,
+   sementara ambang per field mencapai 26.6%. Ambangnya ikut di dalam hasil scoring
+   ([8.3](#83-hasil-tahap-scoring)), **bukan** ditambahkan di kedua service — itulah yang menghilangkan
+   keharusan menjaga dua konfigurasi tetap sinkron.
 4. **Apakah `ocr_conf` cukup sebagai sinyal legibilitas** ([1.1](#11-tidak-ada-penilaian-legibilitas-per-field)).
    Ini asumsi utama desain sekarang dan perlu divalidasi saat trust model dievaluasi.
 5. **Padanan `flag` / `flag_reason`.** nilam memakai keduanya sebagai fitur lunak trust model.
@@ -1232,6 +1364,34 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 11 — 27 September 2026
+
+Trust model yang sungguhan mendarat di tahap scoring, dan mengukur model itu mengubah tiga hal di
+kontrak ini. Semuanya berakar pada satu temuan: **`ocr_conf` dan `crf_conf` saja tidak memisahkan nilai
+benar dari nilai salah.** Diukur atas 1686 sel berlabel tangan dari 97 dokumen, `crf_conf` mencapai AUC
+0.502 — tidak lebih baik dari koin.
+
+1. **`confidence` di `data` jadi float, plus `bin` dan `auto`** (§3.3, §10). Bendera `0 | 1` membuang
+   satu-satunya hal yang dibutuhkan untuk triase: field di 0.52 dan field di 0.99 bukan klaim yang sama.
+   `auto` mengambil alih peran bendera itu, dan `bin` menempatkan angkanya di sepuluh bin yang teratasnya
+   dipotong di titik presisi 100% terukur. **Ini perubahan yang memecah konsumen** yang membaca
+   `confidence` sebagai integer.
+2. **`StructuredField.features`** (§7.3, §7.3.1). Sinyal yang bekerja sudah dihitung parser lalu dibuang:
+   emisi mentah, geometri sel, jarak ke kandidat vocab runner-up, cek silang NIK. Dengan vektor itu AUC
+   naik ke 0.855. Vektornya lahir di structuring, bukan dirakit ulang di scoring — fitur yang dihitung di
+   dua tempat adalah cara paling andal menghasilkan model yang bagus saat latih lalu buruk saat dipakai.
+3. **`thresholds` dan `bin_edges` di hasil scoring** (§8.3), yang menyelesaikan catatan terbuka nomor 3.
+   Satu ambang global menjatuhkan cakupan pada presisi 100% ke **nol**; ambang per field mencapai 26.6%.
+   Keduanya ikut di dalam hasil, bukan di konfigurasi, karena keduanya properti model yang dilatih — dan
+   karena itulah `auto` di respons `extract-ocr` identik dengan `auto` di baris outcome secara konstruksi,
+   bukan dengan menjaga dua env var tetap sinkron.
+
+Dua batas yang harus dibaca bersama angka-angka di atas. **Pertama, 100% itu diukur pada held-out, bukan
+dijamin**: batas bawah Clopper-Pearson 95% untuk bin teratas adalah 98.51%, dan itu angka yang boleh
+dijanjikan. **Kedua, structuring masih backend `mock`**: `features` yang dipancarkannya sintetis — lengkap
+dan berbeda per sel, cukup untuk membuktikan vektornya sampai utuh, tapi confidence yang dihitung darinya
+tidak mengatakan apa pun tentang sebuah dokumen sampai port K2Regex-v2 mendarat.
 
 ### draf 10 — 26 September 2026
 

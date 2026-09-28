@@ -11,15 +11,16 @@ Kontraknya ada di [`docs/api-contract.md`](docs/api-contract.md).
 | guardrails | 8041 | menilai kualitas gambar; selalu 200, vonis di `data.passed` |
 | ekstraksi | 8042 | OCR; tahap pertama pipeline asinkron |
 | structuring | 8043 | membaca field dari baris OCR; satu-satunya tahap yang boleh menolak isi |
-| scoring | 8044 | trust model; tahap terakhir, merakit hasil kontrak |
+| scoring | 8044 | trust model: P(field persis benar), terkalibrasi + bin; tahap terakhir, merakit hasil kontrak |
 
 Ekstraksi → structuring → scoring berjalan asinkron lewat outbox transaksional. Orchestrator
 menunggu sebentar lalu menjawab 200, atau 202 kalau pipeline belum selesai.
 
 ## Status
 
-Batch pertama sedang berjalan: orchestrator, guardrails, dan ekstraksi. Structuring dan scoring
-hadir sebagai stub supaya siklus 202→200 bisa diuji ujung ke ujung.
+Batch pertama sedang berjalan: orchestrator, guardrails, dan ekstraksi. **Scoring sudah memakai trust
+model yang sungguhan** (`SCORING_BACKEND=calibrated`, artefak di `services/scoring/weights/`);
+structuring masih stub.
 
 > **Baca ini sebelum membaca `make smoke` yang hijau.** Yang teruji ujung ke ujung adalah **pipanya**
 > — transaksi, idempotensi, lease, outbox, dead letter, tabel outcome, bentuk kontrak — dan model OCR
@@ -27,6 +28,14 @@ hadir sebagai stub supaya siklus 202→200 bisa diuji ujung ke ujung.
 > tidak membaca teks OCR, jadi tidak ada satu pun field di `data` yang pernah diekstraksi dari sebuah
 > gambar, dan dokumen yang bukan Kartu Keluarga pun dijawab `200`. Batasnya diukur dan ditulis di
 > [`docs/decisions/2026-09-27-batas-uji-end-to-end.md`](docs/decisions/2026-09-27-batas-uji-end-to-end.md).
+
+> **Dan batas yang sama berlaku untuk `confidence`.** Trust model di scoring dilatih atas 1686 sel
+> berlabel tangan dan angkanya terukur (AUC 0.855; bin teratas 200/200 benar pada data held-out), tapi
+> ia membaca fitur yang **structuring** hasilkan — dan stub itu memancarkan fitur sintetis. Vektornya
+> lengkap dan setiap sel berbeda, cukup untuk membuktikan ia sampai utuh dan penyelarasan
+> posisionalnya benar; confidence yang dihitung darinya belum mengatakan apa pun tentang sebuah
+> dokumen. Yang membuatnya bermakna adalah port K2Regex-v2 di structuring, bukan pekerjaan lanjutan di
+> scoring.
 
 - Requirements: [`docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md`](docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md)
 - Rencana implementasi: [`docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md`](docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md)
@@ -42,6 +51,22 @@ make smoke        # uji ujung ke ujung
 ```
 
 `make up` saja tidak menyalakan database; tahap-tahapnya butuh `make up-db`.
+
+### Bobot model
+
+`services/guardrails/.env.example` menunjuk backend `kk_quality` (inti K2Quality), dan service itu
+**menolak start** tanpa keenam artefaknya. Ambil dulu:
+
+```bash
+GUARDRAILS_MODEL_URI=../K2Quality/models make weights
+```
+
+URI-nya boleh direktori lokal, `gs://`, `s3://`, atau `https://`; untuk entri banyak-berkas ia
+diperlakukan sebagai awalan. Kelima artefak diverifikasi terhadap `model_hashes.json` yang ikut
+diambil, dan artefak yang tidak lengkap atau tidak cocok dibatalkan alih-alih dipakai separuh.
+
+Bobotnya gitignored. Untuk pengembangan tanpa bobot sama sekali, setel `GUARDRAILS_BACKEND=mock`
+(hanya jalan di `ENVIRONMENT=local`).
 
 ### Smoke test ujung ke ujung
 

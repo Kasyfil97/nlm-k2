@@ -20,16 +20,18 @@ from ocr_common.registry import Factory, build_backend
 
 from app.config import Settings, get_settings
 from app.ml.base import TrustModel
+from app.ml.calibrated import CalibratedTrustModel
 from app.ml.mock import MockTrustModel
 from app.services.confidence_service import ConfidenceService
 from app.services.job_service import ScoringJobService
 
 DB_TABLE_PREFIX = "scoring"
 
-# SCORING_BACKEND -> how to build the trust model. `mock` is the only one in this batch; the
-# calibrated model joins it later, and `reject_mock_backend_outside_local` starts applying then.
+# SCORING_BACKEND -> how to build the trust model. `mock` fabricates numbers and is refused outside
+# ENVIRONMENT=local by `Settings._guard_scoring`; `calibrated` loads the trained artifact.
 TRUST_MODEL_BACKENDS: dict[str, Factory[TrustModel]] = {
     "mock": lambda settings: MockTrustModel(),
+    "calibrated": lambda settings: CalibratedTrustModel(settings.scoring_model_path),
 }
 
 

@@ -14,6 +14,11 @@ set_test_env(
     DATABASE_URL="",
     ORCHESTRATION_URL="",
     AUTH_DISABLED="false",
+    # Disebut eksplisit sejak bawaannya jadi `calibrated`: berkas uji di sebelah memang menguji
+    # backend `mock` -- bentuk §8.3, penyelarasan posisional, jalur penolakan -- dan tidak mengirim
+    # blok `features`, yang pada model sungguhan justru membuat setiap field diskor `null` dengan
+    # benar. Model terkalibrasi diuji tersendiri di test_calibrated_model.py, terhadap artefaknya.
+    SCORING_BACKEND="mock",
 )
 
 from fastapi.testclient import TestClient  # noqa: E402

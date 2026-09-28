@@ -48,21 +48,39 @@ def test_the_two_renames_happen_and_nothing_else_does():
     assert "status_hubungan_dalam_keluarga" not in member
 
 
-def test_confidence_is_1_from_the_threshold_up_and_0_just_below():
+def test_auto_is_true_from_the_threshold_up_and_false_just_below():
+    """`confidence` membawa probabilitasnya; `auto` yang menjadi keputusan biner."""
     scoring = deepcopy(SCORING_RESULT)
     scoring["fields"]["nomor_kk"] = 0.5
     scoring["fields"]["nama_kepala_keluarga"] = 0.4999
     data = _projected(0.5, scoring=scoring)
-    assert (data["no_kk"]["confidence"], data["nama_kepala_keluarga"]["confidence"]) == (1, 0)
+    assert (data["no_kk"]["auto"], data["nama_kepala_keluarga"]["auto"]) == (True, False)
+    assert (data["no_kk"]["confidence"], data["nama_kepala_keluarga"]["confidence"]) == (0.5, 0.4999)
+
+
+def test_the_models_own_thresholds_travel_with_the_scores():
+    """§8.5 menuntut baris outcome dan respons extract-ocr identik untuk satu request.
+
+    Ambang ikut di dalam hasil scoring, bukan di konfigurasi, supaya kesamaan itu terjadi secara
+    konstruksi: tidak ada env var yang harus dijaga sinkron antara dua service. Ambang per field
+    juga yang membuat cakupan pada presisi 100% mungkin -- satu angka global memaksa field mudah
+    dan sulit memakai batas yang sama.
+    """
+    scoring = deepcopy(SCORING_RESULT)
+    scoring["thresholds"] = {"nomor_kk": 0.95}
+    scoring["fields"]["nomor_kk"] = 0.94
+    data = _projected(0.5, scoring=scoring)
+    assert data["no_kk"]["auto"] is False, "0.94 lolos ambang global 0.5 tapi bukan ambang modelnya"
+    assert data["nama_kepala_keluarga"]["auto"] is True, "tanpa ambang sendiri, jatuh ke yang global"
 
 
 def test_a_low_score_on_one_member_field_does_not_touch_the_others():
     """The fixture scores member 2's `jenis_pekerjaan` below the threshold on purpose: a projection
     that applied one number to the whole member would be invisible if every field passed."""
     members = _projected()["anggota_keluarga"]
-    assert members[1]["jenis_pekerjaan"]["confidence"] == 0
-    assert members[1]["nama_lengkap"]["confidence"] == 1
-    assert members[0]["jenis_pekerjaan"]["confidence"] == 1
+    assert members[1]["jenis_pekerjaan"]["auto"] is False
+    assert members[1]["nama_lengkap"]["auto"] is True
+    assert members[0]["jenis_pekerjaan"]["auto"] is True
 
 
 def test_a_missing_value_is_an_empty_string_never_null():
@@ -72,8 +90,9 @@ def test_a_missing_value_is_an_empty_string_never_null():
     structuring["nama_kepala_keluarga"] = {"value": "", "ocr_conf": None, "crf_conf": None}
     del structuring["anggota_keluarga"][0]["ibu"]
     data = _projected(structuring=structuring)
-    assert data["nama_kepala_keluarga"] == {"value": "", "confidence": 0}
-    assert data["anggota_keluarga"][0]["ibu"] == {"value": "", "confidence": 0}
+    kosong = {"value": "", "confidence": 0.0, "bin": 1, "auto": False}
+    assert data["nama_kepala_keluarga"] == kosong
+    assert data["anggota_keluarga"][0]["ibu"] == kosong
 
 
 def test_a_value_without_a_score_is_confidence_0_not_an_error():
@@ -81,7 +100,9 @@ def test_a_value_without_a_score_is_confidence_0_not_an_error():
     scoring["fields"]["nomor_kk"] = None
     assert _projected(scoring=scoring)["no_kk"] == {
         "value": STRUCTURING_RESULT["nomor_kk"]["value"],
-        "confidence": 0,
+        "confidence": 0.0,
+        "bin": 1,
+        "auto": False,
     }
 
 
@@ -92,7 +113,8 @@ def test_members_are_zipped_positionally_not_matched_by_nik():
     scoring["anggota_keluarga"][0]["nik"] = 0.99
     scoring["anggota_keluarga"][1]["nik"] = 0.01
     members = _projected(scoring=scoring)["anggota_keluarga"]
-    assert (members[0]["nik"]["confidence"], members[1]["nik"]["confidence"]) == (1, 0)
+    assert (members[0]["nik"]["confidence"], members[1]["nik"]["confidence"]) == (0.99, 0.01)
+    assert (members[0]["nik"]["auto"], members[1]["nik"]["auto"]) == (True, False)
 
 
 def test_a_member_length_mismatch_raises_instead_of_truncating():
@@ -172,29 +194,32 @@ def test_unsupported_document_type_is_400_before_anything_runs(client, auth, stu
 
 
 def test_the_projection_of_the_fixture_household_in_full():
-    """Literal values, not derived from the fixtures. Everything above compares generated data
-    against generated data, which cannot catch a generator that changed under it."""
-    assert _projected() == {
-        "no_kk": {"value": "9924187486671285", "confidence": 1},
-        "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
-        "anggota_keluarga": [
-            {
-                "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
-                "nik": {"value": "9908680101601956", "confidence": 1},
-                "pendidikan": {"value": "SD/SEDERAJAT", "confidence": 1},
-                "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
-                "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
-                "ayah": {"value": "RIZKY SANTOSO", "confidence": 1},
-                "ibu": {"value": "NURUL PRATAMA", "confidence": 1},
-            },
-            {
-                "nama_lengkap": {"value": "SITI SANTOSO", "confidence": 1},
-                "nik": {"value": "9908114806713444", "confidence": 1},
-                "pendidikan": {"value": "D-III", "confidence": 1},
-                "jenis_pekerjaan": {"value": "PELAJAR/MAHASISWA", "confidence": 0},
-                "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 1},
-                "ayah": {"value": "INDAH SANTOSO", "confidence": 1},
-                "ibu": {"value": "HENDRA PRATAMA", "confidence": 1},
-            },
-        ],
-    }
+    """Nilai literal, tidak diturunkan dari fixture. Semua uji di atas membandingkan data hasil
+    generate dengan data hasil generate, yang tidak bisa menangkap generator yang berubah di
+    bawahnya. Snapshot ini dibarui HANYA ketika kontraknya memang sengaja berubah.
+    """
+    assert _projected() == {'no_kk': {'value': '9924187486671285', 'confidence': 0.94, 'bin': 10, 'auto': True},
+     'nama_kepala_keluarga': {'value': 'BUDI SANTOSO', 'confidence': 0.909, 'bin': 10, 'auto': True},
+     'anggota_keluarga': [{'nama_lengkap': {'value': 'BUDI SANTOSO', 'confidence': 0.93, 'bin': 10, 'auto': True},
+                           'nik': {'value': '9908680101601956', 'confidence': 0.919, 'bin': 10, 'auto': True},
+                           'pendidikan': {'value': 'SD/SEDERAJAT', 'confidence': 0.908, 'bin': 10, 'auto': True},
+                           'jenis_pekerjaan': {'value': 'KARYAWAN SWASTA', 'confidence': 0.897, 'bin': 9, 'auto': True},
+                           'status_hubungan_dalam_rumah_tangga': {'value': 'KEPALA KELUARGA',
+                                                                  'confidence': 0.886,
+                                                                  'bin': 9,
+                                                                  'auto': True},
+                           'ayah': {'value': 'RIZKY SANTOSO', 'confidence': 0.875, 'bin': 9, 'auto': True},
+                           'ibu': {'value': 'NURUL PRATAMA', 'confidence': 0.864, 'bin': 9, 'auto': True}},
+                          {'nama_lengkap': {'value': 'SITI SANTOSO', 'confidence': 0.88, 'bin': 9, 'auto': True},
+                           'nik': {'value': '9908114806713444', 'confidence': 0.869, 'bin': 9, 'auto': True},
+                           'pendidikan': {'value': 'D-III', 'confidence': 0.858, 'bin': 9, 'auto': True},
+                           'jenis_pekerjaan': {'value': 'PELAJAR/MAHASISWA',
+                                               'confidence': 0.4118,
+                                               'bin': 5,
+                                               'auto': False},
+                           'status_hubungan_dalam_rumah_tangga': {'value': 'ISTRI',
+                                                                  'confidence': 0.836,
+                                                                  'bin': 9,
+                                                                  'auto': True},
+                           'ayah': {'value': 'INDAH SANTOSO', 'confidence': 0.825, 'bin': 9, 'auto': True},
+                           'ibu': {'value': 'HENDRA PRATAMA', 'confidence': 0.814, 'bin': 9, 'auto': True}}]}

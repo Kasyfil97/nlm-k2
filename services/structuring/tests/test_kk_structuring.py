@@ -4,7 +4,14 @@ Written fresh rather than adapted from the previous pipeline's suite, because wh
 has no counterpart there: a rejection that is a `DONE` job, and a member list whose length varies.
 """
 
-from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
+from ocr_common.kk import (
+    DOC_CELL_FEATURES,
+    DOC_FIELDS,
+    MEMBER_CELL_FEATURES,
+    MEMBER_FIELDS,
+    SCORED_DOC_FIELDS,
+    SCORED_MEMBER_FIELDS,
+)
 from ocr_common.testing import wait_for_job
 
 from app.ml.mock import NO_TEXT, NOT_A_KK
@@ -46,11 +53,47 @@ def test_every_field_carries_two_scores_and_a_string_value(client, auth):
 
     result = result_of(client, auth, "REQ_scores")["result"]
     for name in DOC_FIELDS:
-        assert set(result[name]) == {"value", "ocr_conf", "crf_conf"}
+        assert set(result[name]) == {"value", "ocr_conf", "crf_conf", "features"}
         assert isinstance(result[name]["value"], str)
         assert result[name]["crf_conf"] is None, "field dokumen tidak pernah lewat Viterbi"
     for member in result["anggota_keluarga"]:
         assert set(member) == set(MEMBER_FIELDS)
+
+
+def test_only_the_nine_scored_fields_carry_a_feature_vector(client, auth):
+    """`features` adalah vektor masukan trust model, dan hanya sembilan field kontrak yang diskor.
+
+    Kelengkapannya yang mengikat, bukan nilainya: scoring membaca setiap nama di
+    `kk.MEMBER_CELL_FEATURES` / `kk.DOC_CELL_FEATURES`, dan nama yang hilang menjadi NaN pada
+    model yang tidak pernah dilatih membacanya sebagai "tidak ada". Delapan field anggota lain
+    diekstraksi tapi tidak pernah diskor, jadi mengarang fitur untuk mereka akan menyesatkan.
+    """
+    client.post(JOBS, json=job_body("REQ_features", "KARTU KELUARGA"), headers=auth)
+    result = result_of(client, auth, "REQ_features")["result"]
+
+    for name in SCORED_DOC_FIELDS:
+        assert set(result[name]["features"]) == set(DOC_CELL_FEATURES)
+    for name in set(DOC_FIELDS) - set(SCORED_DOC_FIELDS):
+        assert result[name]["features"] is None, f"{name} tidak diskor"
+
+    for member in result["anggota_keluarga"]:
+        for name in SCORED_MEMBER_FIELDS:
+            assert set(member[name]["features"]) == set(MEMBER_CELL_FEATURES)
+        for name in set(MEMBER_FIELDS) - set(SCORED_MEMBER_FIELDS):
+            assert member[name]["features"] is None, f"{name} tidak diskor"
+
+
+def test_no_two_cells_share_a_feature_vector(client, auth):
+    """Vektor yang identik antar sel membuat pergeseran indeks tak terlihat -- kegagalan yang
+    justru harus terekspos oleh daftar anggota yang panjangnya berubah."""
+    client.post(JOBS, json=job_body("REQ_distinct", "MOCK:members=3"), headers=auth)
+    result = result_of(client, auth, "REQ_distinct")["result"]
+    vektor = [
+        tuple(sorted(member[name]["features"].items()))
+        for member in result["anggota_keluarga"]
+        for name in SCORED_MEMBER_FIELDS
+    ]
+    assert len(set(vektor)) == len(vektor)
 
 
 # --- daftar anggota yang panjangnya berubah -------------------------------------------------
