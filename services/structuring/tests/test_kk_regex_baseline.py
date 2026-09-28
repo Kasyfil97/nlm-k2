@@ -24,9 +24,11 @@ from typing import cast
 
 import pytest
 
+from ocr_common.kk import MEMBER_CELL_FEATURES, SCORED_MEMBER_FIELDS
 from ocr_common.types import OcrBox
 
 from app.ml.kk_regex import KKRegexStructurer
+from app.vendor import kk_features
 from app.vendor import kk_layout_parser as KK
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -207,3 +209,50 @@ def test_the_adapter_carries_the_parser_through_unchanged_on_real_cards():
                 assert mine[name]["value"] == theirs[name], f"{source.name}: {name}"
         compared += 1
     assert compared, "no corpus document produced members"
+
+
+@corpus_required
+def test_the_recomputed_marginals_are_the_parser_s_own():
+    """The single check that makes the feature vectors trustworthy.
+
+    `kk_features` does not read the parser's marginals -- it recomputes them, because the parser
+    keeps only the one belonging to the chosen column and throws the other sixteen away, and the
+    distance to the runner-up is the discriminative part. A recomputation is a second
+    implementation, and a second implementation drifts.
+
+    So it is pinned against the one number the parser does keep: `kol_conf`, which is
+    `round(min marginal, 4)` of the same cell. If the two ever disagree, the features describe a
+    decision the parser did not make -- and the model would be reading fiction with great
+    confidence. `diff_maks()` is the running maximum of that disagreement across every cell seen.
+    """
+    structurer = KKRegexStructurer()
+    for source in sorted(CORPUS_DIR.glob("*.json"))[:40]:
+        raw = parser_input(source)
+        structurer.structure([cast(OcrBox, {"text": t, "score": sc, "poly": poly}) for poly, (t, sc) in raw])
+    # 5e-5 is the rounding in `kol_conf` itself (4 decimal places), not a tolerance for drift.
+    assert kk_features.diff_maks() < 5e-5, f"recomputed marginals drifted by {kk_features.diff_maks()}"
+
+
+@corpus_required
+def test_real_cards_get_complete_vectors_too():
+    """The synthetic fixture has clean cells. A real card has empty ones, merged ones and columns
+    the Viterbi never placed -- and those are the paths where a vector quietly comes out short."""
+    structurer = KKRegexStructurer()
+    seen = missing = 0
+    for source in sorted(CORPUS_DIR.glob("*.json"))[:25]:
+        raw = parser_input(source)
+        result = structurer.structure([cast(OcrBox, {"text": t, "score": sc, "poly": poly}) for poly, (t, sc) in raw])
+        for member in result["anggota_keluarga"]:
+            for name in SCORED_MEMBER_FIELDS:
+                cell = member[name]
+                if not cell["value"]:
+                    continue
+                seen += 1
+                if cell["features"] is None:
+                    missing += 1
+                else:
+                    assert set(cell["features"]) == set(MEMBER_CELL_FEATURES), f"{source.name}: {name}"
+    assert seen, "no corpus document produced a scored cell with a value"
+    # Some cells legitimately have no vector: the value survived but the Viterbi never placed the
+    # cell, so there is nothing to describe. That has to stay the exception, not the rule.
+    assert missing / seen < 0.05, f"{missing}/{seen} filled cells carry no vector"

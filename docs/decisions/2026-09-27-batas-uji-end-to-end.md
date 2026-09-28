@@ -126,12 +126,17 @@ string, `confidence` float 0..1, `bin` 1..10, `auto` bool. Semuanya cocok.
 
 ### Yang MASIH belum terbukti
 
-**Angka `confidence` belum berarti apa-apa.** Parser tidak memancarkan `kk.MEMBER_CELL_FEATURES` --
-nilai-nilainya ada di dalam Viterbi-nya dan dibuang di sana. `calibrated` memberi `None` pada field
-tanpa vektor alih-alih menebak, dan kontrak menuliskan itu sebagai `confidence 0.0, bin 1,
-auto false`. Jadi hari ini setiap field meminta mata manusia. Itu bukan kegagalan diam-diam: ia
-terpasang begitu dengan sengaja, dan `test_no_field_carries_a_feature_vector_yet` adalah uji yang
-harus PECAH begitu instrumentasinya ada.
+~~**Angka `confidence` belum berarti apa-apa.**~~ **Ditutup, 28 September 2026.** Ekstraktor fitur
+yang dipakai MELATIH trust model (`conf_model/features.py`) kini ikut di-vendor sebagai
+`app/vendor/kk_features.py`, jadi kesembilan field kontrak membawa vektor lengkap (46 angka per sel
+anggota, 13 per field dokumen) dan `calibrated` mengeluarkan angka sungguhan. Uji
+`test_no_field_carries_a_feature_vector_yet` memang pecah, seperti yang direncanakan, dan diganti
+pasangan positifnya.
+
+Pada kartu uji: `pendidikan` dan `ayah` 1.0, `jenis_pekerjaan` 0.9964, `nik` 0.9595 (tetap
+`auto:false` -- ambang field itu 0.9637), `nama_lengkap` 0.6847. Yang perlu diperiksa tim: nilai
+"JOJOH" yang sama mendapat 0.6847 sebagai `nama_lengkap` dan 1.0 sebagai `nama_kepala_keluarga`.
+Dua keluarga model dengan fitur berbeda memang boleh berbeda, tetapi sebesar itu layak dilihat.
 
 **Satu perilaku yang perlu diputuskan tim.** Pada kartu uji, tanggal lahir yang tercetak
 (`12-03-1954`) bertentangan dengan NIK-nya (yang berarti `01-07-1960`). Parser menulis ulang field

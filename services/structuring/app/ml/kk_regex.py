@@ -45,28 +45,52 @@ documents against K2Regex-v2's own hash baseline.
 | `value`     | the parser's own output, normalised to the Dukcapil vocabularies |
 | `ocr_conf`  | `_meta.conf` -- the recognition score of the tokens the cell was built from |
 | `crf_conf`  | `_meta.crf_conf` -- the forward-backward marginal of the column assignment |
-| `features`  | **always `None`** |
+| `features`  | `app/vendor/kk_features.py`, for the nine SCORED fields only |
 
-`features` is the trust model's vector (`kk.MEMBER_CELL_FEATURES`, `kk.DOC_CELL_FEATURES`), and the
-parser does not emit it: the values exist inside `assign_columns_viterbi` and are discarded there.
-Emitting them means instrumenting the parser, which is the edit this module exists to avoid making
-casually. The consequence is visible and deliberate -- `calibrated` scores a field with no vector as
-`None`, which the contract renders as `confidence: 0.0, auto: false`, so every field asks for a human
-instead of carrying a number computed from nothing.
+`features` is the trust model's input vector (`kk.MEMBER_CELL_FEATURES`, 46 per scored member cell;
+`kk.DOC_CELL_FEATURES`, 13 per document field). Without it `calibrated` scores every field `None`,
+which the contract renders as `confidence: 0.0, bin: 1, auto: false` -- so the whole document asks
+for a human.
+
+**It is not computed here.** `kk_features.py` is the extractor the trust model was *trained* with,
+vendored from `conf_model/`, and that is the point: a feature computed one way in training and
+another way in production is the most reliable way to build a model that is good on paper and bad in
+use. The same file now runs on both sides, so they cannot disagree.
+
+It reaches the parser's internals by wrapping `assign_columns_viterbi` -- the original still decides
+every value and every placement, and the wrapper only recomputes the emission scores and
+forward-backward marginals the parser throws away. Two tests hold that down: the 200-document value
+baseline (nothing the parser returns may change) and `diff_maks()` against the parser's own
+`kol_conf` (the recomputed marginals must be the parser's, not a second opinion).
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, cast
 
-from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
-from ocr_common.types import OcrBox, StructuringResult
+from ocr_common.kk import (
+    DOC_CELL_FEATURES,
+    DOC_FIELDS,
+    MEMBER_CELL_FEATURES,
+    MEMBER_FIELDS,
+    SCORED_DOC_FIELDS,
+    SCORED_MEMBER_FIELDS,
+)
+from ocr_common.types import OcrBox, StructuredField, StructuringResult
 
 from app.ml.validity import NO_TEXT, empty, field, reject_reason
-from app.vendor import kk_layout_parser
+from app.vendor import kk_features, kk_layout_parser
 
 logger = logging.getLogger(__name__)
+
+#: `kk_features` records the parser's per-row internals in a module-global list and clears it at the
+#: start of each document, so two documents parsed at once would interleave into each other's
+#: vectors -- and the result would be plausible numbers about the wrong cells, which is worse than
+#: none. Serialising costs nothing real: the parser is pure Python, so the GIL already prevents two
+#: of these from running at the same time.
+_PARSE_LOCK = threading.Lock()
 
 #: `rt` and `rw` are one printed cell ("016/004") that the parser splits. They share the recognition
 #: score of the box they came from, so both read `_meta.conf` under the parser's own key.
@@ -98,7 +122,12 @@ class KKRegexStructurer:
         if not texts:
             return empty(NO_TEXT)
 
-        parsed = kk_layout_parser.structure(_adapt(texts), debug=True)
+        raw = _adapt(texts)
+        with _PARSE_LOCK:
+            # `fitur_dokumen` runs the parser itself (debug=True) and returns the per-cell feature
+            # rows alongside its output, which is why the call is not `kk_layout_parser.structure`.
+            parsed, member_rows = kk_features.fitur_dokumen(raw)
+            doc_rows = kk_features.fitur_doc_fields(parsed, kk_features.agregat_ocr(raw)) if parsed else []
         if not parsed:
             # The parser answers a bare `{}` when nothing survived `load_boxes` -- boxes arrived but
             # none had usable text or geometry. That is rule one, not rule two: there is no text to
@@ -110,8 +139,15 @@ class KKRegexStructurer:
         member_conf: list[dict[str, Any]] = doc_conf.get("anggota_keluarga") or []
         crf_conf: list[dict[str, Any]] = meta.get("crf_conf") or []
 
+        doc_vectors = _doc_vectors(doc_rows)
+        member_vectors = _member_vectors(member_rows)
+
         document: dict[str, object] = {
-            name: field(_text(parsed.get(name)), _score(doc_conf.get(DOC_CONF_KEY.get(name, name))))
+            name: field(
+                _text(parsed.get(name)),
+                _score(doc_conf.get(DOC_CONF_KEY.get(name, name))),
+                features=doc_vectors.get(name),
+            )
             for name in DOC_FIELDS
         }
         members = [
@@ -120,6 +156,7 @@ class KKRegexStructurer:
                     _text(member.get(name)),
                     _score(_at(member_conf, index).get(name)),
                     _score(_at(crf_conf, index).get(name)),
+                    features=member_vectors.get((index, name)),
                 )
                 for name in MEMBER_FIELDS
             }
@@ -128,7 +165,73 @@ class KKRegexStructurer:
         document["anggota_keluarga"] = members
         document["reject_reason"] = reject_reason(_text(parsed.get("nomor_kk")), members)
         _log_repairs(meta)
+        _log_missing_vectors(cast(dict[str, StructuredField], document), members)
         return cast(StructuringResult, document)
+
+
+def _member_vectors(rows: list[dict[str, Any]]) -> dict[tuple[int, str], dict[str, float]]:
+    """`{(member index, field): vector}` for the seven scored member fields.
+
+    `kk_features` emits one row per scored cell it could trace, tagged with `member` and `field`,
+    and skips a cell the Viterbi never placed. A skipped cell simply has no vector, and scoring
+    answers `None` for it -- which is the honest outcome, not a gap to paper over.
+    """
+    return {
+        (int(row["member"]), str(row["field"])): _vector(row, MEMBER_CELL_FEATURES)
+        for row in rows
+        if row.get("field") in SCORED_MEMBER_FIELDS and isinstance(row.get("member"), int)
+    }
+
+
+def _doc_vectors(rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    return {str(row["field"]): _vector(row, DOC_CELL_FEATURES) for row in rows if row.get("field") in SCORED_DOC_FIELDS}
+
+
+def _vector(row: dict[str, Any], names: tuple[str, ...]) -> dict[str, float]:
+    """The row cut down to exactly the names the contract lists, in one place.
+
+    `kk_features` also emits the handful of values scoring takes from elsewhere -- `ocr_min` and
+    `crf_conf` from the field itself, `avg_doc_score` and friends from the OCR aggregates, and
+    `guardrail_probability`, which the trained artefact drops. Sending them too would not break
+    anything (scoring overwrites them), but it would make two services look like the authority on
+    the same number, and the next reader would have to work out which one wins.
+    """
+    return {name: _finite(row.get(name)) for name in names}
+
+
+def _finite(value: object) -> float:
+    """A JSON-safe float. NaN and infinity become 0.0 with the name kept.
+
+    JSON has no NaN, and this dictionary is serialised into the stage result and the handoff body.
+    Dropping the key instead would be worse: scoring reads a missing name as absent and says so in
+    a warning, while the model was trained to read NaN as "not measured" -- and the only features
+    that can arrive NaN here are ones training also saw NaN.
+    """
+    if not isinstance(value, int | float) or isinstance(value, bool):
+        return 0.0
+    number = float(value)
+    return round(number, 6) if number == number and number not in (float("inf"), float("-inf")) else 0.0
+
+
+def _log_missing_vectors(document: dict[str, StructuredField], members: list[dict[str, Any]]) -> None:
+    """Say so when a field has a value but no vector, because scoring will score it `None`.
+
+    Scoring warns too, but by then the cause is out of sight: the vector is missing because the
+    parser never placed that cell, which is a fact about THIS stage and this document.
+    """
+    missing = [name for name in SCORED_DOC_FIELDS if document[name]["value"] and not document[name]["features"]]
+    missing += [
+        f"{name}[{index}]"
+        for index, member in enumerate(members)
+        for name in SCORED_MEMBER_FIELDS
+        if member[name]["value"] and not member[name]["features"]
+    ]
+    if missing:
+        logger.warning(
+            "kk_regex: %d field(s) with a value carry no feature vector, so scoring will answer null: %s",
+            len(missing),
+            ", ".join(missing),
+        )
 
 
 def _template_present() -> str | None:

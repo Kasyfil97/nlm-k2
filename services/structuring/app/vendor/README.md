@@ -41,6 +41,31 @@ silently swaps the trained weights in and drops accuracy to about 86.65%, with n
 all. K2Regex-v2 fails startup on it, and `app/ml/kk_regex.py` does the same; if a trained model is
 ever the better one, that is a re-vendor, not a file someone drops in.
 
+## `kk_features.py`
+
+The per-cell feature extractor for the trust model: 46 numbers per scored member cell, 13 per
+document field. Vendored because it is the **same file the model was trained with**, and a feature
+defined twice is defined differently.
+
+| | |
+|---|---|
+| from | `conf_model/features.py` (the training workspace: `build_dataset.py` → `train_conf.py`) |
+| upstream sha256 | `c85ddbbac88934052336c8ffecffe94e9272a5b15ae02b7487159863d8cbcbb4` |
+| vendored sha256 | `fa0d723ea381a1b26e819bebd493bae8c690b71b2a9117904dd1d388bdc03111` |
+
+**One line differs**, and it is the import: upstream loads the parser by path through `importlib`,
+which here would produce a *second* copy of the parser module. This file monkeypatches
+`assign_columns_viterbi`, so a second copy means the patch lands on an object nobody calls and every
+vector silently goes missing. It imports `app.vendor.kk_layout_parser` instead, and
+`test_kk_regex.py` asserts the patch is on the module the adapter actually calls.
+
+It does not edit the parser. The original function still decides every value and every placement;
+the wrapper recomputes the emission scores and forward-backward marginals the parser discards, and
+`diff_maks()` pins that recomputation against the one marginal the parser does keep (`kol_conf`).
+
+`JEJAK` is module-global and cleared per document, so `app/ml/kk_regex.py` holds a lock across the
+parse. That costs nothing: the parser is pure Python, so the GIL already serialises it.
+
 The adapter that maps this into the pipeline's §7.3 shape is
 [`app/ml/kk_regex.py`](../ml/kk_regex.py); it is ordinary repository code and is linted and typed
 like the rest.

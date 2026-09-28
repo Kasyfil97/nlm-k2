@@ -19,7 +19,14 @@ from pathlib import Path
 
 import pytest
 
-from ocr_common.kk import DOC_FIELDS, MEMBER_FIELDS
+from ocr_common.kk import (
+    DOC_CELL_FEATURES,
+    DOC_FIELDS,
+    MEMBER_CELL_FEATURES,
+    MEMBER_FIELDS,
+    SCORED_DOC_FIELDS,
+    SCORED_MEMBER_FIELDS,
+)
 from ocr_common.synthetic_kk import household
 from ocr_common.types import OcrBox
 
@@ -28,7 +35,7 @@ from app.ml.kk_regex import KKRegexStructurer
 from app.ml.mock import NO_TEXT as MOCK_NO_TEXT
 from app.ml.mock import NOT_A_KK as MOCK_NOT_A_KK
 from app.ml.validity import NO_TEXT, NOT_A_KK
-from app.vendor import kk_layout_parser
+from app.vendor import kk_features, kk_layout_parser
 from tests.kk_boxes import box, kk_boxes
 
 VENDOR = Path(kk_layout_parser.__file__).parent
@@ -174,18 +181,65 @@ def test_document_fields_never_carry_a_crf_score_and_member_fields_usually_do(st
     assert filled and sum(cell["crf_conf"] is not None for cell in filled) > len(filled) / 2
 
 
-def test_no_field_carries_a_feature_vector_yet(structurer):
-    """Deliberate, and worth a failing test the day it changes.
+def test_every_scored_field_carries_a_complete_feature_vector(structurer):
+    """The vector is the whole reason scoring can answer a number instead of `None`.
 
-    The parser does not emit `kk.MEMBER_CELL_FEATURES`; the values exist inside its Viterbi and are
-    discarded. `calibrated` scores a vectorless field `None` rather than guessing, so today every
-    confidence from this backend is null. When the parser is instrumented, this test is the one that
-    should break.
+    Complete matters more than correct here: scoring reads a missing name as absent and warns,
+    while the model was trained to read NaN as "not measured". A vector that is 45 of 46 names is
+    therefore a quietly different input from the one the model was fitted on.
     """
     result = structurer.structure(kk_boxes())
-    cells = [result[name] for name in DOC_FIELDS]
-    cells += [member[name] for member in result["anggota_keluarga"] for name in MEMBER_FIELDS]
-    assert all(cell["features"] is None for cell in cells)
+    for name in SCORED_DOC_FIELDS:
+        assert set(result[name]["features"] or {}) == set(DOC_CELL_FEATURES), name
+    for index, member in enumerate(result["anggota_keluarga"]):
+        for name in SCORED_MEMBER_FIELDS:
+            assert set(member[name]["features"] or {}) == set(MEMBER_CELL_FEATURES), f"{name}[{index}]"
+
+
+def test_only_the_scored_fields_carry_one(structurer):
+    """The other eight member fields are extracted and never scored. A vector on one of them would
+    say the opposite, and cost a kilobyte per member in every handoff body to say it."""
+    result = structurer.structure(kk_boxes())
+    unscored = set(MEMBER_FIELDS) - set(SCORED_MEMBER_FIELDS)
+    for member in result["anggota_keluarga"]:
+        assert all(member[name]["features"] is None for name in unscored)
+    assert all(result[name]["features"] is None for name in set(DOC_FIELDS) - set(SCORED_DOC_FIELDS))
+
+
+def test_no_vector_carries_a_number_json_cannot_hold(structurer):
+    """This dictionary is serialised into the stage result and the handoff body, and JSON has no
+    NaN. One would make the whole response unparseable for the consumer, not just that field."""
+    result = structurer.structure(kk_boxes())
+    payload = json.dumps(result)
+    assert "NaN" not in payload and "Infinity" not in payload
+    for member in result["anggota_keluarga"]:
+        for name in SCORED_MEMBER_FIELDS:
+            for key, value in (member[name]["features"] or {}).items():
+                assert isinstance(value, float) and value == value, f"{name}.{key}"
+
+
+def test_two_cells_do_not_share_a_vector(structurer):
+    """A constant vector would score every field the same and be exactly as useful as none --
+    and it would look like it was working."""
+    result = structurer.structure(kk_boxes(household(3, seed=1)))
+    vectors = [
+        tuple(sorted((member[name]["features"] or {}).items()))
+        for member in result["anggota_keluarga"]
+        for name in SCORED_MEMBER_FIELDS
+    ]
+    assert len(set(vectors)) > len(vectors) / 2, "most cells share a feature vector"
+
+
+def test_the_instrumentation_wraps_the_parser_the_adapter_actually_calls(structurer):
+    """`kk_features` records the parser's internals by monkeypatching `assign_columns_viterbi`.
+
+    If it ever loaded its own copy of the parser module -- which upstream does, by path -- the
+    patch would land on an object nobody calls, `JEJAK` would stay empty, and every vector would
+    silently go missing again. That failure is invisible in the parser's own output, so it is
+    checked directly.
+    """
+    assert kk_features.KK is kk_layout_parser
+    assert kk_layout_parser.assign_columns_viterbi is kk_features._jejak_viterbi
 
 
 # --- §7.4, the validity gate ---------------------------------------------------------------
