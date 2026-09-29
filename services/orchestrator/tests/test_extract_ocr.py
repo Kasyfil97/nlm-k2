@@ -141,7 +141,11 @@ def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_ove
 
     assert response.status_code == 400
     body = response.json()
-    assert (body["message"], body["errors"]) == (TOO_MANY_PAGES, TOO_MANY_PAGES)
+    assert (body["message"], body["errors"], body["pipeline_last_stage"]) == (
+        TOO_MANY_PAGES,
+        "TOO_MANY_PAGES",
+        "orchestrator",
+    )
     assert "job_status" not in body
     assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
 
@@ -348,16 +352,21 @@ def test_a_guardrails_rejection_comes_from_guardrails(client, auth):
     assert (response.status_code, response.json()["pipeline_last_stage"]) == (400, "guardrails")
 
 
-def test_a_refusal_before_any_pipeline_service_names_none(client, auth):
+def test_a_refusal_before_any_pipeline_service_names_the_orchestrator(client, auth):
     response = _submit(client, auth, pipeline_name_sequence=["ekstraksi", "scoring"])
 
-    assert (response.status_code, response.json()["pipeline_last_stage"]) == (422, None)
+    assert (response.status_code, response.json()["pipeline_last_stage"]) == (422, "orchestrator")
 
 
 def test_missing_api_key_returns_401_envelope(client):
     response = client.post("/v1/extract-ocr", data={"request_id": "OCR_7"}, files=image_upload())
     assert response.status_code == 401
-    assert response.json()["errors"] == "Invalid or missing API key"
+    body = response.json()
+    assert (body["message"], body["errors"], body["pipeline_last_stage"]) == (
+        "Invalid or missing API key",
+        "UNAUTHORIZED",
+        "orchestrator",
+    )
 
 
 # --- the scenarios the plan names for this unit --------------------------------------------
@@ -416,3 +425,21 @@ def test_guardrails_timing_out_is_504_and_nothing_starts(client, auth, stub_guar
 
     assert response.status_code == 504
     assert stub_ekstraksi.submitted == []
+
+
+@pytest.mark.parametrize("failing", ["guardrails", "ekstraksi"])
+def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardrails, stub_ekstraksi, failing):
+    """Ported from nilam: the answer names the service that could not be reached, in the extract-ocr shape."""
+    stub = stub_guardrails if failing == "guardrails" else stub_ekstraksi
+    stub.error = UpstreamUnavailable(f"{failing} service is unavailable")
+
+    response = _submit(client, auth, params='{"refno": "X1"}')
+
+    assert response.status_code == 503
+    body = response.json()
+    assert (body["pipeline_last_stage"], body["message"], body["errors"]) == (
+        failing,
+        f"{failing} service is unavailable",
+        "DOWNSTREAM_UNAVAILABLE",
+    )
+    assert (body["request_id"], body["params"]) == ("OCR_1", {"refno": "X1"})

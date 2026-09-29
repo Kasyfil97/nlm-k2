@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ocr_common.errors import error_code
 from ocr_common.web.envelope import envelope
 
 REQUEST_ID_EXAMPLE = "REQ_9cb01af2-493d-446d-b191-af120333f6d0"
@@ -39,13 +40,21 @@ class ErrorResponse(BaseModel):
     errors: str = Field(
         ...,
         description=(
-            "Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message names a different "
-            "field every time); for every other status it repeats `message`"
+            "Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`): branch on "
+            "this, never on the wording of `message`"
         ),
-        examples=["Uploaded file is empty"],
+        examples=["EMPTY_FILE"],
     )
     request_id: str | None = Field(
         None, description="Present when the error is tied to a known request_id", examples=[REQUEST_ID_EXAMPLE]
+    )
+    pipeline_last_stage: str | None = Field(
+        None,
+        description=(
+            "The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`, `structuring`, "
+            "`scoring`), or the pipeline service it called when that one failed"
+        ),
+        examples=["orchestrator"],
     )
 
 
@@ -168,7 +177,7 @@ def error(
         "description": description,
         "content": {
             "application/json": {
-                "example": envelope(status_code, message, None, request_id, errors=errors or message),
+                "example": envelope(status_code, message, None, request_id, errors=error_code(status_code, errors)),
             }
         },
     }

@@ -26,15 +26,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -244,7 +254,8 @@ paths:
                 status_code: 400
                 status_desc: Bad Request
                 message: Send exactly one of file or file_url
-                errors: Send exactly one of file or file_url
+                errors: BAD_REQUEST
+                pipeline_last_stage: guardrails
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -255,7 +266,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: guardrails
         '422':
           description: '`threshold` outside (0, 1), not a number, or sent without `threshold_target` (or
             the other way round)'
@@ -268,6 +280,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: send threshold and threshold_target together, or neither
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: guardrails
         '500':
           description: The guardrails model failed
           content:
@@ -278,7 +291,8 @@ paths:
                 status_code: 500
                 status_desc: Internal Server Error
                 message: guardrails model returned an unexpected response
-                errors: guardrails model returned an unexpected response
+                errors: INTERNAL_SERVER_ERROR
+                pipeline_last_stage: guardrails
         '503':
           description: The guardrails model service (`remote`) is unreachable
           content:
@@ -289,7 +303,8 @@ paths:
                 status_code: 503
                 status_desc: Service Unavailable
                 message: guardrails model is unavailable
-                errors: guardrails model is unavailable
+                errors: DOWNSTREAM_UNAVAILABLE
+                pipeline_last_stage: guardrails
         '504':
           description: The guardrails model service (`remote`) did not answer in time
           content:
@@ -300,7 +315,8 @@ paths:
                 status_code: 504
                 status_desc: Gateway Timeout
                 message: guardrails model timed out after 30.0s
-                errors: guardrails model timed out after 30.0s
+                errors: DOWNSTREAM_TIMEOUT
+                pipeline_last_stage: guardrails
       security:
       - APIKeyHeader: []
 components:
@@ -322,7 +338,8 @@ components:
           - type: string
           - type: 'null'
           title: File
-          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
@@ -455,10 +472,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -467,6 +484,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code

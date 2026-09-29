@@ -296,3 +296,29 @@ async def test_a_job_without_thresholds_gives_none():
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
 
     assert outcome is not None and outcome.column_thresholds is None
+
+
+def test_an_unreachable_stage_is_named_in_the_error(client, auth, stub_waiter):
+    from app.services.pipeline_waiter import StageError
+
+    stub_waiter.snapshot_error = StageError("structuring", UpstreamUnavailable("structuring service is unavailable"))
+
+    response = _get(client, auth)
+
+    assert response.status_code == 503
+    body = response.json()
+    assert (body["pipeline_last_stage"], body["message"], body["errors"]) == (
+        "structuring",
+        "structuring service is unavailable",
+        "DOWNSTREAM_UNAVAILABLE",
+    )
+
+
+async def test_snapshot_names_the_stage_it_could_not_read():
+    from app.services.pipeline_waiter import StageError
+
+    stages = _stages(_job("DONE", {}), UpstreamUnavailable("structuring service is unavailable"))
+
+    with pytest.raises(StageError) as exc:
+        await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+    assert (exc.value.service, exc.value.status_code) == ("structuring", 503)

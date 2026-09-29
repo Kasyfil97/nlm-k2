@@ -147,6 +147,7 @@ class StubGuardrails:
 class StubEkstraksi:
     def __init__(self) -> None:
         self.submitted: list[dict] = []
+        self.error: Exception | None = None
 
     async def submit(
         self,
@@ -161,6 +162,8 @@ class StubEkstraksi:
         sequence=None,
         column_thresholds=None,
     ) -> dict:
+        if self.error is not None:
+            raise self.error
         self.submitted.append(
             {
                 "request_id": request_id,

@@ -46,7 +46,8 @@ def test_the_429_carries_the_standard_envelope_and_a_retry_after():
     body = response.json()
     assert response.status_code == 429
     assert (body["status_code"], body["status_desc"]) == (429, "Too Many Requests")
-    assert body["errors"] == body["message"] and body["data"] is None
+    assert (body["errors"], body["pipeline_last_stage"], body["data"]) == ("TOO_MANY_REQUESTS", "orchestrator", None)
+    assert body["message"].startswith("Terlalu banyak permintaan"), "the Indonesian sentence stays in `message`"
     assert int(response.headers["Retry-After"]) >= 1
 
 

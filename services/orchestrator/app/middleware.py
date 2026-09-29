@@ -16,6 +16,7 @@ from prometheus_client import Counter
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
+from ocr_common.errors import error_code
 from ocr_common.web.envelope import envelope
 from ocr_common.web.request_id import REQUEST_ID_HEADER
 
@@ -95,7 +96,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         logger.warning("429 %s %s (rate limit %d/%.0fs)", request.method, path, self._requests, self._window)
         response = JSONResponse(
             status_code=429,
-            content=envelope(429, TOO_MANY_REQUESTS, None, request_id, errors=TOO_MANY_REQUESTS),
+            content={
+                **envelope(429, TOO_MANY_REQUESTS, None, request_id, errors=error_code(429)),
+                # Outside the exception handlers, so named here: the refusal is this service's own.
+                "pipeline_last_stage": "orchestrator",
+            },
         )
         response.headers["Retry-After"] = str(max(1, int(retry_after) + 1))
         if request_id:

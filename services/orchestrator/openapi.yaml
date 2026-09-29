@@ -26,15 +26,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -358,6 +368,7 @@ paths:
                 document_type: kk
                 job_status: failed
                 guardrails: 1
+                pipeline_last_stage: guardrails
                 params:
                   nik: '9901011203850001'
                   refno: PK19039Y8U
@@ -371,7 +382,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: orchestrator
         '429':
           description: The caller went over `RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`. `Retry-After`
             says how many seconds to wait. The limit is counted per API key, per process
@@ -383,8 +395,9 @@ paths:
                 status_code: 429
                 status_desc: Too Many Requests
                 message: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
-                errors: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                errors: TOO_MANY_REQUESTS
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: orchestrator
         '413':
           description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default); nothing was started
           content:
@@ -395,7 +408,8 @@ paths:
                 status_code: 413
                 status_desc: Payload Too Large
                 message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
-                errors: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                errors: FILE_TOO_LARGE
+                pipeline_last_stage: orchestrator
         '422':
           description: A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`;
             `message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence`
@@ -414,43 +428,55 @@ paths:
                 document_type: kk
                 job_status: failed
                 guardrails: 0
+                pipeline_last_stage: structuring
                 params:
                   nik: '9901011203850001'
                   refno: PK19039Y8U
         '500':
           description: The guardrails or ekstraksi service failed, or answered in an unexpected shape
+            (`DOWNSTREAM_SERVER_ERROR`); `pipeline_last_stage` names it
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
               example:
                 status_code: 500
                 status_desc: Internal Server Error
                 message: guardrails service returned an unexpected response
-                errors: guardrails service returned an unexpected response
+                errors: DOWNSTREAM_SERVER_ERROR
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: guardrails
         '503':
-          description: The guardrails service, its model, or the ekstraksi service is unreachable; nothing
-            was started
+          description: The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
+            nothing was started. `pipeline_last_stage` names it
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
               example:
                 status_code: 503
                 status_desc: Service Unavailable
                 message: ekstraksi service is unavailable
-                errors: ekstraksi service is unavailable
+                errors: DOWNSTREAM_UNAVAILABLE
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: ekstraksi
         '504':
           description: The guardrails service, its model, or the ekstraksi service did not answer in time
+            (`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
               example:
                 status_code: 504
                 status_desc: Gateway Timeout
                 message: ekstraksi service timed out after 10.0s
-                errors: ekstraksi service timed out after 10.0s
+                errors: DOWNSTREAM_TIMEOUT
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/extract-ocr/{request_id}:
@@ -603,6 +629,7 @@ paths:
                 document_type: kk
                 job_status: failed
                 guardrails: 1
+                pipeline_last_stage: guardrails
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '401':
@@ -613,7 +640,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: orchestrator
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '429':
@@ -625,8 +653,9 @@ paths:
                 status_code: 429
                 status_desc: Too Many Requests
                 message: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
-                errors: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
+                errors: TOO_MANY_REQUESTS
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: orchestrator
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
@@ -638,7 +667,8 @@ paths:
                 status_code: 404
                 status_desc: Not Found
                 message: No request found for request_id OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                errors: No request found for request_id OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                errors: REQUEST_ID_NOT_FOUND
+                pipeline_last_stage: orchestrator
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -654,6 +684,7 @@ paths:
                 document_type: kk
                 job_status: failed
                 guardrails: 0
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '500':
@@ -665,9 +696,12 @@ paths:
                 status_code: 500
                 status_desc: Internal Server Error
                 message: 'structuring service error (401): Invalid or missing API key'
-                errors: 'structuring service error (401): Invalid or missing API key'
+                errors: DOWNSTREAM_SERVER_ERROR
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: structuring
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
         '503':
           description: A stage service is unreachable
           content:
@@ -676,9 +710,12 @@ paths:
                 status_code: 503
                 status_desc: Service Unavailable
                 message: structuring service is unavailable
-                errors: structuring service is unavailable
+                errors: DOWNSTREAM_UNAVAILABLE
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: structuring
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
         '504':
           description: A stage service did not answer in time
           content:
@@ -687,9 +724,12 @@ paths:
                 status_code: 504
                 status_desc: Gateway Timeout
                 message: structuring service timed out after 10.0s
-                errors: structuring service timed out after 10.0s
+                errors: DOWNSTREAM_TIMEOUT
+                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                document_type: kk
+                pipeline_last_stage: structuring
               schema:
-                $ref: '#/components/schemas/ErrorResponse'
+                $ref: '#/components/schemas/ExtractOcrResponse'
 components:
   schemas:
     Body_extractOcr:
@@ -723,7 +763,8 @@ components:
           - type: string
           - type: 'null'
           title: File
-          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
@@ -840,10 +881,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -852,6 +893,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code
@@ -909,16 +959,18 @@ components:
           anyOf:
           - type: string
             enum:
+            - orchestrator
             - guardrails
             - ekstraksi
             - structuring
             - scoring
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The pipeline service this answer comes from, named as in `pipeline_name_sequence`:
-            the last service of the sequence when `completed`; the one that rejected (`guardrails`, `structuring`)
-            or failed; the one still running on 202. Null when this service refused the request before
-            any pipeline service was called (file checks, `pipeline_name_sequence`, `params`, `document_type`)'
+          description: 'The service this answer comes from, named as in `pipeline_name_sequence`: the
+            last service of the sequence when `completed`; the one that rejected (`guardrails`, `structuring`)
+            or failed; the one still running on 202; the one that could not be reached or answered an
+            error. `orchestrator` when this service refused the request itself before calling any pipeline
+            service (file checks, `pipeline_name_sequence`, thresholds, `params`, `document_type`)'
           examples:
           - scoring
         document_type:

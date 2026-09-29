@@ -27,15 +27,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -248,7 +258,8 @@ paths:
                 status_code: 400
                 status_desc: Bad Request
                 message: Uploaded file is empty
-                errors: Uploaded file is empty
+                errors: BAD_REQUEST
+                pipeline_last_stage: ekstraksi
         '413':
           description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default)
           content:
@@ -259,7 +270,8 @@ paths:
                 status_code: 413
                 status_desc: Payload Too Large
                 message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
-                errors: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                errors: FILE_TOO_LARGE
+                pipeline_last_stage: ekstraksi
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -270,7 +282,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
         '500':
           description: OCR backend failed
           content:
@@ -281,7 +294,8 @@ paths:
                 status_code: 500
                 status_desc: Internal Server Error
                 message: 'ekstraksi OCR model error (500): error: OpenCV ...'
-                errors: 'ekstraksi OCR model error (500): error: OpenCV ...'
+                errors: INTERNAL_SERVER_ERROR
+                pipeline_last_stage: ekstraksi
         '503':
           description: OCR model unreachable
           content:
@@ -292,7 +306,8 @@ paths:
                 status_code: 503
                 status_desc: Service Unavailable
                 message: ekstraksi OCR model is unavailable
-                errors: ekstraksi OCR model is unavailable
+                errors: DOWNSTREAM_UNAVAILABLE
+                pipeline_last_stage: ekstraksi
         '504':
           description: OCR model did not answer in time
           content:
@@ -303,7 +318,8 @@ paths:
                 status_code: 504
                 status_desc: Gateway Timeout
                 message: ekstraksi OCR model timed out after 30.0s
-                errors: ekstraksi OCR model timed out after 30.0s
+                errors: DOWNSTREAM_TIMEOUT
+                pipeline_last_stage: ekstraksi
         '422':
           description: Validation Error
           content:
@@ -315,6 +331,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'body.file: Expected UploadFile, received: str'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/ekstraksi/jobs:
@@ -406,7 +423,8 @@ paths:
                 status_code: 400
                 status_desc: Bad Request
                 message: Send exactly one of file or file_url
-                errors: Send exactly one of file or file_url
+                errors: BAD_REQUEST
+                pipeline_last_stage: ekstraksi
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -417,7 +435,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
         '422':
           description: Validation Error
           content:
@@ -429,6 +448,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'body.request_id: Field required'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/ekstraksi/jobs/{request_id}:
@@ -573,7 +593,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
@@ -584,8 +605,9 @@ paths:
                 status_code: 404
                 status_desc: Not Found
                 message: 'No OCR job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
-                errors: 'No OCR job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                errors: REQUEST_ID_NOT_FOUND
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -598,6 +620,7 @@ paths:
                 message: 'path.request_id: Field required'
                 errors: VALIDATION_ERROR
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/ekstraksi/outbox:
@@ -669,7 +692,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/ekstraksi/outbox/release:
@@ -731,7 +755,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
@@ -742,7 +767,8 @@ paths:
                 status_code: 409
                 status_desc: Conflict
                 message: 'PIPELINE_OUTBOX is off: there is no outbox to release'
-                errors: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+                errors: CONFLICT
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -754,6 +780,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'query.request_id: Input should be a valid string'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 webhooks:
@@ -828,7 +855,8 @@ components:
           - type: string
           - type: 'null'
           title: File
-          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
@@ -901,7 +929,8 @@ components:
           - type: string
           - type: 'null'
           title: File
-          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
@@ -942,10 +971,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -954,6 +983,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code

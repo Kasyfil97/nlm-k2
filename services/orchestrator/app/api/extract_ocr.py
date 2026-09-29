@@ -1,10 +1,12 @@
 import json
+import logging
 import time
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
+from ocr_common.errors import UNREADABLE_FILE
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
 from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
@@ -27,6 +29,9 @@ from app.dependencies import get_extract_service
 from app.middleware import TOO_MANY_REQUESTS
 from app.services.document_checks import TOO_MANY_PAGES_MESSAGE
 from app.services.extract_service import ExtractOcrService
+from app.services.pipeline_waiter import StageError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Extract OCR"], dependencies=[Depends(verify_api_key)])
 
@@ -34,6 +39,8 @@ RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 INVALID_PARAMS_MESSAGE = "params must be valid JSON: an object, or a quoted string"
 INVALID_SEQUENCE_CODE = "INVALID_PIPELINE_SEQUENCE"
 INVALID_THRESHOLD_CODE = "INVALID_THRESHOLD"
+# `pipeline_last_stage` of a request this service refuses itself, before calling any pipeline service.
+ENTRY = "orchestrator"
 
 # Setiap nomor di contoh ini memakai kode provinsi 99, yang tidak pernah diberikan Indonesia (lihat
 # ocr_common.synthetic_kk). Contoh OpenAPI adalah tempat paling terlihat di seluruh repo, jadi nomor
@@ -99,6 +106,7 @@ _REJECTED = extract_body(
     request_id=RID,
     document_type="kk",
     params=_PARAMS,
+    pipeline_last_stage="guardrails",
 )
 _FAILED = extract_body(
     422,
@@ -109,6 +117,7 @@ _FAILED = extract_body(
     request_id=RID,
     document_type="kk",
     params=_PARAMS,
+    pipeline_last_stage="structuring",
 )
 
 _CONTRACT_TABLE = (
@@ -131,6 +140,41 @@ TOO_MANY_REQUESTS_RESPONSE = error(
     TOO_MANY_REQUESTS,
     request_id=RID,
 )
+
+# `errors` when calling a pipeline service failed, by the status it failed with. Ported from nilam.
+STAGE_ERROR_CODES = {
+    400: UNREADABLE_FILE,  # guardrails refused the file (the type and size were checked here)
+    500: "DOWNSTREAM_SERVER_ERROR",
+    503: "DOWNSTREAM_UNAVAILABLE",
+    504: "DOWNSTREAM_TIMEOUT",
+}
+
+
+def _stage_error_body(exc: StageError, *, request_id: str, document_type: str, params: Any) -> dict[str, Any]:
+    """The answer when calling a pipeline service failed (unreachable, timed out, refused the file, answered
+    wrongly): the error envelope's status and message, in the extract-ocr shape, naming that service."""
+    if exc.status_code >= 500:
+        logger.error("%s -> %d: %s", exc.service, exc.status_code, exc.message)
+    return extract_body(
+        exc.status_code,
+        exc.message,
+        errors=STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
+        request_id=request_id,
+        document_type=document_type,
+        params=params,
+        pipeline_last_stage=exc.service,
+    )
+
+
+def _stage_error_response(code: int, description: str, service: str, message: str) -> dict[str, Any]:
+    example = extract_body(
+        code, message, errors=STAGE_ERROR_CODES[code], request_id=RID, document_type="kk", pipeline_last_stage=service
+    )
+    return {
+        "model": ExtractOcrResponse,
+        "description": description,
+        "content": {"application/json": {"example": example}},
+    }
 
 
 class _InvalidParams(Exception):
@@ -286,19 +330,25 @@ def _parse_params(raw: str | None) -> Any:
             ),
             "content": {"application/json": {"example": _FAILED}},
         },
-        500: error(
+        500: _stage_error_response(
             500,
-            "The guardrails or ekstraksi service failed, or answered in an unexpected shape",
+            "The guardrails or ekstraksi service failed, or answered in an unexpected shape "
+            "(`DOWNSTREAM_SERVER_ERROR`); `pipeline_last_stage` names it",
+            "guardrails",
             "guardrails service returned an unexpected response",
         ),
-        503: error(
+        503: _stage_error_response(
             503,
-            "The guardrails service, its model, or the ekstraksi service is unreachable; nothing was started",
+            "The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
+            "nothing was started. `pipeline_last_stage` names it",
+            "ekstraksi",
             "ekstraksi service is unavailable",
         ),
-        504: error(
+        504: _stage_error_response(
             504,
-            "The guardrails service, its model, or the ekstraksi service did not answer in time",
+            "The guardrails service, its model, or the ekstraksi service did not answer in time "
+            "(`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it",
+            "ekstraksi",
             "ekstraksi service timed out after 10.0s",
         ),
     },
@@ -364,6 +414,7 @@ async def extract_ocr(
             errors="INVALID_PARAMS",
             request_id=request_id,
             document_type=document_type,
+            pipeline_last_stage=ENTRY,
         )
     if document_type != DOCUMENT_TYPE:
         response.status_code = 400
@@ -373,6 +424,7 @@ async def extract_ocr(
             errors="UNSUPPORTED_DOCUMENT_TYPE",
             request_id=request_id,
             document_type=document_type,
+            pipeline_last_stage=ENTRY,
         )
     try:
         sequence = _parse_sequence(pipeline_name_sequence)
@@ -384,6 +436,7 @@ async def extract_ocr(
             errors=INVALID_SEQUENCE_CODE,
             request_id=request_id,
             document_type=document_type,
+            pipeline_last_stage=ENTRY,
         )
     try:
         guardrails_threshold = _parse_guardrails_threshold(guardrails_confidence_threshold, guardrails_tendency)
@@ -399,6 +452,7 @@ async def extract_ocr(
             errors=INVALID_THRESHOLD_CODE,
             request_id=request_id,
             document_type=document_type,
+            pipeline_last_stage=ENTRY,
         )
 
     # The central orchestrator's request_id becomes the id of this request: in the envelope of an error raised
@@ -419,6 +473,9 @@ async def extract_ocr(
             guardrails_threshold=guardrails_threshold,
             column_thresholds=column_thresholds,
         )
+    except StageError as exc:
+        response.status_code = exc.status_code
+        return _stage_error_body(exc, request_id=request_id, document_type=document_type, params=parsed_params)
     finally:
         reset_request_id(token)
     status_code, body = extract_response(
@@ -489,19 +546,25 @@ async def extract_ocr(
             "No stage has a job for this request_id and no guardrails verdict answers for it (not submitted yet, "
             "refused before the check, or its hand-off to ekstraksi failed)",
             f"No request found for request_id {RID}",
+            errors="REQUEST_ID_NOT_FOUND",
         ),
         422: {
             "model": ExtractOcrResponse,
             "description": "A pipeline stage failed (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`)",
             "content": {"application/json": {"example": {**_FAILED, "params": None}}},
         },
-        500: error(
+        500: _stage_error_response(
             500,
             "A stage answered in an unexpected shape, or refused this service (e.g. a wrong API key)",
+            "structuring",
             "structuring service error (401): Invalid or missing API key",
         ),
-        503: error(503, "A stage service is unreachable", "structuring service is unavailable"),
-        504: error(504, "A stage service did not answer in time", "structuring service timed out after 10.0s"),
+        503: _stage_error_response(
+            503, "A stage service is unreachable", "structuring", "structuring service is unavailable"
+        ),
+        504: _stage_error_response(
+            504, "A stage service did not answer in time", "structuring", "structuring service timed out after 10.0s"
+        ),
     },
 )
 async def get_extract_ocr(
@@ -514,6 +577,9 @@ async def get_extract_ocr(
     token = adopt_request_id(request, request_id)
     try:
         outcome = await service.status(request_id)
+    except StageError as exc:
+        response.status_code = exc.status_code
+        return _stage_error_body(exc, request_id=request_id, document_type=DOCUMENT_TYPE, params=None)
     finally:
         reset_request_id(token)
     status_code, body = extract_response(

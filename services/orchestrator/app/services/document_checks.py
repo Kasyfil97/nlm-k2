@@ -2,7 +2,7 @@
 services behind this one only judge what they are for.
 """
 
-from ocr_common.errors import BadRequest
+from ocr_common.errors import TOO_MANY_PAGES, UNREADABLE_FILE, BadRequest
 from ocr_common.image_validation import validate_image
 
 from app.config import Settings
@@ -26,7 +26,7 @@ def check_document(content_type: str | None, content: bytes, settings: Settings)
         return 1
     pages = count_pdf_pages(content)
     if pages > settings.max_document_pages:
-        raise BadRequest(TOO_MANY_PAGES_MESSAGE)
+        raise BadRequest(TOO_MANY_PAGES_MESSAGE, TOO_MANY_PAGES)
     return pages
 
 
@@ -42,8 +42,8 @@ def count_pdf_pages(content: bytes) -> int:
     try:
         document = fitz.open(stream=content, filetype="pdf")
     except Exception as exc:
-        raise BadRequest("Uploaded file is not a readable PDF") from exc
+        raise BadRequest("Uploaded file is not a readable PDF", UNREADABLE_FILE) from exc
     with document:
         if document.page_count == 0:
-            raise BadRequest("PDF has no pages")
+            raise BadRequest("PDF has no pages", UNREADABLE_FILE)
         return document.page_count

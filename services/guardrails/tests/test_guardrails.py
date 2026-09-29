@@ -272,7 +272,12 @@ def test_a_threshold_that_is_not_a_number_is_422(client, auth):
 def test_missing_api_key_returns_401_envelope(client):
     response = client.post("/v1/guardrails/check", data={"request_id": "OCR_10"}, files=image_upload())
     assert response.status_code == 401
-    assert response.json()["errors"] == "Invalid or missing API key"
+    body = response.json()
+    assert (body["message"], body["errors"], body["pipeline_last_stage"]) == (
+        "Invalid or missing API key",
+        "UNAUTHORIZED",
+        "guardrails",
+    )
 
 
 def test_the_entry_point_is_not_here(client, auth):

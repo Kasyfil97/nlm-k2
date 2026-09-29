@@ -5,9 +5,17 @@ from typing import Any, cast
 
 from prometheus_client import Counter
 
-from ocr_common.errors import NotFound
+from ocr_common.errors import NotFound, ServiceError
 from ocr_common.kk import DOCUMENT_TYPE, final_result
-from ocr_common.pipeline import DEFAULT_SEQUENCE, GUARDRAILS, STAGE_OF, STAGE_SCORING, STAGE_STRUCTURING, STATUS_DONE
+from ocr_common.pipeline import (
+    DEFAULT_SEQUENCE,
+    EKSTRAKSI,
+    GUARDRAILS,
+    STAGE_OF,
+    STAGE_SCORING,
+    STAGE_STRUCTURING,
+    STATUS_DONE,
+)
 from ocr_common.types import ScoringResult, StructuringResult
 
 from app.clients.ekstraksi import EkstraksiJobClient
@@ -15,7 +23,7 @@ from app.clients.guardrails import GuardrailsClient, GuardrailsThreshold
 from app.config import Settings
 from app.services.document_checks import check_document
 from app.services.guardrails_log import GuardrailsLog, NoGuardrailsLog
-from app.services.pipeline_waiter import PipelineWait, WaitOutcome
+from app.services.pipeline_waiter import PipelineWait, StageError, WaitOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +77,10 @@ class ExtractOcrService:
         started = time.monotonic() if received_at is None else received_at
         n_pages = check_document(content_type, content, self._settings)
         if GUARDRAILS in sequence:
-            report = await self._guardrails.check(request_id, filename, content_type, content, guardrails_threshold)
+            try:
+                report = await self._guardrails.check(request_id, filename, content_type, content, guardrails_threshold)
+            except ServiceError as exc:
+                raise StageError(GUARDRAILS, exc) from exc
             await self._log.record(
                 request_id,
                 report,
@@ -89,17 +100,20 @@ class ExtractOcrService:
             report = None
             verdict = {"passed": True, "reason": None}
 
-        job = await self._ekstraksi.submit(
-            request_id,
-            document_type,
-            report,
-            filename,
-            content_type,
-            content,
-            file_url=file_url,
-            sequence=sequence,
-            column_thresholds=column_thresholds,
-        )
+        try:
+            job = await self._ekstraksi.submit(
+                request_id,
+                document_type,
+                report,
+                filename,
+                content_type,
+                content,
+                file_url=file_url,
+                sequence=sequence,
+                column_thresholds=column_thresholds,
+            )
+        except ServiceError as exc:
+            raise StageError(EKSTRAKSI, exc) from exc
         wait_seconds = self._settings.pipeline_wait_seconds
         if wait_seconds <= 0:
             return {**verdict, "job": job, "pipeline": None, "result": None}

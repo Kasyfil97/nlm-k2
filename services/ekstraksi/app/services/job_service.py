@@ -3,7 +3,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ocr_common.clients.fetch_url import STRICT_URL_POLICY, FetchUrlError, UrlPolicy, fetch
-from ocr_common.errors import BadRequest
+from ocr_common.errors import FILE_URL_REJECTED, BadRequest
 from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.pipeline import EKSTRAKSI, HandoffPayload, StagePipeline, Work, chain, stored
 from ocr_common.simulation import simulated_delay_seconds
@@ -132,4 +132,4 @@ class EkstraksiJobService:
         try:
             return await fetch(source, limit=self._max_upload_bytes, policy=self._url_policy)
         except FetchUrlError as exc:
-            raise BadRequest(str(exc)) from exc
+            raise BadRequest(str(exc), FILE_URL_REJECTED) from exc
