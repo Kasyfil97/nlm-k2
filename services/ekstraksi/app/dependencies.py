@@ -46,6 +46,7 @@ def _build_kk_ocr(settings: Settings) -> KkOcrEngine:
             det_limit_side_len=settings.ekstraksi_det_limit_side_len,
             det_limit_type=settings.ekstraksi_det_limit_type,
             torch_threads=settings.ekstraksi_torch_threads,
+            pdf_dpi=settings.ekstraksi_pdf_dpi,
         )
     )
 

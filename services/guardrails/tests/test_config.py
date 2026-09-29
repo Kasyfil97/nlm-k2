@@ -111,17 +111,15 @@ def test_an_empty_allowlist_with_the_switch_on_is_fine_locally():
     assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local", guardrails_fetch_url=True)
 
 
-# --- R34a: the PDF switch -------------------------------------------------------------------------
+# --- PDF: accepted by default, as in nilam -------------------------------------------------------
 
 
-def test_pdf_is_off_by_default_and_the_switch_is_the_only_way_in():
+def test_pdf_is_accepted_by_default_and_there_is_no_switch():
+    """R34a's `PDF_ENABLED` is gone (`docs/decisions/2026-09-29-selaras-nilam.md`): a PDF passes
+    intake here as it does at the orchestrator, and page 1 is judged."""
     settings = Settings(api_key=TEST_API_KEY, _env_file=None, environment="local")
-    assert settings.pdf_enabled is False
-    assert "application/pdf" not in settings.effective_content_types
-    assert (
-        "application/pdf"
-        in Settings(api_key=TEST_API_KEY, _env_file=None, environment="local", pdf_enabled=True).effective_content_types
-    )
+    assert "application/pdf" in settings.allowed_content_types
+    assert not hasattr(settings, "pdf_enabled")
 
 
 # --- R24: the two per-service checks ----------------------------------------------------------

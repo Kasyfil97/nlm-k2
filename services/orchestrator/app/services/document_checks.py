@@ -9,34 +9,33 @@ from app.config import Settings
 
 PDF_CONTENT_TYPE = "application/pdf"
 
-# A Kartu Keluarga is one card. More pages than the limit is almost always another document bundled
-# in. Only reachable with PDF_ENABLED; the message can be shown to the client as is.
+# A Kartu Keluarga is one sheet; a PDF of it is at most `MAX_DOCUMENT_PAGES` (2, ML team 23 Sep 2026),
+# and more is almost always another document bundled in. Only the first page is read downstream.
+# The message can be shown to the client as is.
 TOO_MANY_PAGES_MESSAGE = "Jumlah halaman melebihi batas, pastikan hanya mengunggah foto Kartu Keluarga"
 
 
-def check_document(content_type: str | None, content: bytes, settings: Settings) -> None:
-    """Type and empty file (400), size above `MAX_UPLOAD_BYTES` (413), then -- only when PDF is
-    switched on -- the page count above `MAX_DOCUMENT_PAGES` and an unreadable PDF (400).
+def check_document(content_type: str | None, content: bytes, settings: Settings) -> int:
+    """Type and empty file (400), size above `MAX_UPLOAD_BYTES` (413), then for a PDF the page count
+    above `MAX_DOCUMENT_PAGES` and an unreadable PDF (400), as in nilam.
 
-    `validate_image` checks against `effective_content_types`, so with `PDF_ENABLED=false` a PDF is
-    already refused above and the page count is never reached. That ordering is the point: the
-    switch is the only thing that admits `application/pdf`, and it admits it at intake rather than
-    leaving a half-open path where a PDF passes here and fails deeper as a 422.
+    Returns the page count -- 1 for an image -- which the guardrails log records as `n_pages`.
     """
     validate_image(content_type, content, settings)
-    if not settings.pdf_enabled:
-        return
-    if (content_type or "").lower() == PDF_CONTENT_TYPE and count_pdf_pages(content) > settings.max_document_pages:
+    if (content_type or "").lower() != PDF_CONTENT_TYPE:
+        return 1
+    pages = count_pdf_pages(content)
+    if pages > settings.max_document_pages:
         raise BadRequest(TOO_MANY_PAGES_MESSAGE)
+    return pages
 
 
 def count_pdf_pages(content: bytes) -> int:
     """The page count from the PDF's page tree, without rendering anything; 400 when it is not a PDF
     PyMuPDF can read or it has no pages.
 
-    `fitz` is imported inside the function, not at module level: with `PDF_ENABLED=false` -- the
-    default -- this path never runs, and a module-level import would make PyMuPDF a hard dependency
-    of a service that does not use it.
+    `fitz` is imported here rather than at module level only so that importing the app does not pay
+    for PyMuPDF (and its deprecation notice) before the first PDF arrives; it is a hard dependency.
     """
     import fitz  # ty: ignore[unresolved-import]
 

@@ -19,5 +19,5 @@ scipy==1.16.2
 # is the +cpu build, so the image carries a GPU library it can never use. `xgboost-cpu` is the same
 # import name without that dependency and is the obvious swap if image size matters more than parity.
 xgboost==3.0.5
-# Only reachable with PDF_ENABLED=true (R34a): page 1 is rasterised at the training DPI.
+# A PDF is judged by its page 1, rasterised at the training DPI.
 PyMuPDF==1.28.2

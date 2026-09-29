@@ -211,9 +211,9 @@ paths:
 
 
         **Refused before anything runs** (plain error envelope, no `job_status`): a document above `MAX_UPLOAD_BYTES`
-        (5 MB by default) answers `413`, and -- only with `PDF_ENABLED`, which is off by default -- a
-        PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message`
-        the client can show as is. With the switch off a PDF is simply an unsupported content type.
+        (5 MB by default) answers `413`, and a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers
+        `400`. Both carry an Indonesian `message` the client can show as is. JPEG, PNG and PDF are accepted;
+        of a PDF only the first page is judged and read.
 
 
         **Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request,
@@ -371,9 +371,8 @@ paths:
         '400':
           description: 'Rejected by the guardrails model or by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`,
             `guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above `MAX_DOCUMENT_PAGES`
-            pages while `PDF_ENABLED` is on (`Jumlah halaman melebihi batas, pastikan hanya mengunggah
-            foto Kartu Keluarga`), or a bad file / intake (empty, unsupported type, unreadable, `file_url`
-            refused)'
+            pages (`Jumlah halaman melebihi batas, pastikan hanya mengunggah foto Kartu Keluarga`), or
+            a bad file / intake (empty, unsupported type, unreadable, `file_url` refused)'
           content:
             application/json:
               schema:

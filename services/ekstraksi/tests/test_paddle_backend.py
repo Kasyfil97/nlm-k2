@@ -103,6 +103,21 @@ async def test_a_list_of_documents_is_accepted():
     assert result["model"] == "PP-OCRv6_medium_det+PP-OCRv6_medium_rec"
 
 
+async def test_only_page_one_of_a_pdf_is_read():
+    """The server renders every page of a PDF; the layout parser reads one page frame, so page 2 is
+    dropped -- in a single document and in the list-of-documents answer alike."""
+    page_two = {
+        "page_index": 1,
+        "texts": [{"text": "LEGALISIR", "score": 0.99, "poly": [[0, 0], [9, 0], [9, 9], [0, 9]]}],
+    }
+    two_pages = {**PADDLE_RESPONSE, "num_pages": 2, "pages": [*PADDLE_RESPONSE["pages"], page_two]}
+    split = [PADDLE_RESPONSE, {**PADDLE_RESPONSE, "pages": [page_two]}]
+
+    for body in (two_pages, split):
+        result = await _engine(lambda request, body=body: httpx.Response(200, json=body)).extract("kk.pdf", b"%PDF")
+        assert [box["text"] for box in result["texts"]] == ["KARTU KELUARGA", "No.9924187486671285"]
+
+
 async def test_a_document_the_server_could_not_decode_is_an_empty_read():
     empty = {"models": PADDLE_RESPONSE["models"], "num_pages": 0, "pages": [], "filename": "t.txt"}
     result = await _engine(lambda request: httpx.Response(200, json=empty)).extract("t.txt", b"hello")

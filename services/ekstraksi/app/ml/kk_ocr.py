@@ -80,6 +80,10 @@ class KkOcrConfig:
     det_limit_side_len: int = 64
     det_limit_type: str = "min"
     torch_threads: int = 0
+    pdf_dpi: int = 200
+    """The DPI page 1 of a PDF is rendered at. Not guardrails' 150, which is a property of *its*
+    training: KK table text at 150 DPI is a few pixels tall, and the layout parser's offsets are
+    in pixels. Tune with the other knobs against the corpus baseline."""
 
 
 class Predictor(Protocol):
@@ -105,7 +109,7 @@ class KkOcrEngine:
         self._predictor = predictor if predictor is not None else build_predictor(config)
 
     def read(self, filename: str, content: bytes, content_type: str | None = None) -> OcrEngineResult:
-        image = _decode(content)
+        image = _decode(content, pdf_dpi=self._config.pdf_dpi)
         results = self._predictor.predict(image)
         if not isinstance(results, list) or not results or not isinstance(results[0], dict):
             raise InternalError("the OCR model returned an unexpected result shape")
@@ -116,16 +120,22 @@ class KkOcrEngine:
         return {"texts": boxes, "model": MODEL_NAME}
 
 
-def _decode(content: bytes) -> Any:
+def _decode(content: bytes, *, pdf_dpi: int = 200) -> Any:
     """The upload as a contiguous RGB `HxWx3` array, which is what the detector expects.
 
     Pillow rather than OpenCV: it is already in the image, it honours the EXIF orientation tag that
     phone cameras set (a 90-degree rotation that no amount of deskewing downstream would recover),
     and it raises one exception type for anything it cannot open.
+
+    A PDF is rendered first, page 1 only: a Kartu Keluarga is one sheet and the layout parser reads
+    one page frame, so boxes from a second page could only be misplaced into the first.
     """
     import io
 
     from PIL import Image, ImageOps, UnidentifiedImageError
+
+    if content.startswith(PDF_MAGIC):
+        content = render_pdf_first_page(content, pdf_dpi)
 
     try:
         with Image.open(io.BytesIO(content)) as handle:
@@ -144,6 +154,28 @@ def _decode(content: bytes) -> Any:
     import numpy as np  # ty: ignore[unresolved-import]
 
     return np.ascontiguousarray(np.asarray(image, dtype=np.uint8))
+
+
+PDF_MAGIC = b"%PDF"
+
+
+def render_pdf_first_page(content: bytes, dpi: int) -> bytes:
+    """Page 1 of a PDF as PNG bytes. An encrypted, empty or unreadable PDF is a FAILED job (§6.3),
+    like an image that cannot be opened -- never a rejection, which is structuring's to make."""
+    import fitz
+
+    try:
+        with fitz.open(stream=content, filetype="pdf") as document:
+            if document.is_encrypted:
+                raise InternalError("the uploaded PDF is encrypted")
+            if document.page_count == 0:
+                raise InternalError("the uploaded PDF has no pages")
+            zoom = dpi / 72.0
+            return document[0].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).tobytes("png")
+    except InternalError:
+        raise
+    except Exception as exc:
+        raise InternalError("the uploaded document could not be decoded as a PDF") from exc
 
 
 def build_predictor(config: KkOcrConfig) -> Predictor:

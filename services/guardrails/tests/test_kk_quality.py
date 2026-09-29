@@ -23,6 +23,7 @@ from app.ml.kk_quality import (
     _check_declared_dimensions,
     _optional_threshold,
     _validate_bytes,
+    render_pdf_first_page,
 )
 
 
@@ -136,3 +137,27 @@ def test_an_unusable_stored_threshold_is_ignored_rather_than_honoured(value):
     """0 would reject every card and 1 almost none, so a bad key must not be able to disable the
     gate silently -- it drops to the rung below instead."""
     assert _optional_threshold({"decision_threshold": value}) is None
+
+
+# --- PDF: page 1 only ------------------------------------------------------------------------------
+
+
+def _pdf(sizes: list[tuple[int, int]]) -> bytes:
+    import fitz  # ty: ignore[unresolved-import]
+
+    document = fitz.open()
+    for width, height in sizes:
+        document.new_page(width=width, height=height)
+    return document.tobytes()
+
+
+def test_a_pdf_is_judged_by_its_first_page_only():
+    """Page 1 at the training DPI (150): a 288x144 pt first page becomes 600x300 px, whatever the
+    second page looks like -- the same page ekstraksi reads."""
+    png = render_pdf_first_page(_pdf([(288, 144), (600, 800)]))
+    assert Image.open(io.BytesIO(png)).size == (600, 300)
+
+
+def test_a_pdf_that_cannot_be_rendered_is_unassessable_not_a_crash():
+    with pytest.raises(UnassessableImage):
+        render_pdf_first_page(b"%PDF-1.4 garbage")

@@ -24,9 +24,10 @@ of that trap.
 The document aggregates of §7.1 are computed from the boxes by `ocr_common.kk.ocr_aggregates`, never
 taken from whatever the model reports, so one definition of `avg_doc_score` exists rather than two.
 
-A Kartu Keluarga is one image, so the pages are concatenated into a single `texts` list in page
-order. The stage has no page concept: §7.1 has none, `OcrBox` has none, and PDF is off by default
-(`PDF_ENABLED`, R34a).
+**Only the first page is read.** A Kartu Keluarga is one sheet, and the layout parser in structuring
+reads one page frame: boxes from a second page of a PDF would land on top of the first page's
+coordinates and break its zoning, so they are dropped rather than concatenated. The stage has no
+page concept -- §7.1 has none, `OcrBox` has none -- and guardrails judges the same page 1.
 
 Kept rather than dropped alongside the in-process backend because R18 ties that choice to the same
 choice in guardrails, which still ships its own `remote`. If guardrails drops it, this goes too.
@@ -109,10 +110,9 @@ def _documents(body: Any) -> list[dict[str, Any]] | None:
 
 
 def parse_pages(body: Any, name: str) -> list[OcrBox]:
-    """Every page as one flat list of §7.1 boxes, in page order, whichever shape it arrived in.
+    """The first page's §7.1 boxes, whichever shape it arrived in; later pages are ignored.
 
-    A Kartu Keluarga is one image, so pages are concatenated rather than kept apart; the stage has
-    no page concept and §7.1 has none either.
+    Every page must still be an object -- a malformed body is an error, not silently page 1.
     """
     unexpected = InternalError(f"{name} returned an unexpected response")
     documents = _documents(body)
@@ -129,12 +129,9 @@ def parse_pages(body: Any, name: str) -> list[OcrBox]:
     if not isinstance(pages, list):
         raise unexpected
 
-    boxes: list[OcrBox] = []
-    for page in pages:
-        if not isinstance(page, dict):
-            raise unexpected
-        boxes.extend(_page_boxes(page, unexpected))
-    return boxes
+    if not all(isinstance(page, dict) for page in pages):
+        raise unexpected
+    return _page_boxes(pages[0], unexpected) if pages else []
 
 
 def _page_boxes(page: dict[str, Any], unexpected: InternalError) -> list[OcrBox]:

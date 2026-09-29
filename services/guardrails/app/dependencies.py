@@ -39,7 +39,6 @@ QUALITY_BACKENDS: dict[str, Factory[QualityBackend]] = {
         settings.guardrails_weights_dir,
         settings.guardrails_device,
         settings.guardrails_torch_threads,
-        pdf_enabled=settings.pdf_enabled,
     ),
     "remote": _build_remote,
 }

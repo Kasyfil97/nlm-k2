@@ -93,7 +93,7 @@ services:
       # Boleh tidaknya Orkestrasi pusat melewati model guardrails per request (skip_guardrails=true).
       # "false" = request seperti itu ditolak 403. Pengecekan file dan aturan structuring tetap jalan.
       GUARDRAILS_SKIP_ALLOWED: "false"
-    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 2,5 MB) selama menunggu pipeline.
+    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 5 MB) selama menunggu pipeline.
     resources:
       requests:
         cpu: 250m

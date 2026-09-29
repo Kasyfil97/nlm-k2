@@ -122,16 +122,21 @@ def _page(texts, scores, polys, index=0):
     return {"page_index": index, "rec_texts": texts, "rec_scores": scores, "rec_polys": polys}
 
 
-def test_the_remote_pages_are_flattened_into_one_texts_list():
-    """A Kartu Keluarga is one image and §7.1 has no page concept, so pages concatenate in order."""
+def test_only_the_first_page_is_read():
+    """A Kartu Keluarga is one sheet and the layout parser reads one page frame: page 2 of a PDF
+    would land on page 1's coordinates, so it is dropped rather than concatenated."""
     body = {
         "models": {"detection": "det", "recognition": "rec"},
         "pages": [_page(["A"], [0.9], [QUAD]), _page(["B"], [0.8], [QUAD], 1)],
     }
 
     boxes = parse_pages(body, "ekstraksi OCR model")
-    assert [box["text"] for box in boxes] == ["A", "B"]
+    assert [box["text"] for box in boxes] == ["A"]
     assert parse_model(body) == "det+rec"
+
+
+def test_a_body_with_no_pages_is_an_empty_read():
+    assert parse_pages({"pages": []}, "ekstraksi OCR model") == []
 
 
 def test_the_older_remote_shapes_are_still_accepted():
@@ -225,6 +230,33 @@ def test_kk_ocr_turns_an_undecodable_upload_into_a_failed_job_not_a_crash():
 
     with pytest.raises(InternalError, match="could not be decoded"):
         engine.read("kk.jpg", b"not an image at all")
+
+
+def _pdf(sizes: list[tuple[int, int]]) -> bytes:
+    fitz = pytest.importorskip("fitz")
+    document = fitz.open()
+    for width, height in sizes:
+        document.new_page(width=width, height=height)
+    return document.tobytes()
+
+
+def test_kk_ocr_reads_page_one_of_a_pdf_at_the_configured_dpi():
+    """As in nilam a PDF is accepted; here only page 1 is read, because the layout parser reads one
+    page frame. 144x72 pt at the default 200 DPI is 400x200 px, whatever page 2 is."""
+    pytest.importorskip("numpy")
+    engine, predictor = _engine({"rec_texts": [], "rec_scores": [], "rec_polys": []})
+
+    engine.read("kk.pdf", _pdf([(144, 72), (600, 800)]), "application/pdf")
+    [image] = predictor.calls
+    assert image.shape == (200, 400, 3)  # ty: ignore[unresolved-attribute]
+
+
+def test_kk_ocr_turns_an_unreadable_pdf_into_a_failed_job():
+    pytest.importorskip("fitz")
+    engine, _ = _engine({"rec_texts": [], "rec_scores": [], "rec_polys": []})
+
+    with pytest.raises(InternalError, match="could not be decoded as a PDF"):
+        engine.read("kk.pdf", b"%PDF-1.4 garbage", "application/pdf")
 
 
 def test_kk_ocr_says_which_file_is_missing_rather_than_failing_deep_in_torch():

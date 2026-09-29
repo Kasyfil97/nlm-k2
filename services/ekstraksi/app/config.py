@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from ocr_common.config import PipelineSettings
 
@@ -49,6 +49,8 @@ class Settings(PipelineSettings):
     # 0 leaves torch's own default. Pinning it matters on a shared node: the default is one thread
     # per core, and several replicas each taking every core is slower than each taking a few.
     ekstraksi_torch_threads: int = 0
+    # Page 1 of a PDF is rendered at this DPI before detection (only page 1 is read).
+    ekstraksi_pdf_dpi: int = Field(200, ge=72, le=600)
 
     structuring_service_url: str = "http://127.0.0.1:8043"
     structuring_api_key: str | None = None

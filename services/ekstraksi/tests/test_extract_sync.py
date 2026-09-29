@@ -36,6 +36,16 @@ def test_an_empty_file_is_400(client, auth):
     assert response.status_code == 400
 
 
+def test_a_pdf_is_accepted(client, auth):
+    """As in nilam; the backend reads its first page."""
+    response = client.post(
+        "/v1/ekstraksi/extract",
+        headers=auth,
+        files=image_upload(filename="kk.pdf", content=b"%PDF-1.4 ...", content_type="application/pdf"),
+    )
+    assert response.status_code == 200
+
+
 def test_the_api_key_is_required(client):
     assert client.post("/v1/ekstraksi/extract", files=image_upload()).status_code == 401
 

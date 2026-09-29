@@ -17,8 +17,8 @@ class Settings(BaseServiceSettings):
     # refused with 403, so an API key alone does not bypass guardrails. The file checks below always run.
     guardrails_skip_allowed: bool = False
 
-    # Only reachable with PDF_ENABLED. A PDF with more pages is refused with 400 here (a Kartu Keluarga
-    # upload is at most 2 pages, ML team 23 Sep 2026). MAX_UPLOAD_BYTES (413) is checked here too.
+    # A PDF with more pages is refused with 400 here (a Kartu Keluarga upload is at most 2 pages, ML
+    # team 23 Sep 2026; only the first is read). MAX_UPLOAD_BYTES (413) is checked here too.
     max_document_pages: int = Field(2, ge=1)
 
     ekstraksi_service_url: str = "http://127.0.0.1:8042"
@@ -65,15 +65,6 @@ class Settings(BaseServiceSettings):
         # R18a: service ini mengunduh `file_url`, jadi daftar host wajib ada di luar local. Tanpa ini
         # kebijakannya tetap menolak semua -- gagal tertutup, tetapi diam-diam, saat request pertama.
         self.require_file_url_allowlist()
-        if self.pdf_enabled:
-            # PyMuPDF is only a dependency of the PDF path, and that path is off by default (R34a),
-            # so nothing imports it at module level. That leaves one bad state worth refusing here:
-            # the switch on in an image that does not carry the library. Without this check every
-            # PDF would be a 500 at the first upload instead of a refusal to start.
-            try:
-                import fitz  # noqa: F401  # ty: ignore[unresolved-import]
-            except ImportError as exc:
-                raise ValueError("PDF_ENABLED=true requires PyMuPDF; install it or turn the switch off") from exc
         # All four always: GET /v1/extract-ocr/{request_id} reads the stages even when POST does not wait.
         self.reject_localhost_outside_local(
             guardrails_service_url=self.guardrails_service_url,

@@ -341,9 +341,9 @@ paths:
         -- not a 4xx here.
 
 
-        **Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG or PNG, at most `MAX_UPLOAD_BYTES`
-        (5 MB); PDF is refused unless `PDF_ENABLED` is on. `file_url` is downloaded in the background
-        from a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than `PIPELINE_JOB_LEASE_SECONDS`;
+        **Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG, PNG or PDF (only its first
+        page is read), at most `MAX_UPLOAD_BYTES` (5 MB). `file_url` is downloaded in the background from
+        a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than `PIPELINE_JOB_LEASE_SECONDS`;
         an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.
 
 

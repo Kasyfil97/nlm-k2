@@ -46,11 +46,10 @@ class BaseServiceSettings(BaseSettings):
     # 5 MB (§13.1): a Kartu Keluarga photo is larger than a tax card. Anything above is refused
     # with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
-    # §13.1: PDF is deliberately absent, so a PDF is a 400 at intake. `pdf_enabled` is the ONLY
-    # way to admit it -- adding `application/pdf` to this list by hand would create a half-open
-    # path where PDFs pass intake and then fail deeper as a 422 instead of a clean 400.
-    allowed_content_types: list[str] = ["image/jpeg", "image/png"]
-    pdf_enabled: bool = False
+    # §13.1, as in nilam: JPEG, PNG or PDF. Of a PDF only the first page is read -- guardrails
+    # judges it and ekstraksi reads it -- because a Kartu Keluarga is one sheet and the layout
+    # parser reads one page frame; the orchestrator refuses more than `MAX_DOCUMENT_PAGES`.
+    allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
     file_url_allowed_hosts: str = ""
     field_confidence_threshold: float = Field(0.5, ge=0, le=1)
     # The `-test` endpoints (orchestrator `/v1/extract-ocr-test`, `/v1/<stage>/jobs-test`): the same pipeline on
@@ -75,14 +74,6 @@ class BaseServiceSettings(BaseSettings):
     def effective_log_format(self) -> Literal["json", "text"]:
         """`LOG_FORMAT` when set; otherwise text on a laptop and JSON (for Cloud Logging) when deployed."""
         return self.log_format or ("text" if self.is_local else "json")
-
-    @property
-    def effective_content_types(self) -> tuple[str, ...]:
-        """Content types intake accepts: `ALLOWED_CONTENT_TYPES`, plus PDF only when `PDF_ENABLED`."""
-        types = tuple(self.allowed_content_types)
-        if self.pdf_enabled and "application/pdf" not in types:
-            types = (*types, "application/pdf")
-        return types
 
     @property
     def file_url_policy(self) -> UrlPolicy:

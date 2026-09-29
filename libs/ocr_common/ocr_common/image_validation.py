@@ -20,7 +20,7 @@ def validate_image(content_type: str | None, content: bytes, settings: BaseServi
     `PayloadTooLarge` (413) when it exceeds `MAX_UPLOAD_BYTES`.
     """
     content_type = (content_type or "").lower()
-    if content_type not in settings.effective_content_types:
+    if content_type not in settings.allowed_content_types:
         raise BadRequest(f"Unsupported content type: {content_type or 'unknown'}")
     if not content:
         raise BadRequest("Uploaded file is empty")

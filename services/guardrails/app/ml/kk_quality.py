@@ -201,8 +201,8 @@ def _decode(content: bytes) -> tuple[Any, Any]:
 def render_pdf_first_page(content: bytes, dpi: int = PDF_RENDER_DPI) -> bytes:
     """Rasterise page 1 of a PDF to PNG bytes, at the DPI the CNN was trained on.
 
-    A Kartu Keluarga is one page, so only the first one is ever looked at. Reachable only with
-    `PDF_ENABLED=true` (R34a): with the switch off a PDF never passes intake.
+    A Kartu Keluarga is one page, so only the first one is ever looked at -- the same page
+    ekstraksi reads. The orchestrator has already refused a PDF above `MAX_DOCUMENT_PAGES`.
     """
     import fitz  # ty: ignore[unresolved-import]
 
@@ -534,7 +534,7 @@ class KKQualityModel:
 
     name = "kk_quality"
 
-    def __init__(self, weights_dir: str, device: str = "cpu", threads: int | None = None, pdf_enabled: bool = False):
+    def __init__(self, weights_dir: str, device: str = "cpu", threads: int | None = None):
         # Before `_load_runtime()`, deliberately: a weights directory that is not there is a
         # configuration error, and it should say so in milliseconds rather than after several
         # seconds of importing torch -- which is also what makes this branch testable anywhere.
@@ -562,7 +562,6 @@ class KKQualityModel:
         if threads:
             torch.set_num_threads(threads)
         self._device = torch.device(device)
-        self._pdf_enabled = pdf_enabled
 
         meta = _read_json(base / BLUR_CNN_META)
         aggregation = str(meta.get("aggregation_type", "attention"))
@@ -622,7 +621,6 @@ class KKQualityModel:
             "n_features": len(self.feature_names),
             "n_calibration_points": len(self._iso_x),
             "reject_threshold": self.reject_threshold,
-            "pdf_enabled": pdf_enabled,
         }
         logger.info("guardrails model loaded from %s: %s", base, self.metadata)
 
@@ -666,10 +664,6 @@ class KKQualityModel:
         file_kb = len(content) / 1024.0
 
         if content.startswith(MAGIC_PDF):
-            if not self._pdf_enabled:
-                # Unreachable through intake with PDF_ENABLED=false, which is the default; this is
-                # the second half of the same switch so the path cannot be half-open (R34a).
-                raise UnassessableImage("PDF input is disabled (PDF_ENABLED=false)")
             content = render_pdf_first_page(content)
 
         gray_float, image_rgb = _decode(content)

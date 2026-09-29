@@ -183,10 +183,9 @@ def _parse_params(raw: str | None) -> Any:
         "both a NIK and a name. `message` is the gate's Indonesian reason. A rejected document is still a "
         "`DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.\n\n"
         "**Refused before anything runs** (plain error envelope, no `job_status`): a document above "
-        f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and -- only with `PDF_ENABLED`, "
-        "which is off by default -- a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both "
-        "carry an Indonesian `message` the client can show as is. With the switch off a PDF is simply an "
-        "unsupported content type.\n\n"
+        f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and a PDF with more than "
+        "`MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message` the client can show "
+        "as is. JPEG, PNG and PDF are accepted; of a PDF only the first page is judged and read.\n\n"
         "**Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request, "
         "when this service allows it (`GUARDRAILS_SKIP_ALLOWED`; otherwise `403` "
         f"`{SKIP_NOT_ALLOWED_CODE}` and nothing runs). The file checks above still run, and the KK validity "
@@ -222,7 +221,7 @@ def _parse_params(raw: str | None) -> Any:
             "description": (
                 f"Rejected by the guardrails model or by the KK validity gate (`{REJECTED_CODE}`, "
                 "`guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above "
-                f"`MAX_DOCUMENT_PAGES` pages while `PDF_ENABLED` is on (`{TOO_MANY_PAGES_MESSAGE}`), or a bad "
+                f"`MAX_DOCUMENT_PAGES` pages (`{TOO_MANY_PAGES_MESSAGE}`), or a bad "
                 "file / intake (empty, unsupported type, unreadable, `file_url` refused)"
             ),
             "content": {"application/json": {"example": _REJECTED}},

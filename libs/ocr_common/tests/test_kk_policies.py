@@ -39,21 +39,22 @@ def test_upload_limit_is_five_megabytes():
     assert settings().max_upload_bytes == 5 * 1024 * 1024
 
 
-def test_pdf_is_rejected_by_default():
+def test_pdf_is_accepted_by_default_as_in_nilam():
+    """R34a (a PDF behind `PDF_ENABLED`) is reversed: `docs/decisions/2026-09-29-selaras-nilam.md`.
+    Only the first page is read downstream; the page limit is the orchestrator's."""
+    assert "application/pdf" in settings().allowed_content_types
+    validate_image("application/pdf", b"%PDF-1.4 ...", settings())
+
+
+def test_the_pdf_switch_is_gone():
+    """No second way to admit a type: `ALLOWED_CONTENT_TYPES` is the one list intake reads."""
+    assert not hasattr(settings(), "pdf_enabled")
     with pytest.raises(BadRequest, match="Unsupported content type"):
-        validate_image("application/pdf", b"%PDF-1.4 ...", settings())
-
-
-def test_pdf_is_admitted_only_by_the_switch_never_by_the_list():
-    """R34a(a): perilaku bawaan tetap 400. R34a(c): jalurnya tetap dijalankan sekali dengan env
-    menyala, supaya kode yang dipertahankan tidak jadi kode mati yang tak teruji."""
-    assert "application/pdf" not in settings().effective_content_types
-    assert "application/pdf" in settings(pdf_enabled=True).effective_content_types
-    validate_image("application/pdf", b"%PDF-1.4 ...", settings(pdf_enabled=True))
+        validate_image("application/pdf", b"%PDF-1.4 ...", settings(allowed_content_types=["image/jpeg"]))
 
 
 def test_jpeg_and_png_pass_and_anything_else_does_not():
-    for good in ("image/jpeg", "image/png"):
+    for good in ("image/jpeg", "image/jpg", "image/png"):
         validate_image(good, JPEG, settings())
     for bad in ("image/gif", "image/webp", "text/html", ""):
         with pytest.raises(BadRequest):

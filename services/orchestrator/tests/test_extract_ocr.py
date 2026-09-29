@@ -1,4 +1,3 @@
-import pytest
 
 from ocr_common.errors import ServiceError, UpstreamTimeout, UpstreamUnavailable
 from ocr_common.testing import image_upload
@@ -112,7 +111,8 @@ def test_oversized_document_is_413_before_guardrails(client, auth, stub_guardrai
 
 
 def _pdf(n_pages: int) -> bytes:
-    fitz = pytest.importorskip("fitz", reason="PyMuPDF is only needed when PDF_ENABLED is on")
+    import fitz  # ty: ignore[unresolved-import]
+
     document = fitz.open()
     for i in range(n_pages):
         document.new_page(width=300, height=200).insert_text((20, 40), f"halaman {i + 1}")
@@ -123,27 +123,17 @@ def _submit_pdf(client, auth, content):
     return _submit(client, auth, filename="scan.pdf", content=content, content_type="application/pdf")
 
 
-def test_a_pdf_is_refused_at_intake_while_pdf_is_off(client, auth, stub_guardrails, stub_ekstraksi):
-    """R34a: `PDF_ENABLED` is the ONLY thing that admits application/pdf, and it admits it at
-    intake. Off, a PDF is an unsupported content type -- a clean 400 -- rather than a file that
-    passes here and fails deeper as a 422."""
-    response = _submit_pdf(client, auth, b"%PDF-1.4 whatever")
+def test_a_pdf_is_accepted_and_sent_on_as_it_is(client, auth, stub_guardrails, stub_ekstraksi):
+    """As in nilam: a PDF passes intake and goes to guardrails and ekstraksi unchanged; each of them
+    reads its first page. R34a's switch is gone (`docs/decisions/2026-09-29-selaras-nilam.md`)."""
+    response = _submit_pdf(client, auth, _pdf(1))
 
-    assert response.status_code == 400
-    assert response.json()["message"].startswith("Unsupported content type")
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
-
-
-def test_the_page_check_is_not_even_reached_while_pdf_is_off(client, auth, stub_guardrails):
-    """A PDF with too many pages gets the content-type refusal, not the page one: the switch is
-    checked first, so PyMuPDF is never imported on the default path."""
-    response = _submit_pdf(client, auth, b"%PDF-1.4 whatever")
-    assert response.json()["message"] != TOO_MANY_PAGES
-    assert stub_guardrails.checked == []
+    assert response.status_code == 200
+    assert len(stub_guardrails.checked) == 1
+    assert len(stub_ekstraksi.submitted) == 1
 
 
 def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_override, stub_guardrails, stub_ekstraksi):
-    settings_override(pdf_enabled=True)
     response = _submit_pdf(client, auth, _pdf(3))
 
     assert response.status_code == 400
@@ -154,7 +144,6 @@ def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_ove
 
 
 def test_two_pages_are_within_the_limit(client, auth, settings_override, stub_guardrails):
-    settings_override(pdf_enabled=True)
     response = _submit_pdf(client, auth, _pdf(2))
 
     assert response.status_code == 200
@@ -162,7 +151,7 @@ def test_two_pages_are_within_the_limit(client, auth, settings_override, stub_gu
 
 
 def test_the_page_limit_is_a_setting(client, auth, settings_override, stub_guardrails):
-    settings_override(pdf_enabled=True, max_document_pages=1)
+    settings_override(max_document_pages=1)
     response = _submit_pdf(client, auth, _pdf(2))
 
     assert response.status_code == 400
@@ -171,8 +160,6 @@ def test_the_page_limit_is_a_setting(client, auth, settings_override, stub_guard
 
 
 def test_unreadable_pdf_is_400_before_guardrails(client, auth, settings_override, stub_guardrails):
-    pytest.importorskip("fitz", reason="PyMuPDF is only needed when PDF_ENABLED is on")
-    settings_override(pdf_enabled=True)
     response = _submit_pdf(client, auth, b"%PDF-1.4 garbage")
 
     assert response.status_code == 400
@@ -266,7 +253,7 @@ def test_with_guardrails_skipped_the_kk_validity_gate_still_rejects(client, auth
 
 
 def test_with_guardrails_skipped_the_file_checks_still_run(client, auth, settings_override, stub_ekstraksi):
-    settings_override(guardrails_skip_allowed=True, pdf_enabled=True)
+    settings_override(guardrails_skip_allowed=True)
     pages = _submit(
         client, auth, filename="scan.pdf", content=_pdf(3), content_type="application/pdf", skip_guardrails="true"
     )
