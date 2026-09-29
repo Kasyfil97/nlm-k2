@@ -19,25 +19,27 @@ membaca apa.
 | `scoring_jobs`, `scoring_results` | **repo ini** | scoring | scoring lewat API-nya (orchestrator) | status dan skor trust model |
 | `pipeline_outbox` | **repo ini** | ketiga tahap (dalam transaksi job), relay | relay tiap service, `GET /v1/<tahap>/outbox` | callback dan handoff yang belum terkirim (`PIPELINE_OUTBOX`). Baris dihapus setelah terkirim; yang gagal permanen (4xx, atau 5xx lebih lama dari `PIPELINE_OUTBOX_MAX_AGE_SECONDS`) tetap ada sebagai dead letter dengan `failed_at` + `last_error`, tidak pernah diambil lagi oleh relay, dan dilepas manual dengan `failed_at = NULL, next_attempt_at = now()`. `ds` dipakai untuk membersihkan dead letter lama |
 | `testing_ocr_jobs`/`_results`, `testing_structuring_jobs`/`_results`, `testing_scoring_jobs`/`_results`, `testing_pipeline_outbox` | **repo ini** | ketiga tahap lewat endpoint `-test` (`TESTING_ENDPOINTS`) | tahap itu sendiri, orchestrator lewat `GET /v1/<tahap>/jobs-test/{request_id}` | salinan persis tabel tahap dan outbox untuk load test tim ML (baseline `0001`). Tidak pernah dibaca Orkestrasi; boleh di-`TRUNCATE` kapan saja setelah tes. Lihat README, "Endpoint Testing" |
+| `guardrails_results`, `testing_guardrails_results` | **repo ini** | orchestrator (best-effort, `DATABASE_URL`; `-test` menulis `testing_`) | orchestrator (`GET /v1/extract-ocr/{request_id}` untuk request yang tidak pernah sampai tahap) | satu baris per putusan guardrails, termasuk yang ditolak: `passed`, `verdict`, `confidence`, `threshold`, `n_pages`, `pipeline_name_sequence`, dan `report` utuh (`probability_bad`). Append-only; migrasi `0002`, porting dari nilam |
 | `ocr_kk_alembic_version` | **repo ini** | Alembic | Alembic | versi migrasi repo ini; namanya sengaja tidak `alembic_version` supaya tidak bentrok dengan migrasi tim lain di instans yang sama |
 | `ocr.orchestration_api_events` | **orkestrasi** | orkestrasi; ketiga tahap menambah baris keadaan akhir kalau `ORCHESTRATION_API_EVENTS_TABLE` diisi | orkestrasi | log API orkestrasi, append-only. Lihat bagian di bawah tabel ini |
 | `orchestration_extract_ocr` | **Orkestrasi pusat** | ketiga tahap (dalam transaksi job) kalau `ORCHESTRATION_OUTCOME_TABLE` diisi | Orkestrasi pusat | **kanal hasil yang sesungguhnya.** Satu baris per `request_id`; kontraknya kolom `downstream_status`. Barisnya **monoton di `completed`**: penulisan terlambat dari relay yang menyerah atau eksekusi kembar ditolak, dicatat WARNING, dan dihitung `pipeline_outcome_writes_suppressed_total`. Migrasi di sini tidak pernah membuat atau mengubahnya |
 | `orchestration_*` lainnya, `auth_*`, `datahub_lookup_log` (schema `ocr`) | **Orkestrasi pusat** | orkestrasi | orkestrasi | di luar repo ini. Migrasi di sini tidak pernah membuat atau mengubahnya |
 
-Orchestrator dan guardrails tidak punya tabel: orchestrator membaca status tahap lewat API, bukan lewat database.
+Guardrails tidak punya tabel. Orchestrator hanya punya `guardrails_results` (seperti nilam); status tahap tetap dibacanya lewat API, bukan lewat database.
 
 ## Hak akses (R28)
 
 Hibah dibatasi **di kedua arah**, bukan hanya untuk service nlm-k2. Kalau hanya satu sisi yang
 dibatasi, peran Orkestrasi pusat di database yang sama tetap bisa membaca setiap kartu.
 
-| Peran | `ocr_*` | `structuring_*` | `scoring_*` | `pipeline_outbox` | tabel outcome |
-|---|---|---|---|---|---|
-| ekstraksi | SELECT, INSERT, UPDATE | — | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
-| structuring | SELECT (baca hasil hulu) | SELECT, INSERT, UPDATE | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
-| scoring | SELECT | SELECT | SELECT, INSERT, UPDATE | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE |
-| **Orkestrasi pusat** | **—** | **—** | **—** | **—** | miliknya sendiri |
-| migrasi (Alembic) | DDL | DDL | DDL | DDL | — |
+| Peran | `ocr_*` | `structuring_*` | `scoring_*` | `pipeline_outbox` | tabel outcome | `guardrails_results` |
+|---|---|---|---|---|---|---|
+| ekstraksi | SELECT, INSERT, UPDATE | — | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
+| structuring | SELECT (baca hasil hulu) | SELECT, INSERT, UPDATE | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
+| scoring | SELECT | SELECT | SELECT, INSERT, UPDATE | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
+| orchestrator | — | — | — | — | — | SELECT, INSERT |
+| **Orkestrasi pusat** | **—** | **—** | **—** | **—** | miliknya sendiri | **—** |
+| migrasi (Alembic) | DDL | DDL | DDL | DDL | — | DDL |
 
 Tidak ada peran tahap yang mendapat DDL atas tabelnya sendiri: itu milik peran migrasi.
 
@@ -59,6 +61,7 @@ kesepakatan lintas tim, bukan sesuatu yang bisa ditegakkan baseline.
 | `structuring_results.result` | 11 field dokumen + 15 per anggota |
 | `scoring_results.result` | skor saja, tetapi `payload` menyimpan fitur yang diskor |
 | tabel outcome `result_data` | sembilan field kontrak, termasuk NIK tiap anggota |
+| `guardrails_results.report` | skor kualitas gambar saja, tanpa isi kartu; `request_id` menautkannya ke tahap |
 | **`ocr_jobs.input`** | presigned URL — **setara kredensial pembawa** ke gambar KK itu sendiri |
 
 `ocr_jobs.input` dikosongkan di transaksi `complete()`/`fail()` milik job, bukan lewat sapuan

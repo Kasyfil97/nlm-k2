@@ -35,6 +35,11 @@ class Settings(BaseServiceSettings):
     pipeline_wait_seconds: float = Field(30.0, ge=0)
     pipeline_poll_interval_seconds: float = Field(0.5, gt=0)
 
+    # The shared database, only to keep every guardrails verdict (guardrails_results), the rejected ones
+    # included. Unset: nothing is kept. A write is best-effort, bounded by GUARDRAILS_LOG_TIMEOUT_SECONDS.
+    database_url: str | None = None
+    guardrails_log_timeout_seconds: float = Field(2.0, gt=0)
+
     # Rate limit and CORS. Kontrak §12 mendaftarkan keduanya "dipertahankan apa adanya", tetapi struktur
     # yang disalin tidak punya keduanya -- ditemukan saat Unit 4. Orchestrator satu-satunya service yang
     # terekspos ke luar jaringan, jadi keduanya hidup di sini saja.

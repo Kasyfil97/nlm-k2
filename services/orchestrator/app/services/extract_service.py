@@ -14,6 +14,7 @@ from app.clients.ekstraksi import EkstraksiJobClient
 from app.clients.guardrails import GuardrailsClient
 from app.config import Settings
 from app.services.document_checks import check_document
+from app.services.guardrails_log import GuardrailsLog, NoGuardrailsLog
 from app.services.pipeline_waiter import PipelineWait, WaitOutcome
 
 logger = logging.getLogger(__name__)
@@ -29,9 +30,15 @@ class ExtractOcrService:
     wait for OCR -> structuring -> scoring, or for the services the request's pipeline_name_sequence names."""
 
     def __init__(
-        self, guardrails: GuardrailsClient, ekstraksi: EkstraksiJobClient, waiter: PipelineWait, settings: Settings
+        self,
+        guardrails: GuardrailsClient,
+        ekstraksi: EkstraksiJobClient,
+        waiter: PipelineWait,
+        settings: Settings,
+        log: GuardrailsLog | None = None,
     ):
         self._guardrails = guardrails
+        self._log = log or NoGuardrailsLog()
         self._ekstraksi = ekstraksi
         self._waiter = waiter
         self._settings = settings
@@ -58,9 +65,10 @@ class ExtractOcrService:
         `guardrails` the report is the answer and nothing enters the pipeline. Otherwise the stages hand
         the job on up to the last service of `sequence`, and that one's result is the answer."""
         started = time.monotonic() if received_at is None else received_at
-        check_document(content_type, content, self._settings)
+        n_pages = check_document(content_type, content, self._settings)
         if GUARDRAILS in sequence:
             report = await self._guardrails.check(request_id, filename, content_type, content)
+            await self._log.record(request_id, report, n_pages=n_pages, sequence=sequence)
             if not report["passed"]:
                 return {**report, "job": None, "pipeline": None, "result": None}
             verdict: dict[str, Any] = report
@@ -85,12 +93,31 @@ class ExtractOcrService:
         return {**verdict, "job": job, **_pipeline(document_type, report, outcome)}
 
     async def status(self, request_id: str) -> dict[str, Any]:
-        """Where the request is now, read from the stages without waiting; 404 when it never entered the
-        pipeline. The guardrails report is not stored with the stages, so it is not part of the result."""
+        """Where the request is now, read from the stages without waiting. A request no stage has a job for is
+        answered from its last guardrails verdict (`_judged_only`); 404 when there is none either. The
+        guardrails report is not stored with the stages, so it is not part of a pipeline result."""
         outcome = await self._waiter.snapshot(request_id)
         if outcome is None:
-            raise NotFound(f"No request found for request_id {request_id}")
+            judged = await self._judged_only(request_id)
+            if judged is None:
+                raise NotFound(f"No request found for request_id {request_id}")
+            return judged
         return {"passed": True, "reason": None, **_pipeline(DOCUMENT_TYPE, None, outcome)}
+
+    async def _judged_only(self, request_id: str) -> dict[str, Any] | None:
+        """A request no stage has a job for, answered from its last guardrails verdict, as its POST was: rejected
+        (the 400), or guardrails was its only service (the report as `data`). None otherwise: never judged, the
+        verdict was not kept, or it passed and its hand-off to ekstraksi failed (nothing ran)."""
+        verdict = await self._log.latest(request_id)
+        if verdict is None:
+            return None
+        report = verdict["report"]
+        if not report.get("passed"):
+            return {**report, "job": None, "pipeline": None, "result": None}
+        if verdict["sequence"] == [GUARDRAILS]:
+            done = {"stage": STAGE_OF[GUARDRAILS], "status": STATUS_DONE, "error_message": None}
+            return {**report, "job": None, "pipeline": done, "result": report}
+        return None
 
 
 def _pipeline(document_type: str, report: dict[str, Any] | None, outcome: WaitOutcome) -> dict[str, Any]:

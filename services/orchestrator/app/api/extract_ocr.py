@@ -367,14 +367,16 @@ async def extract_ocr(
     operation_id="getExtractOcr",
     summary="Where a request is now: the extract-ocr answer, without waiting",
     description=(
-        "Reads the OCR, structuring and scoring jobs of `request_id` once each, in pipeline order, and answers in "
+        "Reads the jobs of `request_id` once each, in pipeline order, up to the last service of the "
+        "`pipeline_name_sequence` stored with its ekstraksi job, and answers in "
         'the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished by now):\n\n'
         + _CONTRACT_TABLE
         + "Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is always "
         "null here (it is not stored) and `document_type` is `kk`.\n\n"
-        "**404** means no stage has a job for this request_id: it was refused or rejected by the guardrails model "
-        "(the `400` of the POST is its final answer), refused before the check, or its POST is still being "
-        "judged by guardrails.\n\n"
+        "**No stage job.** A request that never reached a stage is answered from its last guardrails verdict "
+        "(`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
+        "`data` when guardrails was its only service. **404** otherwise: refused before the check, still being "
+        "judged, passed but its hand-off to ekstraksi failed, or no verdict kept (no `DATABASE_URL`).\n\n"
         "**Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it became a "
         "dead letter in the outbox) leaves the next stage without a job, so this endpoint keeps answering `202` "
         "for it. The `FAILED` callback and the central orchestrator's own tables carry that final state; this "
@@ -394,7 +396,10 @@ async def extract_ocr(
         },
         400: {
             "model": ExtractOcrResponse,
-            "description": f"Rejected by the KK validity gate (`{REJECTED_CODE}`, `guardrails: 1`)",
+            "description": (
+                "Rejected by the KK validity gate or, read from guardrails_results, by the guardrails model "
+                f"(`{REJECTED_CODE}`, `guardrails: 1`)"
+            ),
             "content": {
                 "application/json": {
                     "example": {
@@ -409,7 +414,8 @@ async def extract_ocr(
         429: TOO_MANY_REQUESTS_RESPONSE,
         404: error(
             404,
-            "No stage has a job for this request_id (rejected by the guardrails model, or not submitted yet)",
+            "No stage has a job for this request_id and no guardrails verdict answers for it (not submitted yet, "
+            "refused before the check, or its hand-off to ekstraksi failed)",
             f"No request found for request_id {RID}",
         ),
         422: {

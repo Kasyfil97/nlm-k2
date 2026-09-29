@@ -1,0 +1,203 @@
+"""Every guardrails verdict is kept in guardrails_results, the rejected documents included, and a write that
+fails never fails the request. Ported from nilam."""
+
+import pytest
+from sqlalchemy import MetaData, select
+
+from ocr_common.pipeline.database import dispose_engines, get_engine
+from ocr_common.pipeline.tables import guardrails_results_table
+
+from app.services.guardrails_log import SqlGuardrailsLog
+from tests.conftest import ACCEPTED_REPORT, JPEG, REJECTED_REPORT
+
+RID = "OCR_guardrails_log"
+
+
+def _submit(client, auth, filename="kk.jpg", content=JPEG, content_type="image/jpeg", **form):
+    return client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, **form},
+        files={"file": (filename, content, content_type)},
+    )
+
+
+def _pdf(n_pages: int) -> bytes:
+    import fitz  # ty: ignore[unresolved-import]
+
+    document = fitz.open()
+    for _ in range(n_pages):
+        document.new_page(width=300, height=200)
+    return document.tobytes()
+
+
+# --- what the service records ------------------------------------------------------------------------
+
+
+def test_an_accepted_document_is_recorded_with_its_page_count(client, auth, guardrails_log):
+    _submit(client, auth)
+    _submit(client, auth, filename="kk.pdf", content=_pdf(2), content_type="application/pdf")
+
+    assert [(r["request_id"], r["report"]["passed"], r["n_pages"]) for r in guardrails_log.records] == [
+        (RID, True, 1),
+        (RID, True, 2),
+    ]
+
+
+def test_a_rejected_document_is_recorded_too(client, auth, guardrails_log):
+    response = _submit(client, auth, filename="blur.jpg")
+
+    assert response.status_code == 400
+    [record] = guardrails_log.records
+    assert record["report"] == REJECTED_REPORT
+
+
+def test_nothing_is_recorded_when_guardrails_is_left_out(client, auth, guardrails_log):
+    _submit(client, auth, pipeline_name_sequence='["ekstraksi", "structuring", "scoring"]')
+
+    assert guardrails_log.records == []
+
+
+def test_nothing_is_recorded_for_a_document_refused_before_the_check(client, auth, guardrails_log):
+    _submit(client, auth, filename="kk.pdf", content=_pdf(3), content_type="application/pdf")
+
+    assert guardrails_log.records == []
+
+
+def test_the_sequence_is_recorded_with_the_verdict(client, auth, guardrails_log):
+    _submit(client, auth, pipeline_name_sequence='["guardrails"]')
+    _submit(client, auth)
+
+    assert [r["sequence"] for r in guardrails_log.records] == [
+        ["guardrails"],
+        ["guardrails", "ekstraksi", "structuring", "scoring"],
+    ]
+
+
+# --- the table -------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def database(tmp_path):
+    url = f"sqlite+aiosqlite:///{tmp_path / 'guardrails.db'}"
+    metadata = MetaData()
+    table = guardrails_results_table(metadata)
+    async with get_engine(url).begin() as conn:
+        await conn.run_sync(metadata.create_all)
+    yield url, table
+    await dispose_engines()
+
+
+async def _rows(url, table):
+    async with get_engine(url).connect() as conn:
+        return (await conn.execute(select(table).order_by(table.c.id))).mappings().all()
+
+
+async def test_the_verdict_is_written_with_its_threshold_and_the_whole_report(database):
+    url, table = database
+
+    await SqlGuardrailsLog(url).record(RID, ACCEPTED_REPORT, n_pages=1)
+    await SqlGuardrailsLog(url).record(RID, REJECTED_REPORT, n_pages=2)
+
+    accepted, rejected = await _rows(url, table)
+    assert (accepted["request_id"], accepted["passed"], accepted["verdict"], accepted["confidence"]) == (
+        RID,
+        True,
+        "accepted",
+        0.9821,
+    )
+    # The KK report names its threshold `threshold_used`; there is no per-request target or source yet.
+    assert (accepted["threshold"], accepted["threshold_target"], accepted["threshold_source"]) == (0.5, None, "service")
+    assert accepted["n_pages"] == 1
+    assert accepted["report"] == ACCEPTED_REPORT  # `probability_bad` included
+    assert (rejected["passed"], rejected["n_pages"], rejected["reason"]) == (False, 2, REJECTED_REPORT["reason"])
+    assert len(accepted["ds"]) == 8
+
+
+async def test_a_write_that_fails_is_logged_and_does_not_raise(tmp_path, caplog):
+    url = f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}"  # no table: the insert fails
+
+    await SqlGuardrailsLog(url).record(RID, ACCEPTED_REPORT)
+
+    assert "guardrails verdict of OCR_guardrails_log not recorded" in caplog.text
+    await dispose_engines()
+
+
+def test_the_testing_endpoints_write_their_own_table():
+    assert SqlGuardrailsLog("sqlite+aiosqlite://", table_prefix="testing_")._table.name == "testing_guardrails_results"
+
+
+async def test_the_sequence_is_written_and_the_last_verdict_read_back(database):
+    url, table = database
+    log = SqlGuardrailsLog(url)
+
+    await log.record(RID, REJECTED_REPORT, sequence=["guardrails", "ekstraksi"])
+    await log.record(RID, ACCEPTED_REPORT, sequence=["guardrails"])
+
+    first, _ = await _rows(url, table)
+    assert first["pipeline_name_sequence"] == ["guardrails", "ekstraksi"]
+    assert await log.latest(RID) == {"report": ACCEPTED_REPORT, "sequence": ["guardrails"]}
+    assert await log.latest("OCR_never_judged") is None
+
+
+async def test_a_verdict_that_cannot_be_read_is_none_and_logged(tmp_path, caplog):
+    url = f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}"  # no table: the select fails
+
+    assert await SqlGuardrailsLog(url).latest(RID) is None
+    assert "guardrails verdict of OCR_guardrails_log not readable" in caplog.text
+    await dispose_engines()
+
+
+# --- the GET of a request no stage has a job for -------------------------------------------------------
+
+
+def _get(client, auth):
+    return client.get(f"/v1/extract-ocr/{RID}", headers=auth)
+
+
+def test_the_get_of_a_document_rejected_by_guardrails_answers_like_its_post(client, auth, stub_waiter):
+    posted = _submit(client, auth, filename="blur.jpg")
+    stub_waiter.snapshot_outcome = None  # no stage has a job
+
+    response = _get(client, auth)
+
+    assert response.status_code == 400
+    body = response.json()
+    assert (body["errors"], body["guardrails"], body["job_status"], body["pipeline_last_stage"]) == (
+        "DOWNSTREAM_VALIDATION_ERROR",
+        1,
+        "failed",
+        "guardrails",
+    )
+    assert body["message"] == posted.json()["message"]
+
+
+def test_the_get_of_a_guardrails_only_request_answers_with_the_report(client, auth, stub_waiter):
+    posted = _submit(client, auth, pipeline_name_sequence='["guardrails"]')
+    stub_waiter.snapshot_outcome = None
+
+    response = _get(client, auth)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["job_status"], body["guardrails"], body["pipeline_last_stage"]) == ("completed", 0, "guardrails")
+    assert body["data"] == posted.json()["data"] == ACCEPTED_REPORT
+
+
+def test_a_request_that_passed_but_never_reached_a_stage_is_404(client, auth, stub_waiter):
+    _submit(client, auth)  # passed guardrails; say its hand-off to ekstraksi failed
+    stub_waiter.snapshot_outcome = None
+
+    assert _get(client, auth).status_code == 404
+
+
+def test_a_request_never_judged_is_404(client, auth, stub_waiter):
+    stub_waiter.snapshot_outcome = None
+
+    assert _get(client, auth).status_code == 404
+
+
+def test_a_stage_job_wins_over_the_verdict(client, auth, stub_waiter):
+    _submit(client, auth, filename="blur.jpg")  # an earlier attempt was rejected; the stub still has a DONE job
+
+    assert _get(client, auth).status_code == 200

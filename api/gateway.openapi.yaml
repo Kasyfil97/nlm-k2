@@ -406,9 +406,9 @@ paths:
       tags:
       - 3. Status
       summary: 'Where a request is now: the extract-ocr answer, without waiting'
-      description: 'Reads the OCR, structuring and scoring jobs of `request_id` once each, in pipeline
-        order, and answers in the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished
-        by now):
+      description: 'Reads the jobs of `request_id` once each, in pipeline order, up to the last service
+        of the `pipeline_name_sequence` stored with its ekstraksi job, and answers in the same contract
+        as `POST /v1/extract-ocr` ("Finished" meaning finished by now):
 
 
         | Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |
@@ -433,9 +433,10 @@ paths:
         always null here (it is not stored) and `document_type` is `kk`.
 
 
-        **404** means no stage has a job for this request_id: it was refused or rejected by the guardrails
-        model (the `400` of the POST is its final answer), refused before the check, or its POST is still
-        being judged by guardrails.
+        **No stage job.** A request that never reached a stage is answered from its last guardrails verdict
+        (`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report
+        as `data` when guardrails was its only service. **404** otherwise: refused before the check, still
+        being judged, passed but its hand-off to ekstraksi failed, or no verdict kept (no `DATABASE_URL`).
 
 
         **Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it
@@ -569,8 +570,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '400':
-          description: 'Rejected by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails:
-            1`)'
+          description: 'Rejected by the KK validity gate or, read from guardrails_results, by the guardrails
+            model (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`)'
           content:
             application/json:
               example:
@@ -609,8 +610,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
-          description: No stage has a job for this request_id (rejected by the guardrails model, or not
-            submitted yet)
+          description: No stage has a job for this request_id and no guardrails verdict answers for it
+            (not submitted yet, refused before the check, or its hand-off to ekstraksi failed)
           content:
             application/json:
               example:

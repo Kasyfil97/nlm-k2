@@ -374,14 +374,20 @@ def test_the_get_returns_the_same_data_as_the_post_that_produced_it(client, auth
     assert fetched.json()["params"] is None, "params is not stored, so the GET cannot echo it"
 
 
-def test_a_guardrails_rejection_leaves_nothing_for_the_get_to_find(client, auth, stub_waiter):
+def test_a_guardrails_rejection_is_answered_again_by_the_get_from_guardrails_results(
+    client, auth, stub_waiter, guardrails_log
+):
     """§2.6: a document the guardrails model rejects never enters the pipeline, so no stage has a
-    job for it and the GET is a 404. The `400` of the POST is the final answer."""
+    job for it. Its verdict is kept in guardrails_results (as in nilam), so the GET answers the same
+    `400` as the POST; only without a kept verdict (no DATABASE_URL) is it a 404."""
     rejected = _submit(client, auth, filename="notkk.jpg")
     stub_waiter.snapshot_outcome = None
     fetched = client.get("/v1/extract-ocr/OCR_1", headers=auth)
+    guardrails_log.records.clear()
+    forgotten = client.get("/v1/extract-ocr/OCR_1", headers=auth)
 
-    assert (rejected.status_code, fetched.status_code) == (400, 404)
+    assert (rejected.status_code, fetched.status_code, forgotten.status_code) == (400, 400, 404)
+    assert fetched.json()["message"] == rejected.json()["message"]
 
 
 def test_the_same_request_id_twice_gives_two_consistent_answers(client, auth, stub_ekstraksi):

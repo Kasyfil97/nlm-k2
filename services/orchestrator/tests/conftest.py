@@ -13,7 +13,13 @@ from ocr_common.testing import auth_headers, make_client, set_test_env
 set_test_env(AUTH_DISABLED="false", RATE_LIMIT_REQUESTS="100000")
 
 from app.config import get_settings  # noqa: E402
-from app.dependencies import get_ekstraksi_client, get_guardrails_client, get_pipeline_waiter  # noqa: E402
+from app.dependencies import (  # noqa: E402
+    get_ekstraksi_client,
+    get_guardrails_client,
+    get_guardrails_log,
+    get_pipeline_waiter,
+    get_testing_guardrails_log,
+)
 from app.main import app  # noqa: E402
 from app.services.pipeline_waiter import WaitOutcome  # noqa: E402
 
@@ -158,6 +164,27 @@ class StubEkstraksi:
         pass
 
 
+class RecordingGuardrailsLog:
+    """Keeps the verdicts the service asks to record, instead of writing guardrails_results."""
+
+    def __init__(self) -> None:
+        self.records: list[dict] = []
+
+    async def record(self, request_id, report, *, n_pages=None, sequence=None) -> None:
+        self.records.append(
+            {
+                "request_id": request_id,
+                "report": report,
+                "n_pages": n_pages,
+                "sequence": list(sequence) if sequence else None,
+            }
+        )
+
+    async def latest(self, request_id):
+        mine = [record for record in self.records if record["request_id"] == request_id]
+        return {"report": mine[-1]["report"], "sequence": mine[-1]["sequence"]} if mine else None
+
+
 class StubWaiter:
     def __init__(self) -> None:
         self.outcome = DONE
@@ -203,6 +230,16 @@ def stub_ekstraksi():
     app.dependency_overrides[get_ekstraksi_client] = lambda: stub
     yield stub
     app.dependency_overrides.pop(get_ekstraksi_client, None)
+
+
+@pytest.fixture(autouse=True)
+def guardrails_log():
+    log = RecordingGuardrailsLog()
+    app.dependency_overrides[get_guardrails_log] = lambda: log
+    app.dependency_overrides[get_testing_guardrails_log] = lambda: log
+    yield log
+    app.dependency_overrides.pop(get_guardrails_log, None)
+    app.dependency_overrides.pop(get_testing_guardrails_log, None)
 
 
 @pytest.fixture(autouse=True)

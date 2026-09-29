@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from ocr_common.pipeline.database import dispose_engines
 from ocr_common.web.app import create_app
 
 from app.api import extract_ocr, testing
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
             for stage in get_stages():
                 await stage.aclose()
             get_stages.cache_clear()
+    await dispose_engines()  # the guardrails log's connection pool, when DATABASE_URL is set
 
 
 app = create_app(
