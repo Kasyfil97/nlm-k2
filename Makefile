@@ -130,5 +130,7 @@ logs-%:
 
 smoke:
 	$(PY) scripts/smoke_e2e.py
+e2e-samples:
+	$(PY) scripts/e2e_samples.py
 
-.PHONY: dev env test _require_git check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke
+.PHONY: dev env test _require_git check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke e2e-samples

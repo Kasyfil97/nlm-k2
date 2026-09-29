@@ -12,7 +12,7 @@ Semua pemicu lewat nama berkas, dan sampai ke tahap yang dituju lewat backend `m
 | lengkap | `kk.jpg` | 200, sembilan field §3.3, `GET` identik |
 | jumlah anggota | `kk-MOCK:members=4.jpg` | 200 dengan 4 anggota, confidence milik masing-masing |
 | menunggu habis | `kk-delay20s.jpg` | 202, lalu `GET` 200 dengan sembilan field yang sama |
-| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 404 |
+| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 400 yang sama (dari `guardrails_results`) |
 | §7.4 aturan 1 | `kk-blank.jpg` | 400, `texts` kosong |
 | §7.4 aturan 2 | `kk-MOCK:blank_kk=1.jpg` | 400, `nomor_kk` kosong di hasil |
 | §7.4 aturan 3 | `kk-MOCK:members=0.jpg` | 400, `nomor_kk` terisi tetapi nol anggota |
@@ -317,12 +317,14 @@ def guardrails_reject(client: httpx.Client) -> bool:
     body = response.json()
     print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
     print(f"  message={body.get('message')!r}")
+    # Tidak ada tahap yang jalan, tapi putusannya tersimpan di guardrails_results: GET menjawab 400 yang sama.
     status = _status(client, request_id)
-    print(f"  GET status -> {status.status_code} (tidak ada tahap yang jalan)")
+    print(f"  GET status -> {status.status_code} errors={status.json().get('errors')}")
     return (
         response.status_code == 400
         and body.get("errors") == "DOWNSTREAM_VALIDATION_ERROR"
-        and status.status_code == 404
+        and status.status_code == 400
+        and status.json().get("pipeline_last_stage") == "guardrails"
     )
 
 
@@ -614,6 +616,8 @@ def cleanup() -> None:
             "structuring_jobs",
             "scoring_jobs",
             "pipeline_outbox",
+            # Ditulis orchestrator untuk setiap putusan guardrails, termasuk yang menolak.
+            "guardrails_results",
         ):
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))
