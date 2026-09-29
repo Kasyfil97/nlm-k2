@@ -46,6 +46,12 @@ structuring masih stub.
 - `EKSTRAKSI_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.
 - Ada endpoint OCR sinkron `POST /v1/ekstraksi/extract` yang menjawab `OcrPayload` §7.1.
 
+**Draf 13 (update nilam 29 September):**
+
+- Tiap field `data` kini `{"value", "confidence": 0 | 1}` seperti nilam; `bin` dan `auto` dihapus.
+- Threshold per request: `column_confidence_threshold` (per field kontrak), `guardrails_confidence_threshold` + `guardrails_tendency`.
+- `errors` selalu kode stabil (mis. `EMPTY_FILE`, `DOWNSTREAM_UNAVAILABLE`), dan setiap error membawa `pipeline_last_stage`.
+
 - Requirements: [`docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md`](docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md)
 - Rencana implementasi: [`docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md`](docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md)
 

@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 12, 29 September 2026.
+Status: draf 13, 29 September 2026.
 
 ---
 
@@ -160,17 +160,30 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 |---|---|---|---|
 | 400 | `UNSUPPORTED_DOCUMENT_TYPE` | `document_type` bukan `kk` | tidak |
 | 400 | `DOWNSTREAM_VALIDATION_ERROR` | dokumen ditolak model guardrails atau aturan structuring | tidak |
-| 400 | = `message` | file kosong / bukan JPEG, PNG, atau PDF / PDF lebih dari `MAX_DOCUMENT_PAGES` halaman, `file`+`file_url` dua-duanya atau tidak ada, host `file_url` tidak diizinkan | tidak |
-| 401 | = `message` | `X-API-Key` salah atau tidak ada | tidak |
-| 404 | = `message` | `request_id` tidak dikenal (hanya di `GET`) | tidak |
-| 413 | = `message` | berkas melebihi `MAX_UPLOAD_BYTES` | tidak |
+| 400 | `EMPTY_FILE` | file kosong | tidak |
+| 400 | `UNSUPPORTED_FILE_TYPE` | bukan JPEG, PNG, atau PDF | tidak |
+| 400 | `UNREADABLE_FILE` | PDF tidak terbaca / tanpa halaman | tidak |
+| 400 | `TOO_MANY_PAGES` | PDF lebih dari `MAX_DOCUMENT_PAGES` halaman | tidak |
+| 400 | `INVALID_FILE_SOURCE` | `file` + `file_url` dua-duanya atau tidak ada | tidak |
+| 400 | `FILE_URL_REJECTED` | `file_url` ditolak kebijakan unduh (host, skema, alamat) | tidak |
+| 401 | `UNAUTHORIZED` | `X-API-Key` salah atau tidak ada | tidak |
+| 404 | `REQUEST_ID_NOT_FOUND` | `request_id` tidak dikenal (hanya di `GET`) | tidak |
+| 404 / 405 | `NOT_FOUND` / `METHOD_NOT_ALLOWED` | path tidak ada / method salah | tidak |
+| 413 | `FILE_TOO_LARGE` | berkas melebihi `MAX_UPLOAD_BYTES` | tidak |
 | 422 | `INVALID_PARAMS` | `params` bukan JSON object / string | tidak |
 | 422 | `INVALID_PIPELINE_SEQUENCE` | `pipeline_name_sequence` bukan urutan yang sah (3.1) | tidak |
+| 422 | `INVALID_THRESHOLD` | `guardrails_confidence_threshold` / `guardrails_tendency` / `column_confidence_threshold` tidak terbaca (3.1) | tidak |
 | 422 | `VALIDATION_ERROR` | field wajib tidak dikirim atau salah tipe | tidak |
 | 422 | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | satu tahap gagal | ya, kirim ulang |
-| 500 | = `message` | service ini atau modelnya gagal | ya |
-| 503 | = `message` | dependensi tidak terjangkau | ya |
-| 504 | = `message` | dependensi tidak menjawab dalam timeout | ya |
+| 429 | `TOO_MANY_REQUESTS` | rate limit orchestrator | ya, setelah `Retry-After` |
+| 500 | `INTERNAL_SERVER_ERROR` / `DOWNSTREAM_SERVER_ERROR` | service ini / service di belakangnya gagal | ya |
+| 503 | `DOWNSTREAM_UNAVAILABLE` | dependensi tidak terjangkau | ya |
+| 504 | `DOWNSTREAM_TIMEOUT` | dependensi tidak menjawab dalam timeout | ya |
+
+Sejak draf 13 (seperti nilam) `errors` **selalu** kode stabil, tidak pernah salinan `message`; cabangkan
+logika padanya. Setiap jawaban error juga membawa **`pipeline_last_stage`**: service asal error itu —
+`orchestrator` untuk penolakan pintu masuk sendiri, atau `guardrails` / `ekstraksi` / `structuring` /
+`scoring` bila service itu yang gagal atau tidak terjangkau.
 
 `status_desc` mengikuti reason phrase HTTP: `OK`, `Accepted`, `Bad Request`, `Unauthorized`, `Forbidden`,
 `Not Found`, `Payload Too Large`, `Unprocessable Entity`, `Internal Server Error`, `Service Unavailable`,
@@ -266,6 +279,9 @@ request tetap dijawab.
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `ekstraksi`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya. Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
+| `guardrails_confidence_threshold` | string (angka) | tidak | ambang guardrails untuk dokumen ini, `0 < x < 1`, **berpasangan** dengan `guardrails_tendency`. Tidak dikirim = ambang milik service guardrails |
+| `guardrails_tendency` | string | tidak | `accepted` \| `rejected`: sisi yang dikenai ambang. `accepted`: lolos bila `1 − probability_bad ≥ x`; `rejected`: ditolak bila `probability_bad ≥ x`. Salah satu tanpa yang lain → 422 `INVALID_THRESHOLD` |
+| `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
 
 `file` dan `file_url` **tepat satu**, tidak boleh dua-duanya dan tidak boleh kosong keduanya.
 
@@ -332,31 +348,32 @@ pipeline mana pun dipanggil.
   "status_desc": "OK",
   "message": "OCR extraction completed successfully",
   "data": {
-    "no_kk":                {"value": "3273012345678901", "confidence": 0.9913, "bin": 10, "auto": true},
-    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0.9041, "bin": 9, "auto": true},
+    "no_kk":                {"value": "3273012345678901", "confidence": 1},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
     "anggota_keluarga": [
       {
-        "nama_lengkap":                       {"value": "BUDI SANTOSO", "confidence": 0.9886, "bin": 10, "auto": true},
-        "nik":                                {"value": "3273011203850001", "confidence": 0.9902, "bin": 10, "auto": true},
-        "pendidikan":                         {"value": "S1", "confidence": 0.9951, "bin": 10, "auto": true},
-        "jenis_pekerjaan":                    {"value": "KARYAWAN SWASTA", "confidence": 0.9833, "bin": 10, "auto": true},
-        "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 0.9914, "bin": 10, "auto": true},
-        "ayah":                               {"value": "SUTRISNO", "confidence": 0.9602, "bin": 9, "auto": true},
-        "ibu":                                {"value": "SITI AMINAH", "confidence": 0.9418, "bin": 8, "auto": false}
+        "nama_lengkap":                       {"value": "BUDI SANTOSO", "confidence": 1},
+        "nik":                                {"value": "3273011203850001", "confidence": 1},
+        "pendidikan":                         {"value": "S1", "confidence": 1},
+        "jenis_pekerjaan":                    {"value": "KARYAWAN SWASTA", "confidence": 1},
+        "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
+        "ayah":                               {"value": "SUTRISNO", "confidence": 1},
+        "ibu":                                {"value": "SITI AMINAH", "confidence": 0}
       },
       {
-        "nama_lengkap":                       {"value": "SITI NURHALIZA", "confidence": 0.9077, "bin": 6, "auto": false},
-        "nik":                                {"value": "3273015506880002", "confidence": 0.9701, "bin": 9, "auto": true},
-        "pendidikan":                         {"value": "SLTA/SEDERAJAT", "confidence": 0.9724, "bin": 9, "auto": false},
-        "jenis_pekerjaan":                    {"value": "MENGURUS RUMAH TANGGA", "confidence": 0.6318, "bin": 2, "auto": false},
-        "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0.9130, "bin": 6, "auto": false},
-        "ayah":                               {"value": "AHMAD DAHLAN", "confidence": 0.9355, "bin": 8, "auto": true},
-        "ibu":                                {"value": "RATNA SARI", "confidence": 0.8802, "bin": 5, "auto": false}
+        "nama_lengkap":                       {"value": "SITI NURHALIZA", "confidence": 0},
+        "nik":                                {"value": "3273015506880002", "confidence": 1},
+        "pendidikan":                         {"value": "SLTA/SEDERAJAT", "confidence": 0},
+        "jenis_pekerjaan":                    {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
+        "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0},
+        "ayah":                               {"value": "AHMAD DAHLAN", "confidence": 1},
+        "ibu":                                {"value": "RATNA SARI", "confidence": 0}
       }
     ]
   },
   "errors": null,
   "request_id": "REQ_001",
+  "pipeline_last_stage": "scoring",
   "document_type": "kk",
   "job_status": "completed",
   "guardrails": 0,
@@ -368,30 +385,20 @@ Aturan isi `data`:
 
 - **Hanya sembilan field yang keluar**: 2 field dokumen (`no_kk`, `nama_kepala_keluarga`) dan 7 field per
   anggota. Tidak ada field lain, walau tahap structuring mengekstraksi lebih banyak.
-- Bentuk tiap field selalu `{"value": <string>, "confidence": <float>, "bin": <1..10>, "auto": <bool>}` —
-  **tidak pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan:
-  `{"value": "", "confidence": 0.0, "bin": 1, "auto": false}`.
-- **`confidence` adalah probabilitas terkalibrasi bahwa nilai itu PERSIS benar** (kapital & spasi
-  dirapikan), langsung dari tahap scoring. Satu angka untuk dua hal sekaligus: penempatan kolom benar
-  DAN teks OCR benar, karena keduanya harus benar agar string akhirnya sama.
-  Sebelumnya kunci ini bendera `0 | 1`; itu membuang satu-satunya hal yang dibutuhkan untuk triase —
-  field di 0.52 dan field di 0.99 bukan klaim yang sama. Tidak pernah `null`: pembaca tidak boleh harus
-  menguji null sebelum membandingkan.
-- **`bin`** menempatkan `confidence` di salah satu dari sepuluh bin model, 1 terendah. Tepinya **sengaja
-  tidak selebar sama**: bin teratas dipotong tepat di titik presisi 100% terukur pada data held-out, dan
-  tidak ada kisi 0.1 yang jatuh pas di situ. `bin: 10` adalah klaim terkuat yang pipeline ini buat.
-- **`auto`** bernilai `true` kalau `confidence` melewati ambang yang dikalibrasi **khusus untuk field itu**
-  — titik di atas mana setiap field sejenis benar pada data held-out. Ambangnya berbeda per field karena
-  memang harus: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan satu angka
-  global menjatuhkan cakupan yang bisa dipakai ke nol. Ambangnya ikut di dalam hasil scoring
-  ([8.3](#83-hasil-tahap-scoring)), bukan di konfigurasi, supaya `auto` di sini identik dengan `auto` di
-  baris outcome **secara konstruksi** — tidak ada env var yang harus dijaga sinkron. Field yang tidak
-  diberi ambang oleh model **tidak pernah `auto`**; `FIELD_CONFIDENCE_THRESHOLD` hanya berlaku bila hasil
-  scoring tidak membawa ambang sama sekali (backend `mock`).
-- Baca `auto` untuk memutuskan apakah manusia harus melihat; baca `confidence` untuk memutuskan apa yang
-  dilihat lebih dulu.
-- **100% bukan jaminan.** Angka presisi bin teratas diukur pada data held-out (200/200 sel saat draf ini),
-  dan batas bawah Clopper-Pearson 95%-nya **98.51%** — itu angka yang boleh dijanjikan ke pemanggil.
+- Bentuk tiap field selalu `{"value": <string>, "confidence": 0 | 1}` (draf 13, seperti nilam) — **tidak
+  pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan: `{"value": "", "confidence": 0}`.
+- **`confidence` bernilai `1`** bila probabilitas trust model bahwa nilai itu PERSIS benar (kapital & spasi
+  dirapikan) mencapai ambang field itu, selain itu `0`. Ambangnya, yang pertama berlaku:
+  1. `column_confidence_threshold[field]` dari request (3.1);
+  2. ambang milik model untuk field itu — titik di atas mana setiap sampel held-out field sejenis benar.
+     Ambangnya berbeda per field karena memang harus (terukur, `ayah` aman di 0.935, `pendidikan` butuh
+     0.993). Field yang tidak diberi ambang oleh model (`no_kk`) bernilai **0** kecuali request memberinya ambang;
+  3. `FIELD_CONFIDENCE_THRESHOLD`, hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`).
+- Keputusan 0/1 itu **disimpan** tahap scoring bersama hasilnya (`decisions`, 8.3), dan respons `POST`,
+  `GET`, dan baris outcome semuanya diproyeksikan dari sana — identik secara konstruksi.
+- Probabilitas mentahnya tetap tersedia: di hasil tahap scoring dan di callback hasil.
+- **100% bukan jaminan.** Presisi ambang model diukur pada data held-out; batas bawah Clopper-Pearson 95%-nya
+  adalah angka yang boleh dijanjikan ke pemanggil.
 - **Kedua kunci dokumen dan ketujuh kunci tiap anggota selalu ada**, walau nilainya `""`.
 - `anggota_keluarga` adalah array dengan urutan sesuai baris pada kartu.
 
@@ -986,12 +993,13 @@ tidak ada keputusan terima/tolak: ambang milik pemanggil.
 
 **`thresholds`** = confidence di atas mana setiap sampel held-out field itu benar, satu per field kontrak,
 memakai nama internal. Ia ikut di dalam hasil **bukan di konfigurasi**, karena ia properti model yang
-dilatih, bukan properti deployment — dan karena itulah yang membuat `auto` di respons `extract-ocr`
-identik dengan `auto` di baris outcome secara konstruksi, bukan dengan menjaga dua env var tetap sinkron.
+dilatih, bukan properti deployment. Keputusan 0/1 per field kontrak disimpan bersamanya sebagai
+`decisions` (`{value, confidence, threshold}`), sehingga `confidence` di respons `extract-ocr` identik dengan
+baris outcome secara konstruksi, bukan dengan menjaga dua env var tetap sinkron.
 Ambang harus berbeda per field: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan
 satu angka global menjatuhkan cakupan pada presisi 100% ke nol. Field yang **tidak ada** di sini tidak
-punya titik seperti itu di data uji — `nomor_kk` salah satunya — dan karena itu **tidak pernah `auto`**,
-setinggi apa pun `confidence`-nya. Ketiadaannya adalah informasi, bukan cacat. Dulu field seperti ini jatuh ke
+punya titik seperti itu di data uji — `nomor_kk` salah satunya — dan karena itu `confidence`-nya **0**
+kecuali `column_confidence_threshold` request memberinya ambang. Ketiadaannya adalah informasi, bukan cacat. Dulu field seperti ini jatuh ke
 `FIELD_CONFIDENCE_THRESHOLD` (0.5), dan terukur di dokumen uji `nomor_kk` pada >= 0.5 hanya 83% benar.
 
 **`bin_edges`** = tepi bin dari rendah ke tinggi, terpisah untuk kedua keluarga model. Sengaja tidak
@@ -1158,9 +1166,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | Field | Tipe | Keterangan |
 |---|---|---|
 | `value` | string | `""` kalau tidak ditemukan, tidak pernah `null` |
-| `confidence` | float 0–1 | P(nilai ini persis benar) dari trust model; `0.0` kalau tidak ada nilai atau tidak ada skor. **Tidak pernah `null`** |
-| `bin` | int 1–10 | bin model atas `confidence`; tepinya tidak selebar sama, bin teratas dipotong di titik presisi 100% terukur |
-| `auto` | bool | `confidence` melewati ambang yang dikalibrasi untuk field itu ([8.3](#83-hasil-tahap-scoring)); field yang tidak diberi ambang oleh model selalu `false`; `FIELD_CONFIDENCE_THRESHOLD` hanya untuk hasil tanpa ambang sama sekali (`mock`) |
+| `confidence` | `0` \| `1` | 1 bila P(nilai ini persis benar) dari trust model mencapai ambang field itu (3.3); 0 bila tidak, atau tidak ada nilai/skor. **Tidak pernah `null`** |
 
 ### `GuardrailsResult`
 
@@ -1172,6 +1178,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | `document.confidence` | float 0–1 \| null | keyakinan pada vonis; null kalau `unassessable` |
 | `document.probability_bad` | float 0–1 \| null | keluaran mentah model; fitur trust model; null kalau `unassessable` |
 | `document.threshold_used` | float | ambang yang berlaku saat penilaian |
+| `document.threshold_target` | `accept` \| `reject` | sisi yang dikenai ambang: `reject` (bawaan) atau `accept` (dari `guardrails_tendency` request) |
 
 ### `OcrPayload`
 
@@ -1327,7 +1334,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/ekstraksi/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
-| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `auto` di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`). Field yang tidak diberi ambang oleh model yang membawa ambang tidak pernah `auto`. Harus sama dengan nilai di scoring ([8.5](#85-menutup-request)) |
+| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `confidence` 0/1 di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`) dan request tidak mengirim `column_confidence_threshold` |
 | `DATABASE_URL` | tidak | kosong | hanya untuk `guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
 | `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `guardrails_results`; lewat = dicatat di log, request tetap dijawab |
 | `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
@@ -1399,6 +1406,19 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 13 — 29 September 2026
+
+Menyelaraskan request dan bentuk respons dengan update nilam 29 September (708d53f, bb63efe, 2a40723,
+624d34c, e4a30e2).
+
+1. **`data` jadi `{value, confidence: 0 | 1}`** (§3.3, §10), seperti nilam: `bin` dan `auto` dihapus.
+   **Memecah** konsumen draf 11–12. `confidence` sekarang memegang peran yang dulu dipegang `auto`.
+2. **Threshold per request** (§3.1): `column_confidence_threshold` (per field kontrak) dan
+   `guardrails_confidence_threshold` + `guardrails_tendency`. Tidak sah → 422 `INVALID_THRESHOLD`.
+   Guardrails menerima `threshold` + `threshold_target` (§10), berpasangan.
+3. **Kode `errors` yang stabil dan `pipeline_last_stage` di setiap error** (§2.4). `errors` tidak lagi
+   menyalin `message`.
 
 ### draf 12 — 29 September 2026
 
