@@ -96,5 +96,11 @@ def test_no_tracked_file_carries_crlf():
     listed = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split("\0")
-    offenders = [name for name in listed if name and (ROOT / name).is_file() and b"\r\n" in (ROOT / name).read_bytes()]
+    # Berkas biner (artefak model) dilewati: di sana 0x0D 0x0A hanyalah dua byte data. Heuristiknya
+    # sama dengan git -- berkas yang berisi NUL bukan teks.
+    offenders = [
+        name
+        for name in listed
+        if name and (ROOT / name).is_file() and b"\r\n" in (data := (ROOT / name).read_bytes()) and b"\0" not in data
+    ]
     assert not offenders, f"CRLF di pohon kerja: {offenders[:10]}"

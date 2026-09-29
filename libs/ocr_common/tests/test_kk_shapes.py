@@ -216,8 +216,27 @@ def test_per_field_thresholds_from_the_result_beat_the_global_one(structuring, s
     assert pertama["pendidikan"]["confidence"] == 0.8410
     assert pertama["pendidikan"]["auto"] is False, "0.8410 di bawah ambang khusus 0.99"
     assert pertama["ayah"]["auto"] is True, "0.8064 di atas ambang khusus 0.80"
-    # field tanpa ambang sendiri tetap memakai yang global
-    assert data["anggota_keluarga"][1]["jenis_pekerjaan"]["auto"] is False
+
+
+def test_a_field_the_model_gave_no_threshold_is_never_auto(structuring, scoring):
+    """Model yang membawa ambang sendiri memutuskan SETIAP field; yang tidak ia beri ambang tidak lolos.
+
+    Ketiadaan ambang berarti di data uji tidak ada titik yang di atasnya semua sel benar. Jatuh ke
+    ambang global 0.5 di situ meloloskan nilai yang modelnya sendiri tidak bisa jamin -- terukur,
+    `nomor_kk` pada >= 0.5 hanya 83% benar.
+    """
+    scored = {**scoring, "thresholds": {"ayah": 0.80}}
+    data = contract_fields(structuring, scored, 0.5)
+    pertama = data["anggota_keluarga"][0]["jenis_pekerjaan"]
+    assert (pertama["confidence"], pertama["auto"]) == (0.7733, False), "0.7733 lolos 0.5, tapi tidak punya ambang"
+    assert data["anggota_keluarga"][0]["ayah"]["auto"] is True
+
+
+def test_the_global_threshold_is_only_for_a_result_with_no_thresholds(structuring, scoring):
+    """Backend `mock` tidak membawa ambang; hanya di situ FIELD_CONFIDENCE_THRESHOLD berlaku."""
+    for tanpa in ({**scoring, "thresholds": None}, {**scoring, "thresholds": {}}):
+        data = contract_fields(structuring, tanpa, 0.5)
+        assert data["anggota_keluarga"][0]["jenis_pekerjaan"]["auto"] is True, "0.7733 >= 0.5"
 
 
 def test_bin_edges_from_the_result_place_the_confidence(structuring, scoring):

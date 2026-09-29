@@ -126,7 +126,7 @@ class CalibratedTrustModel:
     def thresholds(self) -> dict[str, float]:
         """Per-field confidence above which every held-out sample was correct, both families in one
         flat map. A field missing here has no such point in the training data -- `nomor_kk` is one,
-        with only 5 clean cells out of 97 -- and falls back to `FIELD_CONFIDENCE_THRESHOLD`."""
+        with only 5 clean cells out of 97 -- and is therefore never `auto` (`ocr_common.kk.contract_fields`)."""
         out = dict(self._member.get("ambang") or {})
         out.update((self._doc or {}).get("ambang") or {})
         return {k: float(v) for k, v in out.items()}

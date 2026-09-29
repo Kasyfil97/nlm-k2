@@ -108,14 +108,29 @@ def test_the_model_reports_its_own_thresholds_and_bin_edges(model):
     assert edges[-1] == 1.0, "bin teratas harus mencakup 1.0"
 
 
-def test_a_threshold_is_absent_when_the_training_data_had_no_pure_point(model):
-    """`nomor_kk` tidak punya ambang presisi-100%: hanya 5 sel bersih dari 97 di data latih.
+def test_a_field_without_a_threshold_is_never_auto(model):
+    """`nomor_kk` (dan di v2 `nama_lengkap`) tidak punya ambang: di data uji tidak ada titik yang di
+    atasnya semua sel benar.
 
-    Ketiadaannya adalah informasi, bukan cacat -- `contract_fields` menjatuhkannya ke
-    FIELD_CONFIDENCE_THRESHOLD, dan tidak ada angka yang dikarang untuk menutupinya.
+    Ketiadaannya adalah informasi, bukan cacat -- dan justru karena itu field ini tidak boleh jatuh
+    ke FIELD_CONFIDENCE_THRESHOLD. Terukur, `nomor_kk` pada >= 0.5 hanya 83% benar. Setinggi apa
+    pun skornya, `contract_fields` tidak meloloskannya.
     """
-    assert "nomor_kk" not in model.thresholds
-    assert set(SCORED_MEMBER_FIELDS) <= set(model.thresholds)
+    from ocr_common.kk import contract_fields
+
+    from tests.test_kk_scoring import member as base_member
+    from tests.test_kk_scoring import structuring as base_structuring
+
+    tanpa = [name for name in (*SCORED_DOC_FIELDS, *SCORED_MEMBER_FIELDS) if name not in model.thresholds]
+    assert "nomor_kk" in tanpa
+    document = base_structuring(base_member("BUDI SANTOSO", "9908680101601956"))
+    yakin = {
+        "fields": dict.fromkeys(SCORED_DOC_FIELDS, 0.99),
+        "anggota_keluarga": [dict.fromkeys(SCORED_MEMBER_FIELDS, 0.99)],
+        "thresholds": model.thresholds,
+    }
+    data = contract_fields(document, yakin, 0.5)
+    assert data["no_kk"]["auto"] is False, "0.99 tanpa ambang milik model tetap bukan AUTO"
 
 
 # --- the four ways this can be wrong while still looking right ------------------------------
@@ -139,16 +154,27 @@ def test_an_empty_value_is_unscored(model):
     assert result["anggota_keluarga"][0]["ibu"] is None
 
 
-def test_each_field_is_scored_by_its_own_calibrator(model):
+def test_each_field_is_scored_by_its_own_calibrator(model, monkeypatch):
     """Vektor yang sama persis di bawah nama field yang berbeda harus memberi angka yang berbeda.
 
     Kolom one-hot field dibangun ulang dari nama field, bukan dari data yang kebetulan ada. Kalau
     kolom itu hilang, seluruh field berbagi satu kalibrator -- dan base rate-nya jauh berbeda
     (nama_lengkap 79% benar, status_hubungan 96%), jadi angkanya salah untuk hampir semuanya.
+
+    Diuji sebelum isotonic: kalibratornya berupa anak tangga, jadi dua masukan berbeda boleh jatuh
+    di anak tangga yang sama. Yang harus berbeda adalah keluaran model di bawahnya.
     """
+    monkeypatch.setitem(model._member, "isotonic", _Identitas())
     sama = {name: field("NILAI SAMA", 7) for name in SCORED_MEMBER_FIELDS}
     skor = model.predict(payload(sama))["anggota_keluarga"][0]
     assert len(set(skor.values())) > 1, "satu vektor, tujuh field: angkanya tidak boleh seragam"
+
+
+class _Identitas:
+    """Kalibrator yang tidak mengubah apa pun, untuk melihat keluaran model mentah."""
+
+    def predict(self, x):
+        return x
 
 
 def test_changing_one_member_does_not_move_another(model):

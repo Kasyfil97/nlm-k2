@@ -299,7 +299,9 @@ class ScoringPayload(_Forwarded):
             "scored field, keyed by INTERNAL name. They travel in the result rather than in configuration "
             "because they are a property of the trained model, not of the deployment, and because this is what "
             "makes the orchestrator's `auto` and the outcome row's `auto` identical by construction instead of "
-            "by keeping two env vars in step. A field absent here falls back to `FIELD_CONFIDENCE_THRESHOLD`"
+            "by keeping two env vars in step. A field absent here had no such point and is never `auto`; "
+            "`FIELD_CONFIDENCE_THRESHOLD` applies only to a result that carries no thresholds at all "
+            "(the `mock` backend)"
         ),
         examples=[{"nik": 0.9637, "ayah": 0.9353, "pendidikan": 0.9929}],
     )

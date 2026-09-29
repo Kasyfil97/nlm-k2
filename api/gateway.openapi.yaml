@@ -24,35 +24,36 @@ info:
     with `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,\n\
     `ayah`, `ibu`. Structuring reads eleven document fields and fifteen per member; the rest stay behind\n\
     `GET /v1/structuring/jobs/{request_id}` rather than travelling to you. `value` is `\"\"` when a field\n\
-    was not found, never null, and the object is never replaced by null.\n\n`confidence` is 0 or 1: the\
-    \ ML team's trust model gives each field a probability of being correct,\nand 1 means it reached `FIELD_CONFIDENCE_THRESHOLD`.\
-    \ There is **no document-level score and no\napprove / reject decision**; thresholds are yours. A\
-    \ member array is positional — member *n* in\n`data` is member *n* on the card.\n\n## Addresses\n\n\
-    The orchestrator is the only service you call. From another namespace in GKE:\n`http://nlm-k2.nlm-k2.svc.cluster.local:8040`\
-    \ (the release's entry Service). The\nguardrails and pipeline stage services are internal. Nothing\
-    \ is exposed outside the cluster.\n\n\n## Conventions (the same for every nlm-k2 service)\n\n**Authentication.**\
-    \ Every endpoint except `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.\nA missing\
-    \ or wrong key answers `401`. The services are reachable only from inside the cluster.\n\n**Envelope.**\
-    \ Every JSON response, success or error, has the same shape:\n`{status_code, status_desc, message,\
-    \ data, errors, request_id}`. `status_code` always equals the HTTP\nstatus. On success `errors` is\
-    \ null; on error `data` is null.\n\n**Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for\
-    \ `422`, otherwise the same text as\n`message`. `400` = the request or the document is unusable (do\
-    \ not retry unchanged). `401` = API key.\n`404` = unknown request_id. `409` = request_id already processed\
-    \ (legacy contract only). `422` = a\nfield is missing or has the wrong type. `500` = this service\
-    \ or its model failed. `503` = a\ndependency is unreachable, `504` = it did not answer in time (both\
-    \ are safe to retry).\n\n**request_id.** Minted by the central orchestrator and carried through every\
-    \ stage. Where an endpoint has\nno request_id of its own, the `X-Request-ID` request header is used\
-    \ (and echoed in the response header);\nwithout it the service generates one.\n\n**Asynchronous stages**\
-    \ (internal: only the orchestrator and the previous stage call them). `POST\n.../jobs` answers `202`\
-    \ immediately and does the work in the background. The outcome is reported by a\ncallback to the central\
-    \ orchestrator (see *Webhooks*), and can be read at any time with\n`GET .../jobs/{request_id}`, which\
-    \ the orchestrator's `GET /v1/extract-ocr/{request_id}` combines\nover the three stages. Submitting\
-    \ the same request_id again is idempotent:\n`202` with `duplicate: true`, the work is not repeated,\
-    \ unless the earlier attempt `FAILED` or has been\n`PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`,\
-    \ 5 minutes by default: the\nprocess running it died). A job still running when the service shuts\
-    \ down is reported `FAILED`. Because\nthe request was already answered `202`, a problem with the document\
-    \ itself (unreadable file, no text,\nunsupported document type) shows up as a `FAILED` job and callback,\
-    \ not as a `4xx`.\n"
+    was not found, never null, and the object is never replaced by null.\n\n`confidence` is the ML team's\
+    \ trust model's calibrated probability that the value is exactly correct,\nand `auto` says whether\
+    \ it cleared the threshold the model calibrated for that field. A field the\nmodel has no threshold\
+    \ for (`no_kk` today) is never `auto`. There is **no document-level score and no\napprove / reject\
+    \ decision**; thresholds are yours. A member array is positional — member *n* in\n`data` is member\
+    \ *n* on the card.\n\n## Addresses\n\nThe orchestrator is the only service you call. From another\
+    \ namespace in GKE:\n`http://nlm-k2.nlm-k2.svc.cluster.local:8040` (the release's entry Service).\
+    \ The\nguardrails and pipeline stage services are internal. Nothing is exposed outside the cluster.\n\
+    \n\n## Conventions (the same for every nlm-k2 service)\n\n**Authentication.** Every endpoint except\
+    \ `/health`, `/ready` and `/metrics` requires the header `X-API-Key`.\nA missing or wrong key answers\
+    \ `401`. The services are reachable only from inside the cluster.\n\n**Envelope.** Every JSON response,\
+    \ success or error, has the same shape:\n`{status_code, status_desc, message, data, errors, request_id}`.\
+    \ `status_code` always equals the HTTP\nstatus. On success `errors` is null; on error `data` is null.\n\
+    \n**Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text\
+    \ as\n`message`. `400` = the request or the document is unusable (do not retry unchanged). `401` =\
+    \ API key.\n`404` = unknown request_id. `409` = request_id already processed (legacy contract only).\
+    \ `422` = a\nfield is missing or has the wrong type. `500` = this service or its model failed. `503`\
+    \ = a\ndependency is unreachable, `504` = it did not answer in time (both are safe to retry).\n\n\
+    **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint\
+    \ has\nno request_id of its own, the `X-Request-ID` request header is used (and echoed in the response\
+    \ header);\nwithout it the service generates one.\n\n**Asynchronous stages** (internal: only the orchestrator\
+    \ and the previous stage call them). `POST\n.../jobs` answers `202` immediately and does the work\
+    \ in the background. The outcome is reported by a\ncallback to the central orchestrator (see *Webhooks*),\
+    \ and can be read at any time with\n`GET .../jobs/{request_id}`, which the orchestrator's `GET /v1/extract-ocr/{request_id}`\
+    \ combines\nover the three stages. Submitting the same request_id again is idempotent:\n`202` with\
+    \ `duplicate: true`, the work is not repeated, unless the earlier attempt `FAILED` or has been\n`PROCESSING`\
+    \ for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default: the\nprocess\
+    \ running it died). A job still running when the service shuts down is reported `FAILED`. Because\n\
+    the request was already answered `202`, a problem with the document itself (unreadable file, no text,\n\
+    unsupported document type) shows up as a `FAILED` job and callback, not as a `4xx`.\n"
 tags:
 - name: 1. Start the pipeline
   description: 'The call you make: guardrails check, then OCR -> structuring -> scoring, waited on for
@@ -1242,8 +1243,9 @@ components:
             -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
             configuration because they are a property of the trained model, not of the deployment, and
             because this is what makes the orchestrator's `auto` and the outcome row's `auto` identical
-            by construction instead of by keeping two env vars in step. A field absent here falls back
-            to `FIELD_CONFIDENCE_THRESHOLD`
+            by construction instead of by keeping two env vars in step. A field absent here had no such
+            point and is never `auto`; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result that carries
+            no thresholds at all (the `mock` backend)
           examples:
           - ayah: 0.9353
             nik: 0.9637

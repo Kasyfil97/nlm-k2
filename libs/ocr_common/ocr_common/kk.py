@@ -220,7 +220,13 @@ def contract_fields(
     otherwise the outcome row and the `extract-ocr` response could differ for one request. Agreement
     here is by construction, not by discipline: every number comes from the stored scoring result,
     including the per-field thresholds and the bin edges. `threshold` is only the fallback for a
-    result that carries none, and a shared env constant is no longer what has to match.
+    result that carries no thresholds AT ALL (the `mock` backend), and a shared env constant is no
+    longer what has to match.
+
+    A result that does carry thresholds and leaves a field out is saying something: that field had no
+    point on held-out data above which every sample was correct (`nomor_kk` today). Such a field is
+    never `auto`. Falling back to the global 0.5 there would wave through values the model itself
+    could not vouch for -- measured on held-out documents, `nomor_kk` at >= 0.5 is 83% correct.
 
     Why the thresholds travel in the result rather than in configuration: they are a property of the
     trained model, not of the deployment. They differ per field by design -- measured on held-out
@@ -241,17 +247,19 @@ def contract_fields(
         )
 
     thresholds = scoring.get("thresholds") or {}
+    # A model that ships its own thresholds decides every field; the env fallback is for one that ships none.
+    fallback = None if thresholds else threshold
     edges = scoring.get("bin_edges") or {}
     doc_edges = tuple(edges.get("fields") or DEFAULT_BIN_EDGES)
     member_edges = tuple(edges.get("anggota_keluarga") or DEFAULT_BIN_EDGES)
 
     doc_scores = scoring.get("fields") or {}
     data: dict[str, Any] = {
-        out: _field(structuring.get(internal), doc_scores.get(internal), thresholds, internal, threshold, doc_edges)
+        out: _field(structuring.get(internal), doc_scores.get(internal), thresholds, internal, fallback, doc_edges)
         for out, internal in DOC_PROJECTION
     }
     data["anggota_keluarga"] = [
-        _member(member, scores, thresholds, threshold, member_edges)
+        _member(member, scores, thresholds, fallback, member_edges)
         for member, scores in zip(members, scored_members, strict=True)
     ]
     return cast(ContractData, data)
@@ -261,7 +269,7 @@ def _member(
     member: Mapping[str, Any],
     scores: Mapping[str, Any],
     thresholds: Mapping[str, Any],
-    fallback: float,
+    fallback: float | None,
     edges: tuple[float, ...],
 ) -> ContractMember:
     return {
@@ -275,7 +283,7 @@ def _field(
     score: Any,
     thresholds: Mapping[str, Any],
     name: str,
-    fallback: float,
+    fallback: float | None,
     edges: tuple[float, ...],
 ) -> ContractField:
     """One contract field.
@@ -284,7 +292,7 @@ def _field(
     P(this value is exactly correct) -- a float, not the 1/0 flag this contract carried before --
     `bin` places it in one of the model's ten bins, and `auto` says whether it cleared the threshold
     for this field, which is the gate calibrated so that everything above it was correct on held-out
-    data.
+    data. With no threshold for this field and no `fallback`, there is no gate to clear: `auto` is false.
 
     A field with no value, or with no score, is `confidence: 0.0, bin: 1, auto: false`. It is not
     null: a consumer reading `confidence` must never have to test for null before comparing.
@@ -299,7 +307,7 @@ def _field(
         "value": value,
         "confidence": round(confidence, 4),
         "bin": _bin(confidence, edges),
-        "auto": confidence >= limit,
+        "auto": limit is not None and confidence >= limit,
     }
 
 

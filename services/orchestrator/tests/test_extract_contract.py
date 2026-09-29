@@ -69,9 +69,10 @@ def test_the_models_own_thresholds_travel_with_the_scores():
     scoring = deepcopy(SCORING_RESULT)
     scoring["thresholds"] = {"nomor_kk": 0.95}
     scoring["fields"]["nomor_kk"] = 0.94
+    scoring["fields"]["nama_kepala_keluarga"] = 0.97
     data = _projected(0.5, scoring=scoring)
     assert data["no_kk"]["auto"] is False, "0.94 lolos ambang global 0.5 tapi bukan ambang modelnya"
-    assert data["nama_kepala_keluarga"]["auto"] is True, "tanpa ambang sendiri, jatuh ke yang global"
+    assert data["nama_kepala_keluarga"]["auto"] is False, "model membawa ambang, tapi tidak untuk field ini"
 
 
 def test_a_low_score_on_one_member_field_does_not_touch_the_others():

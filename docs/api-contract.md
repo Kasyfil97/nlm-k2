@@ -385,8 +385,9 @@ Aturan isi `data`:
   memang harus: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan satu angka
   global menjatuhkan cakupan yang bisa dipakai ke nol. Ambangnya ikut di dalam hasil scoring
   ([8.3](#83-hasil-tahap-scoring)), bukan di konfigurasi, supaya `auto` di sini identik dengan `auto` di
-  baris outcome **secara konstruksi** — tidak ada env var yang harus dijaga sinkron. Field tanpa ambang
-  sendiri jatuh ke `FIELD_CONFIDENCE_THRESHOLD`.
+  baris outcome **secara konstruksi** — tidak ada env var yang harus dijaga sinkron. Field yang tidak
+  diberi ambang oleh model **tidak pernah `auto`**; `FIELD_CONFIDENCE_THRESHOLD` hanya berlaku bila hasil
+  scoring tidak membawa ambang sama sekali (backend `mock`).
 - Baca `auto` untuk memutuskan apakah manusia harus melihat; baca `confidence` untuk memutuskan apa yang
   dilihat lebih dulu.
 - **100% bukan jaminan.** Angka presisi bin teratas diukur pada data held-out (200/200 sel saat draf ini),
@@ -989,8 +990,9 @@ dilatih, bukan properti deployment — dan karena itulah yang membuat `auto` di 
 identik dengan `auto` di baris outcome secara konstruksi, bukan dengan menjaga dua env var tetap sinkron.
 Ambang harus berbeda per field: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan
 satu angka global menjatuhkan cakupan pada presisi 100% ke nol. Field yang **tidak ada** di sini tidak
-punya titik seperti itu di data latih — `nomor_kk` salah satunya, hanya 5 sel bersih dari 97 — dan jatuh ke
-`FIELD_CONFIDENCE_THRESHOLD`. Ketiadaannya adalah informasi, bukan cacat.
+punya titik seperti itu di data uji — `nomor_kk` salah satunya — dan karena itu **tidak pernah `auto`**,
+setinggi apa pun `confidence`-nya. Ketiadaannya adalah informasi, bukan cacat. Dulu field seperti ini jatuh ke
+`FIELD_CONFIDENCE_THRESHOLD` (0.5), dan terukur di dokumen uji `nomor_kk` pada >= 0.5 hanya 83% benar.
 
 **`bin_edges`** = tepi bin dari rendah ke tinggi, terpisah untuk kedua keluarga model. Sengaja tidak
 selebar sama: bin teratas dipotong tepat di titik presisi 100% terukur, yang tidak jatuh pas di kisi mana
@@ -1158,7 +1160,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | `value` | string | `""` kalau tidak ditemukan, tidak pernah `null` |
 | `confidence` | float 0–1 | P(nilai ini persis benar) dari trust model; `0.0` kalau tidak ada nilai atau tidak ada skor. **Tidak pernah `null`** |
 | `bin` | int 1–10 | bin model atas `confidence`; tepinya tidak selebar sama, bin teratas dipotong di titik presisi 100% terukur |
-| `auto` | bool | `confidence` melewati ambang yang dikalibrasi untuk field itu ([8.3](#83-hasil-tahap-scoring)); field tanpa ambang sendiri memakai `FIELD_CONFIDENCE_THRESHOLD` |
+| `auto` | bool | `confidence` melewati ambang yang dikalibrasi untuk field itu ([8.3](#83-hasil-tahap-scoring)); field yang tidak diberi ambang oleh model selalu `false`; `FIELD_CONFIDENCE_THRESHOLD` hanya untuk hasil tanpa ambang sama sekali (`mock`) |
 
 ### `GuardrailsResult`
 
@@ -1325,7 +1327,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/ekstraksi/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
-| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `auto` di `data`, dipakai hanya bila field itu tidak punya ambang sendiri di hasil scoring. Harus sama dengan nilai di scoring ([8.5](#85-menutup-request)) |
+| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `auto` di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`). Field yang tidak diberi ambang oleh model yang membawa ambang tidak pernah `auto`. Harus sama dengan nilai di scoring ([8.5](#85-menutup-request)) |
 | `DATABASE_URL` | tidak | kosong | hanya untuk `guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
 | `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `guardrails_results`; lewat = dicatat di log, request tetap dijawab |
 | `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
@@ -1346,7 +1348,7 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 | `PIPELINE_OUTBOX_MAX_BACKOFF_SECONDS` / `_MAX_AGE_SECONDS` | tidak | `300` / `86400` | batas backoff, dan umur sebelum pesan jadi dead letter |
 | `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` | tidak | `300` | relay menulis `WARNING` selama pesan tertua lebih tua dari ini |
 | `ORCHESTRATION_OUTCOME_TABLE` | **produksi: ya** | kosong | nama tabel outcome milik Orkestrasi pusat ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)). Kosong = tidak menulis, dan keadaan akhir hanya terbaca lewat polling — hanya untuk dev |
-| `FIELD_CONFIDENCE_THRESHOLD` | scoring saja | `0.5` | **cadangan**, dipakai hanya untuk field yang tidak punya ambang sendiri di hasil scoring ([8.3](#83-hasil-tahap-scoring)). Tetap harus sama dengan orchestrator; ambang per field tidak perlu disinkronkan karena ikut di dalam hasil |
+| `FIELD_CONFIDENCE_THRESHOLD` | scoring saja | `0.5` | **cadangan**, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`, [8.3](#83-hasil-tahap-scoring)). Tetap harus sama dengan orchestrator; ambang per field tidak perlu disinkronkan karena ikut di dalam hasil |
 | `SCORING_BACKEND` | scoring saja | `mock` | `mock` mengarang angka dan **ditolak di luar `ENVIRONMENT=local`**; `calibrated` memuat artefak terlatih |
 | `SCORING_MODEL_PATH` | scoring, `calibrated` | `weights/kk_trust_model.joblib` | artefak joblib: dua keluarga model, masing-masing dengan urutan kolom, tepi bin, dan ambang per field-nya sendiri. Ketiganya bukan konfigurasi — semuanya berpindah bersama bobotnya |
 | `PII_ENCRYPTION_KEY` | scoring, produksi: ya | – | Fernet, untuk enkripsi hasil sebelum audit ([8.5](#85-menutup-request)) |
