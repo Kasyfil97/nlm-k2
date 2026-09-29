@@ -28,3 +28,9 @@ class OcrJobStatus(JobStatusBase):
 
 class OcrJobStatusResponse(SuccessEnvelope):
     data: OcrJobStatus
+
+
+class ExtractResponse(SuccessEnvelope):
+    """`POST /v1/ekstraksi/extract`: the same §7.1 payload a job stores, answered directly."""
+
+    data: OcrPayload

@@ -153,6 +153,7 @@ services:
       EKSTRAKSI_BACKEND: paddle
       EKSTRAKSI_OCR_URL: ""
       EKSTRAKSI_OCR_TIMEOUT_SECONDS: "60"
+      EKSTRAKSI_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:

@@ -10,11 +10,14 @@ from ocr_common.config import PipelineSettings
 class Settings(PipelineSettings):
     port: int = 8042
 
-    #: `mock` | `kk_ocr` | `remote`. `kk_ocr` is the in-process PP-OCRv5 det + rec path; see
-    #: `app/ml/kk_ocr.py` for why it is the torch backend of K2Extractor's two and not the default one.
+    #: `mock` | `kk_ocr` | `paddle` | `remote`. `kk_ocr` is the in-process PP-OCRv5 det + rec path;
+    #: see `app/ml/kk_ocr.py` for why it is the torch backend of K2Extractor's two and not the default
+    #: one. `paddle` is the ML team's PaddleOCR server on `POST /ocr` (as in nilam).
     ekstraksi_backend: str = "mock"
 
-    # --- `remote` only: an OCR model served by another process -------------------------------
+    # --- `paddle` and `remote`: an OCR model served by another process ----------------------
+    # `paddle` uses the URL, key, timeout and query below; the path is fixed to `/ocr` and it
+    # sends no form fields.
     ekstraksi_ocr_url: str | None = None
     ekstraksi_ocr_api_key: str | None = None
     ekstraksi_ocr_timeout_seconds: float = 30.0

@@ -280,8 +280,9 @@ def test_every_endpoint_needs_the_api_key(client):
     assert client.get("/v1/ekstraksi/outbox").status_code == 401
 
 
-def test_there_is_no_synchronous_ekstraksi_endpoint(client, auth):
-    """§11 lists a synchronous debug endpoint for structuring and scoring, and for neither the
-    orchestrator nor this stage. The route that used to exist is gone, not merely undocumented."""
-    assert client.post("/v1/ekstraksi/extract", headers=auth, files=image_upload("kk.jpg", JPEG)).status_code == 404
-    assert "/v1/ekstraksi/extract" not in client.get("/openapi.json").json()["paths"]
+def test_the_synchronous_ekstraksi_endpoint_is_served_and_documented(client, auth):
+    """§11 (draft 11) lists `POST /v1/ekstraksi/extract` next to structuring's and scoring's debug
+    endpoints, as nilam serves its own; R17 removed it and
+    `docs/decisions/2026-09-29-selaras-nilam.md` brought it back."""
+    assert client.post("/v1/ekstraksi/extract", headers=auth, files=image_upload("kk.jpg", JPEG)).status_code == 200
+    assert "/v1/ekstraksi/extract" in client.get("/openapi.json").json()["paths"]

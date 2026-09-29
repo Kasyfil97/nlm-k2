@@ -6,10 +6,10 @@ info:
     does not name fields and it does not judge the document.
 
 
-    **Async only.** The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the document
-    and gets 202; this service reads the image in the background, stores the result (`ocr_results`) and
-    hands the job to the structuring service in the same transaction. There is no synchronous OCR endpoint.
-    All endpoints except /health require an X-API-Key header.
+    The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the document and gets 202;
+    this service reads the image in the background, stores the result (`ocr_results`) and hands the job
+    to the structuring service in the same transaction. /v1/ekstraksi/extract runs the same OCR synchronously
+    and stores nothing, for debugging. All endpoints except /health require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -107,7 +107,7 @@ paths:
                     version: 1.0.0
                     device: cpu
                     backends:
-                      ekstraksi: kk_ocr
+                      ekstraksi: paddle
                       storage: postgres
   /ready:
     get:
@@ -163,6 +163,160 @@ paths:
             text/plain:
               schema:
                 type: string
+  /v1/ekstraksi/extract:
+    post:
+      tags:
+      - Ekstraksi
+      summary: OCR of a Kartu Keluarga, synchronous (no job, no callback)
+      description: 'Runs the configured OCR backend on the document and answers the §7.1 payload -- one
+        `{text, score, poly}` box per recognised line plus the three document aggregates -- in the response.
+        Nothing is stored and nothing is handed on.
+
+
+        Send the document as `file` or `file_url`, exactly one. JPEG, PNG or PDF (only the first page
+        of a PDF is read), at most `MAX_UPLOAD_BYTES`. As in the async stage, an image with no readable
+        text is a 200 with an empty `texts`, not an error.'
+      operationId: extractText
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_extractText'
+      responses:
+        '200':
+          description: Text lines found in the document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractResponse'
+              examples:
+                kartu_keluarga:
+                  summary: A Kartu Keluarga
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      engine: kk_ocr
+                      model: PP-OCRv5_server_det+PP-OCRv5_server_rec
+                      elapsed_ms: 1842.5
+                      text_regions_count: 3
+                      avg_doc_score: 0.9954
+                      min_doc_score: 0.9873
+                      texts:
+                      - text: KARTU KELUARGA
+                        score: 0.9999
+                        poly:
+                        - - 515.0
+                          - 100.0
+                        - - 984.0
+                          - 108.0
+                        - - 982.0
+                          - 148.0
+                        - - 513.0
+                          - 140.0
+                      - text: '9924187486671285'
+                        score: 0.9991
+                        poly:
+                        - - 520.0
+                          - 210.0
+                        - - 1100.0
+                          - 219.0
+                        - - 1098.0
+                          - 259.0
+                        - - 518.0
+                          - 250.0
+                      - text: BUDI SANTOSO
+                        score: 0.9873
+                        poly:
+                        - - 520.0
+                          - 268.0
+                        - - 889.0
+                          - 274.0
+                        - - 888.0
+                          - 312.0
+                        - - 519.0
+                          - 306.0
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: Bad file (empty, unsupported type) or bad intake
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: Uploaded file is empty
+                errors: Uploaded file is empty
+        '413':
+          description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 413
+                status_desc: Payload Too Large
+                message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                errors: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: Invalid or missing API key
+        '500':
+          description: OCR backend failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 500
+                status_desc: Internal Server Error
+                message: 'ekstraksi OCR model error (500): error: OpenCV ...'
+                errors: 'ekstraksi OCR model error (500): error: OpenCV ...'
+        '503':
+          description: OCR model unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 503
+                status_desc: Service Unavailable
+                message: ekstraksi OCR model is unavailable
+                errors: ekstraksi OCR model is unavailable
+        '504':
+          description: OCR model did not answer in time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 504
+                status_desc: Gateway Timeout
+                message: ekstraksi OCR model timed out after 30.0s
+                errors: ekstraksi OCR model timed out after 30.0s
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.file: Expected UploadFile, received: str'
+                errors: VALIDATION_ERROR
+      security:
+      - APIKeyHeader: []
   /v1/ekstraksi/jobs:
     post:
       tags:
@@ -659,6 +813,27 @@ webhooks:
               schema: {}
 components:
   schemas:
+    Body_extractText:
+      properties:
+        file:
+          anyOf:
+          - type: string
+            contentMediaType: application/octet-stream
+          - type: string
+          - type: 'null'
+          title: File
+          description: Kartu Keluarga photo (JPEG or PNG). Omit when sending file_url.
+        file_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: File Url
+          description: 'URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when
+            uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
+            list denies every URL rather than allowing public ones. https only, redirects are not followed,
+            and a host that resolves to a private or loopback address is refused even when it is listed.'
+      type: object
+      title: Body_extractText
     Body_submitOcrJob:
       properties:
         request_id:
@@ -754,6 +929,49 @@ components:
       - errors
       title: ErrorResponse
       description: Every error response.
+    ExtractResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/OcrPayload'
+      type: object
+      required:
+      - data
+      title: ExtractResponse
+      description: '`POST /v1/ekstraksi/extract`: the same §7.1 payload a job stores, answered directly.'
     HealthResponse:
       properties:
         status:
@@ -1361,6 +1579,8 @@ components:
       in: header
       name: X-API-Key
 tags:
+- name: Ekstraksi
+  description: 'Synchronous OCR: the §7.1 payload in the response, nothing stored'
 - name: Pipeline
   description: 'Asynchronous pipeline stage: 202, background work, callback, hand-off'
 - name: Callbacks

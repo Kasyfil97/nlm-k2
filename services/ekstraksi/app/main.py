@@ -6,7 +6,7 @@ from ocr_common.pipeline.database import check_connection, dispose_engines
 from ocr_common.pipeline.schemas import StageCallback
 from ocr_common.web.app import add_stage_callback_webhook, create_app, database_readiness
 
-from app.api import jobs, testing
+from app.api import ekstraksi, jobs, testing
 from app.config import get_settings
 from app.dependencies import (
     get_next_stage,
@@ -69,22 +69,24 @@ app = create_app(
         "Pipeline step 2 for Indonesian Kartu Keluarga: reads the card photo and produces one "
         "`{text, score, poly}` box per recognised line, plus the three document aggregates the trust model "
         "uses. It does not name fields and it does not judge the document.\n\n"
-        "**Async only.** The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the "
-        "document and gets 202; this service reads the image in the background, stores the result "
-        "(`ocr_results`) and hands the job to the structuring service in the same transaction. There is no "
-        "synchronous OCR endpoint. All endpoints except /health require an X-API-Key header."
+        "The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the document and gets "
+        "202; this service reads the image in the background, stores the result (`ocr_results`) and hands the "
+        "job to the structuring service in the same transaction. /v1/ekstraksi/extract runs the same OCR "
+        "synchronously and stores nothing, for debugging. All endpoints except /health require an X-API-Key "
+        "header."
     ),
     tags=[
+        {"name": "Ekstraksi", "description": "Synchronous OCR: the §7.1 payload in the response, nothing stored"},
         {"name": "Pipeline", "description": "Asynchronous pipeline stage: 202, background work, callback, hand-off"},
         {"name": "Callbacks", "description": "Requests this service SENDS to the orchestrator (see Webhooks)"},
     ],
-    routers=[jobs.router, *([testing.router] if settings.testing_endpoints else [])],
+    routers=[ekstraksi.router, jobs.router, *([testing.router] if settings.testing_endpoints else [])],
     backends={
         "ekstraksi": settings.ekstraksi_backend,
         "storage": "postgres" if settings.database_url else "memory",
     },
     readiness=database_readiness(settings.database_url),
-    backends_example={"ekstraksi": "kk_ocr", "storage": "postgres"},
+    backends_example={"ekstraksi": "paddle", "storage": "postgres"},
     readiness_example={"database": "ok"},
     lifespan=lifespan,
 )

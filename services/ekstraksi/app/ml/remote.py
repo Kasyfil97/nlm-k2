@@ -10,6 +10,9 @@
 Sniffing the shape rather than configuring it is deliberate: the two are distinguishable by their
 keys with no ambiguity, and a wrong setting here would look like a model that found no text.
 
+A list of documents, `[{models, pages}, ...]`, is read as their pages in order; the PaddleOCR
+server the `paddle` backend calls may answer that way.
+
 The earlier shapes -- a bare list of pages, or `{data: [...]}` -- are still accepted. Only `pages`
 and `models` are read. In particular **`page.width` / `page.height` are ignored, and must be**: with
 `use_doc_orientation_classify=true` the VM returns `poly` in the *orientation-corrected* frame while
@@ -88,8 +91,21 @@ class RemoteOcrEngine:
 
 
 def parse_model(body: Any) -> str | None:
-    """`models.detection+recognition` of the current contract; None for the older shapes."""
-    return model_name(body.get("models")) if isinstance(body, dict) else None
+    """`models.detection+recognition` of the current contract; None for the older shapes. For a
+    list of documents, the first one that names its models."""
+    for document in _documents(body) or [body]:
+        if isinstance(document, dict) and (name := model_name(document.get("models"))):
+            return name
+    return None
+
+
+def _documents(body: Any) -> list[dict[str, Any]] | None:
+    """The body as a list of documents, when it is one: `[{models, pages}, ...]`, which the
+    PaddleOCR server may answer instead of a single document. A bare list of *pages* -- the older
+    shape -- has no `pages` key in its items and is not this."""
+    if isinstance(body, list) and body and all(isinstance(item, dict) and "pages" in item for item in body):
+        return body
+    return None
 
 
 def parse_pages(body: Any, name: str) -> list[OcrBox]:
@@ -99,7 +115,14 @@ def parse_pages(body: Any, name: str) -> list[OcrBox]:
     no page concept and §7.1 has none either.
     """
     unexpected = InternalError(f"{name} returned an unexpected response")
-    if isinstance(body, dict):
+    documents = _documents(body)
+    if documents is not None:
+        pages: Any = []
+        for document in documents:
+            if not isinstance(document.get("pages"), list):
+                raise unexpected
+            pages.extend(document["pages"])
+    elif isinstance(body, dict):
         pages = body.get("pages") if "pages" in body else body.get("data")
     else:
         pages = body

@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.ml.base import OcrEngine
 from app.ml.kk_ocr import KkOcrConfig, KkOcrEngine
 from app.ml.mock import MockOcrEngine
+from app.ml.paddle import PaddleOcrEngine
 from app.ml.remote import RemoteOcrEngine
 from app.services.ekstraksi_service import EkstraksiService
 from app.services.job_service import EkstraksiJobService
@@ -67,10 +68,26 @@ def _build_remote(settings: Settings) -> RemoteOcrEngine:
     )
 
 
+def _build_paddle(settings: Settings) -> PaddleOcrEngine:
+    """The PaddleOCR server's `/ocr`. `EKSTRAKSI_OCR_PATH` and `EKSTRAKSI_OCR_PARAMS` do not apply:
+    the server has one route and reads its knobs from the query string."""
+    if not settings.ekstraksi_ocr_url:
+        raise RuntimeError("EKSTRAKSI_OCR_URL is required when EKSTRAKSI_BACKEND=paddle")
+    headers = {"X-API-Key": settings.ekstraksi_ocr_api_key} if settings.ekstraksi_ocr_api_key else None
+    client = RemoteModelClient(
+        settings.ekstraksi_ocr_url,
+        settings.ekstraksi_ocr_timeout_seconds,
+        name="ekstraksi OCR model",
+        headers=headers,
+    )
+    return PaddleOcrEngine(client, query=settings.ekstraksi_ocr_query)
+
+
 # EKSTRAKSI_BACKEND -> how to build it. Add a backend here and, if it needs settings, in config.py.
 OCR_BACKENDS: dict[str, Factory[OcrEngine]] = {
     "mock": lambda settings: MockOcrEngine(),
     "kk_ocr": _build_kk_ocr,
+    "paddle": _build_paddle,
     "remote": _build_remote,
 }
 

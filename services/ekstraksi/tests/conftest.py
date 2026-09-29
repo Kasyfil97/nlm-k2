@@ -22,7 +22,7 @@ set_test_env(
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
-from app.dependencies import get_job_service, get_pipeline  # noqa: E402
+from app.dependencies import get_ekstraksi_service, get_job_service, get_pipeline  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.ekstraksi_service import EkstraksiService  # noqa: E402
 from app.services.job_service import EkstraksiJobService  # noqa: E402
@@ -77,6 +77,19 @@ def use_engine():
 
     yield _use
     app.dependency_overrides.pop(get_job_service, None)
+
+
+@pytest.fixture
+def use_sync_engine():
+    """The same, for the synchronous `POST /v1/ekstraksi/extract`, which does take
+    `get_ekstraksi_service` through `Depends` -- so that is the override here."""
+
+    def _use(engine):
+        service = EkstraksiService(engine, get_settings())
+        app.dependency_overrides[get_ekstraksi_service] = lambda: service
+
+    yield _use
+    app.dependency_overrides.pop(get_ekstraksi_service, None)
 
 
 @pytest.fixture
