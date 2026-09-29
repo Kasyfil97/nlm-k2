@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import DOCUMENT_TYPE
+from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
 from ocr_common.web.schemas import UNAUTHORIZED, error, success_examples
@@ -30,8 +31,7 @@ router = APIRouter(tags=["Extract OCR"], dependencies=[Depends(verify_api_key)])
 
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 INVALID_PARAMS_MESSAGE = "params must be valid JSON: an object, or a quoted string"
-SKIP_NOT_ALLOWED_CODE = "GUARDRAILS_SKIP_NOT_ALLOWED"
-SKIP_NOT_ALLOWED_MESSAGE = "skip_guardrails is not allowed here: GUARDRAILS_SKIP_ALLOWED is off"
+INVALID_SEQUENCE_CODE = "INVALID_PIPELINE_SEQUENCE"
 
 # Setiap nomor di contoh ini memakai kode provinsi 99, yang tidak pernah diberikan Indonesia (lihat
 # ocr_common.synthetic_kk). Contoh OpenAPI adalah tempat paling terlihat di seluruh repo, jadi nomor
@@ -113,13 +113,6 @@ _FAILED = extract_body(
     document_type="kk",
     params=_PARAMS,
 )
-_SKIP_NOT_ALLOWED = extract_body(
-    403,
-    SKIP_NOT_ALLOWED_MESSAGE,
-    errors=SKIP_NOT_ALLOWED_CODE,
-    request_id=RID,
-    document_type="kk",
-)
 
 _CONTRACT_TABLE = (
     "| Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |\n"
@@ -145,6 +138,22 @@ TOO_MANY_REQUESTS_RESPONSE = error(
 
 class _InvalidParams(Exception):
     pass
+
+
+def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
+    """`pipeline_name_sequence` as repeated form fields, or as one JSON array string; the full pipeline when
+    omitted. Raises `InvalidSequence`."""
+    if not values:
+        return DEFAULT_SEQUENCE
+    if len(values) == 1 and values[0].lstrip().startswith("["):
+        try:
+            parsed = json.loads(values[0])
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, list) or not all(isinstance(name, str) for name in parsed):
+            raise InvalidSequence("send it as a JSON array of strings, or as repeated form fields")
+        values = parsed
+    return validate_sequence(values)
 
 
 def _parse_params(raw: str | None) -> Any:
@@ -186,11 +195,14 @@ def _parse_params(raw: str | None) -> Any:
         f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and a PDF with more than "
         "`MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message` the client can show "
         "as is. JPEG, PNG and PDF are accepted; of a PDF only the first page is judged and read.\n\n"
-        "**Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request, "
-        "when this service allows it (`GUARDRAILS_SKIP_ALLOWED`; otherwise `403` "
-        f"`{SKIP_NOT_ALLOWED_CODE}` and nothing runs). The file checks above still run, and the KK validity "
-        "gate still rejects, so `guardrails: 1` can then only come from it. The trust model gets no guardrails "
-        "probability and works with that input missing.\n\n"
+        "**Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `ekstraksi`, "
+        "`structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing in "
+        f"the middle may be skipped and the order may not change (else `422` `{INVALID_SEQUENCE_CODE}` and "
+        "nothing runs). Omitted: all four. The last one ends the request and its result is `data`, as it is: the "
+        "guardrails report, the OCR result, the structuring result, or the nine fields after scoring; "
+        "`pipeline_last_stage` names it. Without `guardrails` the file checks above still run and the KK "
+        "validity gate still rejects; the trust model gets no guardrails probability and works with that input "
+        "missing.\n\n"
         "On 202 the result arrives by callback (sent by the pipeline stages), and can be read with "
         "`GET /v1/extract-ocr/{request_id}`. Give this call an HTTP timeout well above `PIPELINE_WAIT_SECONDS` "
         "(e.g. +15 s) to cover a slow guardrails check or hand-off.\n\n"
@@ -228,14 +240,6 @@ def _parse_params(raw: str | None) -> Any:
         },
         401: UNAUTHORIZED,
         429: TOO_MANY_REQUESTS_RESPONSE,
-        403: {
-            "model": ExtractOcrResponse,
-            "description": (
-                f"`skip_guardrails=true` while `GUARDRAILS_SKIP_ALLOWED` is off (`{SKIP_NOT_ALLOWED_CODE}`); "
-                "nothing was started"
-            ),
-            "content": {"application/json": {"example": _SKIP_NOT_ALLOWED}},
-        },
         413: error(
             413,
             f"The document exceeds `MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default); nothing was started",
@@ -245,8 +249,8 @@ def _parse_params(raw: str | None) -> Any:
             "model": ExtractOcrResponse,
             "description": (
                 "A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`; "
-                "`message` says why), `params` is not valid JSON (`INVALID_PARAMS`), or a required field is "
-                "missing (`VALIDATION_ERROR`)"
+                "`message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence` is "
+                f"not a valid sequence (`{INVALID_SEQUENCE_CODE}`), or a required field is missing (`VALIDATION_ERROR`)"
             ),
             "content": {"application/json": {"example": _FAILED}},
         },
@@ -283,13 +287,14 @@ async def extract_ocr(
     ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
-    skip_guardrails: bool = Form(
-        False,
+    pipeline_name_sequence: list[str] | None = Form(
+        None,
         description=(
-            "`true` leaves the guardrails model out for this request; only when this service allows it "
-            f"(`GUARDRAILS_SKIP_ALLOWED`), else `403` `{SKIP_NOT_ALLOWED_CODE}`. The file checks still run and the "
-            "structuring rules still reject"
+            "The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`; guardrails "
+            "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, or "
+            "one JSON array string. Omitted: all four. The last one's result is `data`, as it is"
         ),
+        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
     ),
     service: ExtractOcrService = Depends(get_extract_service),
     settings: Settings = Depends(get_settings),
@@ -315,12 +320,14 @@ async def extract_ocr(
             request_id=request_id,
             document_type=document_type,
         )
-    if skip_guardrails and not settings.guardrails_skip_allowed:
-        response.status_code = 403
+    try:
+        sequence = _parse_sequence(pipeline_name_sequence)
+    except InvalidSequence as exc:
+        response.status_code = 422
         return extract_body(
-            403,
-            SKIP_NOT_ALLOWED_MESSAGE,
-            errors=SKIP_NOT_ALLOWED_CODE,
+            422,
+            f"Invalid pipeline_name_sequence: {exc}",
+            errors=INVALID_SEQUENCE_CODE,
             request_id=request_id,
             document_type=document_type,
         )
@@ -339,7 +346,7 @@ async def extract_ocr(
             content,
             received_at=received_at,
             file_url=file_url,
-            skip_guardrails=skip_guardrails,
+            sequence=sequence,
         )
     finally:
         reset_request_id(token)

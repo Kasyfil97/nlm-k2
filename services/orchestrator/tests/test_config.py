@@ -60,8 +60,10 @@ def test_localhost_services_are_fine_locally():
     assert settings.port == 8040
 
 
-def test_skipping_guardrails_is_not_allowed_by_default():
-    assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").guardrails_skip_allowed is False
+def test_there_is_no_skip_gate_any_more():
+    """Leaving guardrails out is the central orchestrator's call through `pipeline_name_sequence`, as in
+    nilam; no setting here can refuse it."""
+    assert not hasattr(Settings(api_key=TEST_API_KEY, _env_file=None, environment="local"), "guardrails_skip_allowed")
 
 
 def test_pipeline_wait_defaults_to_the_30_seconds_the_contract_documents():

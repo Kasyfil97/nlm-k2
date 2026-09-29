@@ -1,14 +1,15 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from ocr_common.pipeline import STRUCTURING, checked_sequence
 from ocr_common.pipeline.schemas import (
     GuardrailsResult,
     OcrBoxPayload,
     OcrPayload,
     StructuringPayload,
 )
-from ocr_common.web.schemas import REQUEST_ID_EXAMPLE, JobStatusBase, SuccessEnvelope
+from ocr_common.web.schemas import PIPELINE_SEQUENCE_DESCRIPTION, REQUEST_ID_EXAMPLE, JobStatusBase, SuccessEnvelope
 
 #: Upper bounds on one synchronous request, carried over from K2Regex-v2 (`input_limits`), which
 #: fronts the same parser on an endpoint the ML team calls directly.
@@ -75,6 +76,16 @@ class StructuringJobRequest(BaseModel):
             "reach the validity gate to be rejected there, so this endpoint does not require at least one"
         ),
     )
+    pipeline_name_sequence: list[str] | None = Field(
+        None,
+        description=PIPELINE_SEQUENCE_DESCRIPTION,
+        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+    )
+
+    @field_validator("pipeline_name_sequence")
+    @classmethod
+    def _sequence_includes_this_stage(cls, value: list[str] | None) -> list[str] | None:
+        return checked_sequence(value, STRUCTURING)
 
 
 class StructuringJobStatus(JobStatusBase):

@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
 from ocr_common.kk import DOCUMENT_TYPE, ocr_aggregates
-from ocr_common.pipeline import StagePipeline
+from ocr_common.pipeline import EKSTRAKSI, InvalidSequence, StagePipeline, checked_sequence
 from ocr_common.pipeline.outbox_status import (
     OUTBOX_RELEASE_DESCRIPTION,
     OUTBOX_RELEASE_SUMMARY,
@@ -22,7 +22,14 @@ from ocr_common.types import OcrBox
 from ocr_common.web.envelope import envelope
 from ocr_common.web.intake import FileField, FileUrlField, resolve_intake
 from ocr_common.web.request_id import get_request_id
-from ocr_common.web.schemas import REQUEST_ID_EXAMPLE, UNAUTHORIZED, JobAcceptedResponse, error, success_examples
+from ocr_common.web.schemas import (
+    PIPELINE_SEQUENCE_DESCRIPTION,
+    REQUEST_ID_EXAMPLE,
+    UNAUTHORIZED,
+    JobAcceptedResponse,
+    error,
+    success_examples,
+)
 from ocr_common.web.security import verify_api_key
 
 from app.api.schemas import OcrJobStatusResponse
@@ -84,6 +91,23 @@ def _parse_guardrails(raw: str | None) -> dict[str, Any] | None:
     return value
 
 
+def _parse_sequence(raw: str | None) -> list[str] | None:
+    """The form's JSON array; None when omitted (the full pipeline). 400 when it is not a valid sequence
+    that includes this stage."""
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        value = None
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        raise HTTPException(status_code=400, detail="pipeline_name_sequence must be a JSON array of strings")
+    try:
+        return checked_sequence(value, EKSTRAKSI)
+    except InvalidSequence as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid pipeline_name_sequence: {exc}") from exc
+
+
 @router.post(
     "/v1/ekstraksi/jobs",
     status_code=202,
@@ -108,7 +132,10 @@ def _parse_guardrails(raw: str | None) -> dict[str, Any] | None:
         "`PIPELINE_JOB_LEASE_SECONDS`; an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.\n\n"
         "**Idempotency.** The same request_id again answers `202` with `duplicate: true` and does not run OCR "
         "twice, unless the earlier attempt `FAILED` or has been `PROCESSING` for longer than the job lease "
-        "(`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again."
+        "(`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again.\n\n"
+        "**Where the chain stops.** `pipeline_name_sequence` decides: when `ekstraksi` is its last service, the "
+        "job ends here, nothing is handed on, and the OCR result is the request's answer, as it is (the `OCR` "
+        "callback then carries `final: true`)."
     ),
     responses={
         202: success_examples(
@@ -134,7 +161,8 @@ def _parse_guardrails(raw: str | None) -> dict[str, Any] | None:
         ),
         400: error(
             400,
-            "Neither or both of file / file_url, or `guardrails` is not a JSON object",
+            "Neither or both of file / file_url, `guardrails` is not a JSON object, or `pipeline_name_sequence` is "
+            "not a valid sequence that includes `ekstraksi`",
             "Send exactly one of file or file_url",
         ),
         401: UNAUTHORIZED,
@@ -152,11 +180,17 @@ async def submit_job(
         None,
         description=(
             "The guardrails report (`data` of the guardrails service's `POST /v1/guardrails/check`), serialised "
-            "as a JSON string; the orchestrator fills it in and it is left out entirely when "
-            "`skip_guardrails=true`. Forwarded down the chain unchanged: scoring uses `document.probability_bad` "
-            "as a trust-model feature, and the final result returns the report as it arrived"
+            "as a JSON string; the orchestrator fills it in and it is left out entirely when the "
+            "`pipeline_name_sequence` has no `guardrails`. Forwarded down the chain unchanged: scoring uses "
+            "`document.probability_bad` as a trust-model feature, and the final result returns the report as it "
+            "arrived"
         ),
         examples=[_GUARDRAILS_EXAMPLE],
+    ),
+    pipeline_name_sequence: str | None = Form(
+        None,
+        description=f"{PIPELINE_SEQUENCE_DESCRIPTION}. Serialised as a JSON array string",
+        examples=['["guardrails", "ekstraksi", "structuring", "scoring"]'],
     ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
@@ -169,7 +203,8 @@ async def submit_job(
     else:
         assert url is not None
         source = url
-    data = await service.submit(request_id, document_type, _parse_guardrails(guardrails), source)
+    sequence = _parse_sequence(pipeline_name_sequence)
+    data = await service.submit(request_id, document_type, _parse_guardrails(guardrails), source, sequence)
     return envelope(202, "Accepted", data, request_id)
 
 

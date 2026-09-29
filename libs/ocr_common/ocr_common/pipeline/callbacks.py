@@ -39,6 +39,7 @@ class StageCallback(Protocol):
         result: dict[str, Any] | None = None,
         error_message: str | None = None,
         error_code: str | None = None,
+        final: bool = False,
     ) -> bool:
         """Direct mode: build and send the callback with retries; returns False when it was skipped or gave up."""
         ...
@@ -76,9 +77,12 @@ def stage_callback_body(
     result: dict[str, Any] | None = None,
     error_message: str | None = None,
     error_code: str | None = None,
+    final: bool = False,
 ) -> dict[str, Any]:
     """The per-stage callback body. `error_code` is only present when set: `DOWNSTREAM_VALIDATION_ERROR`
-    on a rejection, so a FAILED callback tells a rejected document from a stage that broke."""
+    on a rejection, so a FAILED callback tells a rejected document from a stage that broke. `final: true`
+    is only present on the DONE of the stage that ends the request (the last of its
+    pipeline_name_sequence), whose `result` is then the request's answer."""
     body: dict[str, Any] = {
         "request_id": request_id,
         "stage": stage,
@@ -88,6 +92,8 @@ def stage_callback_body(
     }
     if error_code is not None:
         body["error_code"] = error_code
+    if final:
+        body["final"] = True
     return body
 
 
@@ -109,6 +115,7 @@ class OrchestrationCallback:
         result: dict[str, Any] | None = None,
         error_message: str | None = None,
         error_code: str | None = None,
+        final: bool = False,
     ) -> bool:
         """Send `{request_id, stage, status, result, error_message[, error_code]}` with retries; False when
         skipped or failed."""
@@ -117,7 +124,7 @@ class OrchestrationCallback:
             return False
         client = self._client
         payload = stage_callback_body(
-            request_id, stage, status, result=result, error_message=error_message, error_code=error_code
+            request_id, stage, status, result=result, error_message=error_message, error_code=error_code, final=final
         )
         try:
             await with_retry(lambda: client.post_json(self._path, payload), self._attempts, self._delay)
@@ -148,7 +155,7 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
     """The orchestrator's result callback (`ORCHESTRATION_CALLBACK_FORMAT=result`) for a per-stage callback
     body, or None when that stage event is not the end of the request.
 
-    Completed (SCORING `DONE`, `result` = the final result)::
+    Completed by scoring (SCORING `DONE`, `result` = the final result)::
 
         {"request_id", "status": "completed",
          "result": {"no_kk", "nama_kepala_keluarga",
@@ -158,8 +165,10 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
     The nine contract fields, under their OUTGOING names. `value` is "" when the field was not found.
     Unlike `data` of `extract-ocr`, `confidence` here is the trust model's raw probability rounded to
     4 dp (0.0 when not found), not the 0/1 flag: this callback is for a consumer that wants the
-    number, and the threshold belongs to the caller. Failed (any stage `FAILED`, including a
-    rejection)::
+    number, and the threshold belongs to the caller. Completed by an earlier stage (a
+    pipeline_name_sequence that ends before scoring; its DONE carries `final: true`): `result` is that
+    stage's result as it is (the OCR result, or the structuring result) and `guardrails` is `{}`.
+    Failed (any stage `FAILED`, including a rejection)::
 
         {"request_id", "status": "failed", "result": null, "guardrails": {},
          "error_code": "<STAGE>_FAILED" | "DOWNSTREAM_VALIDATION_ERROR", "error_message": str}
@@ -175,8 +184,12 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
             "error_message": stage_body.get("error_message"),
         }
     final = stage_body.get("result")
-    if status != "DONE" or stage != _FINAL_STAGE or not final:
+    # A body without `final` was queued before pipeline_name_sequence existed: only SCORING ended a request.
+    ends_request = stage_body.get("final", stage == _FINAL_STAGE)
+    if status != "DONE" or not ends_request or not final:
         return None
+    if stage != _FINAL_STAGE:
+        return {"request_id": request_id, "status": RESULT_COMPLETED, "result": final, "guardrails": {}}
     structuring = final.get("structuring") or {}
     scoring = final.get("scoring") or {}
     members = structuring.get("anggota_keluarga") or []
@@ -209,9 +222,10 @@ def _scored_field(field: Any, score: Any) -> dict[str, Any]:
 
 class ResultCallback:
     """The orchestrator's single result callback (`ORCHESTRATION_CALLBACK_FORMAT=result`): one POST per
-    request when it ends, completed by scoring or failed at any stage. It takes the same per-stage events
-    as `OrchestrationCallback` (so the pipeline and the outbox are unchanged) and turns them into that
-    body; the events that do not end a request (OCR / STRUCTURING `DONE`) are skipped."""
+    request when it ends, completed by the last stage of its pipeline_name_sequence or failed at any
+    stage. It takes the same per-stage events as `OrchestrationCallback` (so the pipeline and the outbox
+    are unchanged) and turns them into that body; the events that do not end a request (a `DONE` without
+    `final`) are skipped."""
 
     def __init__(self, client: RemoteModelClient | None, path: str, *, attempts: int = 3, delay: float = 0.5):
         self._client = client
@@ -228,11 +242,18 @@ class ResultCallback:
         result: dict[str, Any] | None = None,
         error_message: str | None = None,
         error_code: str | None = None,
+        final: bool = False,
     ) -> bool:
         """Send the result callback with retries; False when this event is not final, or when it failed."""
         body = result_callback_body(
             stage_callback_body(
-                request_id, stage, status, result=result, error_message=error_message, error_code=error_code
+                request_id,
+                stage,
+                status,
+                result=result,
+                error_message=error_message,
+                error_code=error_code,
+                final=final,
             )
         )
         if body is None:

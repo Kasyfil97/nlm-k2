@@ -117,11 +117,14 @@ paths:
         of a PDF only the first page is judged and read.
 
 
-        **Skipping guardrails.** `skip_guardrails=true` leaves the guardrails model out for this one request,
-        when this service allows it (`GUARDRAILS_SKIP_ALLOWED`; otherwise `403` `GUARDRAILS_SKIP_NOT_ALLOWED`
-        and nothing runs). The file checks above still run, and the KK validity gate still rejects, so
-        `guardrails: 1` can then only come from it. The trust model gets no guardrails probability and
-        works with that input missing.
+        **Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `ekstraksi`,
+        `structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing
+        in the middle may be skipped and the order may not change (else `422` `INVALID_PIPELINE_SEQUENCE`
+        and nothing runs). Omitted: all four. The last one ends the request and its result is `data`,
+        as it is: the guardrails report, the OCR result, the structuring result, or the nine fields after
+        scoring; `pipeline_last_stage` names it. Without `guardrails` the file checks above still run
+        and the KK validity gate still rejects; the trust model gets no guardrails probability and works
+        with that input missing.
 
 
         On 202 the result arrives by callback (sent by the pipeline stages), and can be read with `GET
@@ -314,20 +317,6 @@ paths:
                 message: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
                 errors: Terlalu banyak permintaan, silakan coba lagi beberapa saat lagi
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-        '403':
-          description: '`skip_guardrails=true` while `GUARDRAILS_SKIP_ALLOWED` is off (`GUARDRAILS_SKIP_NOT_ALLOWED`);
-            nothing was started'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExtractOcrResponse'
-              example:
-                status_code: 403
-                status_desc: Forbidden
-                message: 'skip_guardrails is not allowed here: GUARDRAILS_SKIP_ALLOWED is off'
-                errors: GUARDRAILS_SKIP_NOT_ALLOWED
-                request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
         '413':
           description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default); nothing was started
           content:
@@ -341,8 +330,8 @@ paths:
                 errors: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
         '422':
           description: A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`;
-            `message` says why), `params` is not valid JSON (`INVALID_PARAMS`), or a required field is
-            missing (`VALIDATION_ERROR`)
+            `message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence`
+            is not a valid sequence (`INVALID_PIPELINE_SEQUENCE`), or a required field is missing (`VALIDATION_ERROR`)
           content:
             application/json:
               schema:
@@ -804,13 +793,22 @@ components:
             uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
             list denies every URL rather than allowing public ones. https only, redirects are not followed,
             and a host that resolves to a private or loopback address is refused even when it is listed.'
-        skip_guardrails:
-          type: boolean
-          title: Skip Guardrails
-          description: '`true` leaves the guardrails model out for this request; only when this service
-            allows it (`GUARDRAILS_SKIP_ALLOWED`), else `403` `GUARDRAILS_SKIP_NOT_ALLOWED`. The file
-            checks still run and the structuring rules still reject'
-          default: false
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`;
+            guardrails optional at the front, the end may be cut off, nothing skipped in the middle. Repeated
+            form fields, or one JSON array string. Omitted: all four. The last one''s result is `data`,
+            as it is'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
       type: object
       required:
       - request_id
@@ -931,8 +929,14 @@ components:
         data:
           anyOf:
           - $ref: '#/components/schemas/KkData'
+          - additionalProperties: true
+            type: object
           - type: 'null'
-          description: The OCR fields when `job_status` is `completed`; null otherwise
+          title: Data
+          description: The result when `job_status` is `completed`; null otherwise. The nine fields when
+            scoring ended the request; the result of the last service of `pipeline_name_sequence`, as
+            it is, when the sequence ends earlier (the guardrails report, the OCR result, or the structuring
+            result)
         errors:
           anyOf:
           - type: string
@@ -947,6 +951,22 @@ components:
           - type: 'null'
           title: Request Id
           description: The request_id this response belongs to
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+            enum:
+            - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The pipeline service this answer comes from, named as in `pipeline_name_sequence`:
+            the last service of the sequence when `completed`; the one that rejected (`guardrails`, `structuring`)
+            or failed; the one still running on 202. Null when this service refused the request before
+            any pipeline service was called (file checks, `pipeline_name_sequence`, `params`, `document_type`)'
+          examples:
+          - scoring
         document_type:
           anyOf:
           - type: string

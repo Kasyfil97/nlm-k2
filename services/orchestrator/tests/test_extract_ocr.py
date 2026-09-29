@@ -1,3 +1,4 @@
+import pytest
 
 from ocr_common.errors import ServiceError, UpstreamTimeout, UpstreamUnavailable
 from ocr_common.testing import image_upload
@@ -5,7 +6,7 @@ from ocr_common.testing import image_upload
 from app.config import get_settings
 from app.main import app
 from app.services.pipeline_waiter import STATUS_REJECTED, WaitOutcome
-from tests.conftest import EXPECTED_DATA, JPEG, REJECTED_REPORT
+from tests.conftest import ACCEPTED_REPORT, EXPECTED_DATA, JPEG, OCR_RESULT, REJECTED_REPORT, STRUCTURING_RESULT
 
 TOO_MANY_PAGES = "Jumlah halaman melebihi batas, pastikan hanya mengunggah foto Kartu Keluarga"
 
@@ -39,6 +40,7 @@ def test_extract_ocr_follows_the_central_orchestrators_contract(client, auth, st
         "document_type": "kk",
         "job_status": "completed",
         "guardrails": 0,
+        "pipeline_last_stage": "scoring",
         "params": None,
     }
     assert stub_guardrails.checked == [{"request_id": "OCR_1", "filename": "kk.jpg", "content_type": "image/jpeg"}]
@@ -60,6 +62,7 @@ def test_rejection_by_the_guardrails_model_is_400_with_guardrails_0(client, auth
         "document_type": "kk",
         "job_status": "failed",
         "guardrails": 1,
+        "pipeline_last_stage": "guardrails",
         "params": None,
     }
     assert stub_ekstraksi.submitted == [] and stub_waiter.calls == []
@@ -187,61 +190,108 @@ def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_gua
     assert stub_ekstraksi.submitted == []
 
 
-def test_skip_guardrails_is_refused_with_403_while_not_allowed(client, auth, stub_guardrails, stub_ekstraksi):
-    response = _submit(client, auth, skip_guardrails="true")
-
-    assert response.status_code == 403
-    assert response.json() == {
-        "status_code": 403,
-        "status_desc": "Forbidden",
-        "message": "skip_guardrails is not allowed here: GUARDRAILS_SKIP_ALLOWED is off",
-        "data": None,
-        "errors": "GUARDRAILS_SKIP_NOT_ALLOWED",
-        "request_id": "OCR_1",
-        "document_type": "kk",
-        "job_status": None,
-        "guardrails": None,
-        "params": None,
-    }
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+NO_GUARDRAILS = ["ekstraksi", "structuring", "scoring"]
+FULL = ["guardrails", "ekstraksi", "structuring", "scoring"]
 
 
-def test_skip_guardrails_false_is_never_refused(client, auth, stub_guardrails):
-    response = _submit(client, auth, skip_guardrails="false")
+def test_without_a_sequence_the_whole_pipeline_runs(client, auth, stub_guardrails, stub_ekstraksi, stub_waiter):
+    response = _submit(client, auth)
 
     assert response.status_code == 200
     assert len(stub_guardrails.checked) == 1
+    assert stub_ekstraksi.submitted[0]["sequence"] == FULL
+    assert stub_waiter.last_stages == ["SCORING"]
 
 
-def test_skip_guardrails_must_be_a_boolean(client, auth, stub_guardrails):
-    response = _submit(client, auth, skip_guardrails="maybe")
+def test_the_sequence_is_taken_as_repeated_fields_or_as_a_json_array(client, auth, stub_ekstraksi, stub_waiter):
+    stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
+    repeated = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi"])
+    as_json = _submit(client, auth, pipeline_name_sequence='["guardrails", "ekstraksi"]')
+
+    assert (repeated.status_code, as_json.status_code) == (200, 200)
+    assert [handed["sequence"] for handed in stub_ekstraksi.submitted] == [["guardrails", "ekstraksi"]] * 2
+    assert stub_waiter.last_stages == ["OCR", "OCR"]
+
+
+@pytest.mark.parametrize(
+    ("sequence", "reason"),
+    [
+        (["ekstraksi", "scoring"], "without skipping one in the middle"),
+        (["guardrails", "structuring", "scoring"], "without skipping one in the middle"),
+        (["structuring", "scoring"], "structuring cannot come first"),
+        (["guardrails", "scoring", "structuring", "ekstraksi"], "without skipping one in the middle"),
+        (["guardrails", "guardrails"], "listed twice"),
+        (["guardrails", "extraction"], "unknown service 'extraction'"),
+        ('["guardrails", ', "JSON array of strings"),
+    ],
+)
+def test_an_invalid_sequence_is_422_before_anything_runs(
+    client, auth, stub_guardrails, stub_ekstraksi, sequence, reason
+):
+    response = _submit(client, auth, pipeline_name_sequence=sequence)
 
     assert response.status_code == 422
-    assert response.json()["errors"] == "VALIDATION_ERROR"
-    assert stub_guardrails.checked == []
+    body = response.json()
+    assert body["errors"] == "INVALID_PIPELINE_SEQUENCE"
+    assert body["message"].startswith("Invalid pipeline_name_sequence: ") and reason in body["message"]
+    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
 
 
-def test_skipped_guardrails_hand_the_document_on_without_a_report(
-    client, auth, settings_override, stub_guardrails, stub_ekstraksi
-):
-    settings_override(guardrails_skip_allowed=True)
+def test_guardrails_only_answers_with_the_report_as_it_is(client, auth, stub_ekstraksi, stub_waiter):
+    response = _submit(client, auth, pipeline_name_sequence=["guardrails"])
 
-    # A file name the guardrails model rejects: with the check skipped it never gets to judge it.
-    response = _submit(client, auth, filename="notkk.jpg", skip_guardrails="true")
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
+    assert body["data"] == ACCEPTED_REPORT
+    assert stub_ekstraksi.submitted == [] and stub_waiter.calls == []
+
+
+def test_guardrails_only_still_rejects(client, auth):
+    response = _submit(client, auth, filename="notkk.jpg", pipeline_name_sequence=["guardrails"])
+
+    assert response.status_code == 400
+    assert (response.json()["errors"], response.json()["guardrails"]) == ("DOWNSTREAM_VALIDATION_ERROR", 1)
+
+
+def test_a_sequence_ending_at_ekstraksi_answers_with_the_ocr_result_as_it_is(client, auth, stub_waiter):
+    stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
+
+    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi"])
+
+    assert response.status_code == 200
+    assert (response.json()["job_status"], response.json()["data"]) == ("completed", OCR_RESULT)
+
+
+def test_a_sequence_ending_at_structuring_answers_with_its_result_as_it_is(client, auth, stub_waiter):
+    stub_waiter.outcome = WaitOutcome(
+        "STRUCTURING", "DONE", results={"OCR": OCR_RESULT, "STRUCTURING": STRUCTURING_RESULT}
+    )
+
+    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi", "structuring"])
+
+    assert response.status_code == 200
+    assert response.json()["data"] == STRUCTURING_RESULT
+    assert stub_waiter.last_stages == ["STRUCTURING"]
+
+
+def test_without_guardrails_the_document_is_handed_on_without_a_report(client, auth, stub_guardrails, stub_ekstraksi):
+    """Leaving guardrails out is the central orchestrator's call, as in nilam: no setting here can refuse it."""
+    # A file name the guardrails model rejects: left out of the sequence, it never gets to judge it.
+    response = _submit(client, auth, filename="notkk.jpg", pipeline_name_sequence=NO_GUARDRAILS)
 
     assert response.status_code == 200
     body = response.json()
     assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
     assert stub_guardrails.checked == []
     [handed] = stub_ekstraksi.submitted
-    assert handed["guardrails"] is None
+    assert (handed["guardrails"], handed["sequence"]) == (None, NO_GUARDRAILS)
 
 
-def test_with_guardrails_skipped_the_kk_validity_gate_still_rejects(client, auth, settings_override, stub_waiter):
-    settings_override(guardrails_skip_allowed=True)
+def test_without_guardrails_the_kk_validity_gate_still_rejects(client, auth, stub_waiter):
     stub_waiter.outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, "dokumen blur / blank")
 
-    response = _submit(client, auth, skip_guardrails="true")
+    response = _submit(client, auth, pipeline_name_sequence=NO_GUARDRAILS)
 
     assert response.status_code == 400
     body = response.json()
@@ -252,17 +302,56 @@ def test_with_guardrails_skipped_the_kk_validity_gate_still_rejects(client, auth
     )
 
 
-def test_with_guardrails_skipped_the_file_checks_still_run(client, auth, settings_override, stub_ekstraksi):
-    settings_override(guardrails_skip_allowed=True)
+def test_without_guardrails_the_file_checks_still_run(client, auth, settings_override, stub_ekstraksi):
     pages = _submit(
-        client, auth, filename="scan.pdf", content=_pdf(3), content_type="application/pdf", skip_guardrails="true"
+        client,
+        auth,
+        filename="scan.pdf",
+        content=_pdf(3),
+        content_type="application/pdf",
+        pipeline_name_sequence=NO_GUARDRAILS,
     )
-    settings_override(guardrails_skip_allowed=True, max_upload_bytes=10)
-    size = _submit(client, auth, skip_guardrails="true")
+    settings_override(max_upload_bytes=10)
+    size = _submit(client, auth, pipeline_name_sequence=NO_GUARDRAILS)
 
     assert (pages.status_code, pages.json()["message"]) == (400, TOO_MANY_PAGES)
     assert size.status_code == 413
     assert stub_ekstraksi.submitted == []
+
+
+@pytest.mark.parametrize(
+    ("sequence", "outcome", "status", "stage"),
+    [
+        (None, None, 200, "scoring"),
+        (["guardrails"], None, 200, "guardrails"),
+        (["guardrails", "ekstraksi"], WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT}), 200, "ekstraksi"),
+        (None, WaitOutcome("OCR", "FAILED", "OCR model is unavailable"), 422, "ekstraksi"),
+        (None, WaitOutcome("STRUCTURING", STATUS_REJECTED, "dokumen blur / blank"), 400, "structuring"),
+        (None, WaitOutcome("STRUCTURING", "PROCESSING"), 202, "structuring"),
+    ],
+)
+def test_pipeline_last_stage_names_the_service_the_answer_comes_from(
+    client, auth, stub_waiter, sequence, outcome, status, stage
+):
+    if outcome is not None:
+        stub_waiter.outcome = outcome
+    data = {"pipeline_name_sequence": sequence} if sequence else {}
+
+    response = _submit(client, auth, **data)
+
+    assert (response.status_code, response.json()["pipeline_last_stage"]) == (status, stage)
+
+
+def test_a_guardrails_rejection_comes_from_guardrails(client, auth):
+    response = _submit(client, auth, filename="notkk.jpg")
+
+    assert (response.status_code, response.json()["pipeline_last_stage"]) == (400, "guardrails")
+
+
+def test_a_refusal_before_any_pipeline_service_names_none(client, auth):
+    response = _submit(client, auth, pipeline_name_sequence=["ekstraksi", "scoring"])
+
+    assert (response.status_code, response.json()["pipeline_last_stage"]) == (422, None)
 
 
 def test_missing_api_key_returns_401_envelope(client):

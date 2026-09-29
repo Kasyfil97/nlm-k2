@@ -7,7 +7,6 @@ import pytest
 from ocr_common.clients.remote import RemoteModelClient
 
 from app.clients.ekstraksi import EkstraksiJobClient
-from app.config import get_settings
 from app.dependencies import get_ekstraksi_client
 from app.main import app
 from tests.conftest import JPEG, REJECTED_REPORT
@@ -111,23 +110,22 @@ def test_accepted_document_is_handed_to_the_ocr_stage(client, auth, ekstraksi):
 
 
 def test_a_document_that_skipped_guardrails_is_handed_over_without_a_guardrails_field(client, auth, ekstraksi):
-    """ekstraksi refuses a `guardrails` that is not a JSON object, so no report means no field, not `null`."""
+    """ekstraksi refuses a `guardrails` that is not a JSON object, so no report means no field, not `null`.
+    The sequence goes along as a JSON array, so each stage knows where the chain stops."""
     handler = ekstraksi(_accepted)
-    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(update={"guardrails_skip_allowed": True})
-    try:
-        response = client.post(
-            "/v1/extract-ocr",
-            headers=auth,
-            data={"request_id": RID, "document_type": "kk", "skip_guardrails": "true"},
-            files={"file": ("kk.jpg", JPEG, "image/jpeg")},
-        )
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+    sequence = ["ekstraksi", "structuring", "scoring"]
+    response = client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk", "pipeline_name_sequence": sequence},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
 
     assert response.status_code == 200
     [sent] = handler.requests
     fields, file_bytes = _form(sent)
     assert "guardrails" not in fields
+    assert json.loads(fields["pipeline_name_sequence"]) == sequence
     assert (fields["request_id"], file_bytes) == (RID, JPEG)
 
 

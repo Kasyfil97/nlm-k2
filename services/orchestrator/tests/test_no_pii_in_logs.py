@@ -50,19 +50,18 @@ def test_the_request_id_is_the_one_thing_that_may_be_logged(client, auth, caplog
     """The rule is not 'log nothing'. Without a correlation id a log is useless, and an operator
     who cannot correlate will reach for the payload instead.
 
-    The success path writes nothing at all, so this takes a path that does write -- the
-    `skip_guardrails` warning -- and checks what that line carries. `RequestIdFilter` fills the
-    field from the contextvar, so a line written anywhere inside the request already has it."""
-    settings_override(guardrails_skip_allowed=True)
+    The success path writes nothing at all, so this takes a path that does write -- guardrails left
+    out by the `pipeline_name_sequence` -- and checks what that line carries. `RequestIdFilter` fills
+    the field from the contextvar, so a line written anywhere inside the request already has it."""
     with caplog.at_level(logging.DEBUG):
         client.post(
             "/v1/extract-ocr",
             headers=auth,
-            data={"request_id": RID, "skip_guardrails": "true"},
+            data={"request_id": RID, "pipeline_name_sequence": ["ekstraksi", "structuring", "scoring"]},
             files=image_upload("kk.jpg", JPEG),
         )
 
-    [warning] = [record for record in caplog.records if "skip_guardrails" in record.getMessage()]
+    [warning] = [record for record in caplog.records if "guardrails left out" in record.getMessage()]
     RequestIdFilter().filter(warning)
     assert warning.request_id == RID
     assert RID in warning.getMessage(), "and the id is in the message itself, not only in the field"

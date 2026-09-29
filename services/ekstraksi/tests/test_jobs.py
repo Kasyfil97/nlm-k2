@@ -81,7 +81,7 @@ def test_the_guardrails_report_is_forwarded_unchanged(harness, auth):
 
 
 def test_a_job_without_a_guardrails_report_hands_off_a_null(harness, auth):
-    """`skip_guardrails=true` at the orchestrator leaves the field out entirely (§6.1)."""
+    """A `pipeline_name_sequence` without `guardrails` at the orchestrator leaves the field out entirely (§6.1)."""
     client, _, next_stage = harness
     client.post("/v1/ekstraksi/jobs", headers=auth, data={"request_id": "REQ_noguard"}, files=image_upload("kk.jpg"))
     wait_for_job(client, "/v1/ekstraksi/jobs/REQ_noguard")
@@ -221,3 +221,95 @@ async def test_a_stale_job_of_an_inline_upload_fails_with_a_reason_that_says_wha
     assert "uploaded inline" in job["error_message"] and "file_url" in job["error_message"]
     assert [(c["stage"], c["status"]) for c in callback.calls] == [("OCR", "FAILED")]
     assert next_stage.payloads == []
+
+
+# --- pipeline_name_sequence ---------------------------------------------------------------------
+
+
+def _submit_with_sequence(client, auth, request_id, sequence):
+    data = {
+        "request_id": request_id,
+        "document_type": DOCUMENT_TYPE,
+        "guardrails": json.dumps(GUARDRAILS),
+        "pipeline_name_sequence": json.dumps(sequence),
+    }
+    return client.post("/v1/ekstraksi/jobs", headers=auth, data=data, files=image_upload("kk.jpg"))
+
+
+def test_a_sequence_ending_here_stops_with_the_ocr_result_as_the_answer(harness, auth):
+    client, callback, next_stage = harness
+
+    assert _submit_with_sequence(client, auth, "REQ_seq_end", ["guardrails", "ekstraksi"]).status_code == 202
+
+    job = wait_for_job(client, "/v1/ekstraksi/jobs/REQ_seq_end")
+    assert job["status"] == "DONE"
+    assert job["pipeline_name_sequence"] == ["guardrails", "ekstraksi"]
+    assert next_stage.payloads == [], "nothing is handed on after the last service"
+    [done] = callback.calls
+    assert (done["stage"], done["status"], done["final"], done["result"]) == ("OCR", "DONE", True, job["result"])
+
+
+def test_a_longer_sequence_is_handed_on_with_the_job(harness, auth):
+    client, callback, next_stage = harness
+    sequence = ["ekstraksi", "structuring"]
+
+    assert _submit_with_sequence(client, auth, "REQ_seq_on", sequence).status_code == 202
+
+    job = wait_for_job(client, "/v1/ekstraksi/jobs/REQ_seq_on")
+    [payload] = next_stage.payloads
+    assert payload["pipeline_name_sequence"] == sequence
+    assert [(c["stage"], c["status"], c.get("final")) for c in callback.calls] == [("OCR", "DONE", None)]
+    assert job["pipeline_name_sequence"] == sequence
+
+
+def test_without_a_sequence_the_full_pipeline_runs_and_none_is_stored(harness, auth):
+    client, _, next_stage = harness
+
+    assert _submit(client, auth, "REQ_seq_none").status_code == 202
+
+    job = wait_for_job(client, "/v1/ekstraksi/jobs/REQ_seq_none")
+    assert job["pipeline_name_sequence"] is None
+    [payload] = next_stage.payloads
+    assert "pipeline_name_sequence" not in payload
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '["guardrails"]',
+        '["structuring", "scoring"]',
+        '["ekstraksi", "scoring"]',
+        '["extraction"]',
+        '"ekstraksi"',
+        "not json",
+    ],
+)
+def test_an_invalid_sequence_is_400(harness, auth, raw):
+    client, _, _ = harness
+    data = {"request_id": "REQ_seq_bad", "document_type": DOCUMENT_TYPE, "pipeline_name_sequence": raw}
+
+    response = client.post("/v1/ekstraksi/jobs", headers=auth, data=data, files=image_upload("kk.jpg"))
+
+    assert response.status_code == 400
+    assert "pipeline_name_sequence" in response.json()["message"]
+
+
+async def test_a_stale_job_is_run_again_with_the_sequence_it_was_submitted_with(monkeypatch):
+    service, pipeline, callback, next_stage = _service()
+    stored = {
+        "document_type": DOCUMENT_TYPE,
+        "guardrails": GUARDRAILS,
+        "file_url": FILE_URL,
+        "pipeline_name_sequence": ["ekstraksi"],
+    }
+    await pipeline.repository.claim("REQ_stale_seq", input=stored)
+
+    async def fake_fetch(url, *, limit, timeout=10.0, policy):
+        return b"\xff\xd8fake-jpeg-bytes", "kk.jpg", "image/jpeg"
+
+    monkeypatch.setattr("app.services.job_service.fetch", fake_fetch)
+    await service.resume("REQ_stale_seq", stored)
+    await pipeline.runner.drain(5)
+
+    assert next_stage.payloads == []
+    assert [(c["stage"], c.get("final")) for c in callback.calls] == [("OCR", True)]
