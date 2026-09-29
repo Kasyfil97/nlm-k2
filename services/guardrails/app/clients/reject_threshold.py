@@ -20,6 +20,7 @@ import logging
 import math
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from ocr_common.clients.remote import RemoteModelClient
@@ -116,3 +117,24 @@ class RejectThreshold:
                 logger.info("reject threshold from the orchestrator: %s", value)
             self._value = value
         self._checked_at = self._clock()
+
+
+ACCEPT = "accept"
+REJECT = "reject"
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """A threshold and the side it applies to, as nilam's guardrails takes it per request.
+
+    `reject`: rejected when `probability_bad >= value`. `accept`: rejected when the probability the image
+    is good, `1 - probability_bad`, is below `value`. The KK model gives one probability, so the accept side
+    is its complement. The configured chain (URL, env, the model's own) is always on the reject side."""
+
+    value: float
+    target: str = REJECT
+
+    def rejects(self, probability_bad: float) -> bool:
+        if self.target == ACCEPT:
+            return round(1.0 - probability_bad, 4) < self.value
+        return probability_bad >= self.value

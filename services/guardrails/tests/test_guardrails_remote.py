@@ -9,6 +9,7 @@ from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import ServiceError
 from ocr_common.testing import image_upload
 
+from app.clients.reject_threshold import Threshold
 from app.config import Settings
 from app.dependencies import QUALITY_BACKENDS
 from app.ml.remote import RemoteGuardrailsModel
@@ -120,7 +121,7 @@ async def test_local_threshold_settings_do_not_override_the_remote_verdict():
 
 async def test_a_per_request_override_is_ignored_by_the_remote_backend():
     service = GuardrailsService(_model(_reply(ACCEPTED)), _settings())
-    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=0.001)
+    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=Threshold(0.001, "reject"))
     assert report["document"] == ACCEPTED["data"]["document"] | {"confidence": 0.9713}
 
 

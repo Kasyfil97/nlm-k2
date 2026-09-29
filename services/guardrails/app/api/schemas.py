@@ -59,6 +59,15 @@ class DocumentResult(BaseModel):
         ),
         examples=[0.5],
     )
+    threshold_target: Literal["accept", "reject"] | None = Field(
+        None,
+        description=(
+            "The side `threshold_used` applied to: `reject` (rejected when `probability_bad >= threshold_used`) "
+            "or `accept` (accepted when `1 - probability_bad >= threshold_used`). `reject` unless the request "
+            "sent `threshold_target`. Null with the `remote` backend"
+        ),
+        examples=["reject"],
+    )
 
 
 class GuardrailReport(BaseModel):

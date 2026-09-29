@@ -749,6 +749,25 @@ components:
             - ekstraksi
             - structuring
             - scoring
+        guardrails_confidence_threshold:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Guardrails Confidence Threshold
+          description: 'Guardrails threshold for this document, between 0 and 1 (exclusive), with `guardrails_tendency`.
+            Omitted: the guardrails service''s own threshold'
+          examples:
+          - '0.3'
+        guardrails_tendency:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Guardrails Tendency
+          description: 'The side `guardrails_confidence_threshold` applies to: `accepted` (the document
+            passes when its probability of being good, `1 - probability_bad`, reaches it) or `rejected`
+            (it is rejected when `probability_bad` reaches it)'
+          examples:
+          - accepted
         column_confidence_threshold:
           anyOf:
           - type: string

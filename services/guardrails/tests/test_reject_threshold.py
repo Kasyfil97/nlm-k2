@@ -4,7 +4,7 @@ import pytest
 
 from ocr_common.errors import UpstreamUnavailable
 
-from app.clients.reject_threshold import RejectThreshold, default_threshold, parse_threshold
+from app.clients.reject_threshold import RejectThreshold, Threshold, default_threshold, parse_threshold
 from app.config import Settings
 from app.ml.mock import MockQualityModel
 from app.services.guardrails_service import GuardrailsService
@@ -157,6 +157,6 @@ async def test_the_per_request_override_outranks_the_orchestrator():
     """Rung 1. It also means the orchestrator's endpoint is not even consulted for that request."""
     stub = StubOrchestrator({"reject_threshold": 0.7})
     service = GuardrailsService(StubModel(0.65), Settings(api_key="x", _env_file=None), _threshold(stub))
-    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=0.6)
+    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=Threshold(0.6, "reject"))
     assert (report["document"]["verdict"], report["document"]["threshold_used"]) == ("reject", 0.6)
     assert stub.paths == [], "the remote source was not consulted for an overridden request"

@@ -72,6 +72,11 @@ class GuardrailsDocument(_Forwarded):
         ),
         examples=[0.5],
     )
+    threshold_target: Literal["accept", "reject"] | None = Field(
+        None,
+        description="The side `threshold_used` applied to: `reject` (the default) or `accept` (on 1 - probability_bad)",
+        examples=["reject"],
+    )
 
 
 class GuardrailsResult(_Forwarded):

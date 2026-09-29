@@ -174,9 +174,9 @@ paths:
         **Always 200 when the document was received**: read `data.passed`. An image the model cannot judge
         is `verdict: "unassessable"` with `probability_bad: null` and `passed: false`, not an error status.
         The 400s below are about the *request*, not about the document: an intake that names neither or
-        both of `file` and `file_url`, a `threshold` outside (0, 1), a refused `file_url`, or a `file_url`
-        while `GUARDRAILS_FETCH_URL=false`. Type and size are checked by the orchestrator before this
-        endpoint is called.'
+        both of `file` and `file_url`, a refused `file_url`, or a `file_url` while `GUARDRAILS_FETCH_URL=false`.
+        A `threshold` outside (0, 1), or one without its `threshold_target`, is 422. Type and size are
+        checked by the orchestrator before this endpoint is called.'
       operationId: checkDocument
       requestBody:
         content:
@@ -235,7 +235,7 @@ paths:
                         threshold_used: 0.5
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
-          description: Bad intake, or a threshold outside (0, 1)
+          description: Bad intake
           content:
             application/json:
               schema:
@@ -257,7 +257,8 @@ paths:
                 message: Invalid or missing API key
                 errors: Invalid or missing API key
         '422':
-          description: Validation Error
+          description: '`threshold` outside (0, 1), not a number, or sent without `threshold_target` (or
+            the other way round)'
           content:
             application/json:
               schema:
@@ -265,7 +266,7 @@ paths:
               example:
                 status_code: 422
                 status_desc: Unprocessable Entity
-                message: 'body.threshold: Input should be a valid number'
+                message: send threshold and threshold_target together, or neither
                 errors: VALIDATION_ERROR
         '500':
           description: The guardrails model failed
@@ -334,13 +335,28 @@ components:
         threshold:
           anyOf:
           - type: number
+            exclusiveMaximum: 1.0
+            exclusiveMinimum: 0.0
           - type: 'null'
           title: Threshold
-          description: Reject threshold for this request only, overriding every configured source. Strictly
-            between 0 and 1; normally not sent. Ignored by the `remote` backend, which judges under its
-            own
+          description: Threshold for this request only, overriding every configured source; sent with
+            `threshold_target`, or neither (as in nilam). Strictly between 0 and 1. Ignored by the `remote`
+            backend, which judges under its own
           examples:
           - 0.5
+        threshold_target:
+          anyOf:
+          - type: string
+            enum:
+            - accept
+            - reject
+          - type: 'null'
+          title: Threshold Target
+          description: 'The side `threshold` applies to. `reject`: rejected when `probability_bad >= threshold`.
+            `accept`: accepted when `1 - probability_bad >= threshold` -- the KK model gives one probability,
+            so the accept side is its complement'
+          examples:
+          - accept
       type: object
       title: Body_checkDocument
     DocumentResult:
@@ -393,6 +409,19 @@ components:
             Null with the `remote` backend when that service does not state its own'
           examples:
           - 0.5
+        threshold_target:
+          anyOf:
+          - type: string
+            enum:
+            - accept
+            - reject
+          - type: 'null'
+          title: Threshold Target
+          description: 'The side `threshold_used` applied to: `reject` (rejected when `probability_bad
+            >= threshold_used`) or `accept` (accepted when `1 - probability_bad >= threshold_used`). `reject`
+            unless the request sent `threshold_target`. Null with the `remote` backend'
+          examples:
+          - reject
       type: object
       required:
       - verdict

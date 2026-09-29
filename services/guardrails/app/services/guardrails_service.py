@@ -13,7 +13,7 @@ from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
-from app.clients.reject_threshold import RejectThreshold, default_threshold
+from app.clients.reject_threshold import REJECT, RejectThreshold, Threshold, default_threshold
 from app.config import Settings
 from app.ml.base import UnassessableImage
 
@@ -54,22 +54,23 @@ class GuardrailsService:
         )
 
     async def check(
-        self, filename: str, content_type: str | None, content: bytes, *, override: float | None = None
+        self, filename: str, content_type: str | None, content: bytes, *, override: Threshold | None = None
     ) -> dict[str, Any]:
-        """The §5.2 `data` block: `{passed, reason, document}`."""
+        """The §5.2 `data` block: `{passed, reason, document}`. `override` is the request's own threshold and
+        side; without it the configured chain decides, on the reject side."""
         if hasattr(self._model, "check_document"):
             # The remote service judges under its own threshold, so neither the per-request
             # override nor the chain applies; forcing one here would report a threshold that did
             # not decide anything.
             document = await self._model.check_document(filename, content, content_type)
         else:
-            threshold = override if override is not None else await self._threshold.get()
+            threshold = override if override is not None else Threshold(await self._threshold.get(), REJECT)
             document = await run_in_threadpool(self._assess, filename, content_type, content, threshold)
 
         verdict = document["verdict"]
         return {"passed": verdict == VERDICT_ACCEPTED, "reason": reason_for(verdict), "document": document}
 
-    def _assess(self, filename: str, content_type: str | None, content: bytes, threshold: float) -> dict[str, Any]:
+    def _assess(self, filename: str, content_type: str | None, content: bytes, threshold: Threshold) -> dict[str, Any]:
         """Runs the in-process model and turns its one probability into the document block."""
         try:
             probability_bad = round(float(self._model.assess(filename, content_type, content)), 4)
@@ -83,15 +84,17 @@ class GuardrailsService:
                 "probability_bad": None,
                 # The threshold that was in force, even though nothing was compared against it:
                 # the field records the configuration the request ran under.
-                "threshold_used": threshold,
+                "threshold_used": threshold.value,
+                "threshold_target": threshold.target,
             }
 
-        rejected = probability_bad >= threshold
+        rejected = threshold.rejects(probability_bad)
         return {
             "verdict": VERDICT_REJECT if rejected else VERDICT_ACCEPTED,
             # Confidence in the verdict, not in "bad": the rejection is as confident as the
             # probability, the acceptance is as confident as its complement.
             "confidence": probability_bad if rejected else round(1.0 - probability_bad, 4),
             "probability_bad": probability_bad,
-            "threshold_used": threshold,
+            "threshold_used": threshold.value,
+            "threshold_target": threshold.target,
         }

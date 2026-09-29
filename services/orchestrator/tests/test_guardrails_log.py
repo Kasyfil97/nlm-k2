@@ -201,3 +201,13 @@ def test_a_stage_job_wins_over_the_verdict(client, auth, stub_waiter):
     _submit(client, auth, filename="blur.jpg")  # an earlier attempt was rejected; the stub still has a DONE job
 
     assert _get(client, auth).status_code == 200
+
+
+async def test_a_threshold_from_the_request_is_recorded_as_such(database):
+    url, table = database
+    document = {**ACCEPTED_REPORT["document"], "threshold_used": 0.3, "threshold_target": "accept"}
+
+    await SqlGuardrailsLog(url).record(RID, {**ACCEPTED_REPORT, "document": document}, threshold_from_request=True)
+
+    [row] = await _rows(url, table)
+    assert (row["threshold"], row["threshold_target"], row["threshold_source"]) == (0.3, "accept", "request")

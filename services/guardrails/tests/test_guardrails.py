@@ -5,6 +5,7 @@ import pytest
 from ocr_common.pipeline.schemas import GuardrailsResult
 from ocr_common.testing import image_upload
 
+from app.clients.reject_threshold import Threshold
 from app.config import Settings
 from app.ml.mock import PROBABILITY_BAD_ACCEPT, PROBABILITY_BAD_REJECT, REJECT_TRIGGERS
 from app.services.guardrails_service import (
@@ -36,6 +37,7 @@ async def test_a_good_image_is_accepted_and_confidence_is_the_complement():
         "confidence": 0.9713,
         "probability_bad": 0.0287,
         "threshold_used": 0.5,
+        "threshold_target": "reject",
     }
     # The contract states the relation, not the rounding; both must hold.
     assert report["document"]["confidence"] == pytest.approx(1 - report["document"]["probability_bad"])
@@ -49,6 +51,7 @@ async def test_a_bad_image_is_rejected_with_an_indonesian_reason():
         "confidence": 0.8821,
         "probability_bad": 0.8821,
         "threshold_used": 0.5,
+        "threshold_target": "reject",
     }
     # `reason` is relayed as the orchestrator's `message` (§3.5), so it is the end user's sentence.
     assert report["reason"] == REASON_REJECT == "Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas"
@@ -90,9 +93,19 @@ async def test_the_per_request_threshold_beats_the_environment():
     lenient = await _check(model, guardrails_threshold=0.9)
     assert (lenient["document"]["verdict"], lenient["document"]["threshold_used"]) == ("accepted", 0.9)
 
-    strict = await _check(model, override=0.25, guardrails_threshold=0.9)
+    strict = await _check(model, override=Threshold(0.25, "reject"), guardrails_threshold=0.9)
     assert strict["document"]["verdict"] == "reject"
     assert strict["document"]["threshold_used"] == 0.25, "the report states the threshold that decided"
+
+
+async def test_the_accept_side_compares_the_complement_of_probability_bad():
+    """`accept`: the document passes when `1 - probability_bad` reaches the threshold (as in nilam, where the
+    model gives the accept probability itself; the KK model gives one probability, so its complement)."""
+    model = StubModel(0.30)  # 0.70 good
+    passes = await _check(model, override=Threshold(0.7, "accept"))
+    fails = await _check(model, override=Threshold(0.71, "accept"))
+    assert (passes["document"]["verdict"], passes["document"]["threshold_target"]) == ("accepted", "accept")
+    assert fails["document"]["verdict"] == "reject"
 
 
 async def test_the_environment_beats_the_value_stored_with_the_weights():
@@ -181,6 +194,7 @@ def test_check_returns_the_report_in_the_envelope(client, auth):
             "confidence": round(1 - PROBABILITY_BAD_ACCEPT, 4),
             "probability_bad": PROBABILITY_BAD_ACCEPT,
             "threshold_used": 0.5,
+            "threshold_target": "reject",
         },
     }
 
@@ -201,30 +215,53 @@ def test_a_per_request_threshold_travels_through_the_endpoint(client, auth, use_
     use_model(StubModel(0.30))
     response = client.post(
         "/v1/guardrails/check",
-        data={"request_id": "OCR_7", "threshold": "0.25"},
+        data={"request_id": "OCR_7", "threshold": "0.25", "threshold_target": "reject"},
         files=image_upload("kk.jpg", JPEG),
         headers=auth,
     )
-    data = response.json()["data"]
-    assert (data["document"]["verdict"], data["document"]["threshold_used"]) == ("reject", 0.25)
+    document = response.json()["data"]["document"]
+    assert (document["verdict"], document["threshold_used"], document["threshold_target"]) == ("reject", 0.25, "reject")
 
 
-@pytest.mark.parametrize("threshold", ["0", "1", "1.5", "-0.2"])
-def test_a_threshold_outside_the_open_unit_interval_is_400(client, auth, threshold):
+def test_the_accept_side_travels_through_the_endpoint(client, auth, use_model):
+    use_model(StubModel(0.30))
     response = client.post(
         "/v1/guardrails/check",
-        data={"request_id": "OCR_8", "threshold": threshold},
+        data={"request_id": "OCR_7a", "threshold": "0.9", "threshold_target": "accept"},
         files=image_upload("kk.jpg", JPEG),
         headers=auth,
     )
-    assert response.status_code == 400
-    assert "between 0 and 1" in response.json()["message"]
+    document = response.json()["data"]["document"]
+    assert (document["verdict"], document["threshold_target"]) == ("reject", "accept"), "0.70 good < 0.9"
+
+
+@pytest.mark.parametrize(
+    "form",
+    [
+        {"threshold": "0", "threshold_target": "reject"},
+        {"threshold": "1", "threshold_target": "reject"},
+        {"threshold": "1.5", "threshold_target": "accept"},
+        {"threshold": "-0.2", "threshold_target": "accept"},
+        {"threshold": "0.5"},
+        {"threshold_target": "accept"},
+        {"threshold": "0.5", "threshold_target": "maybe"},
+    ],
+)
+def test_a_threshold_without_its_side_or_out_of_range_is_422(client, auth, form):
+    """As in nilam: `threshold` and `threshold_target` together or neither, the value in (0, 1)."""
+    response = client.post(
+        "/v1/guardrails/check",
+        data={"request_id": "OCR_8", **form},
+        files=image_upload("kk.jpg", JPEG),
+        headers=auth,
+    )
+    assert response.status_code == 422
 
 
 def test_a_threshold_that_is_not_a_number_is_422(client, auth):
     response = client.post(
         "/v1/guardrails/check",
-        data={"request_id": "OCR_9", "threshold": "strict"},
+        data={"request_id": "OCR_9", "threshold": "strict", "threshold_target": "reject"},
         files=image_upload("kk.jpg", JPEG),
         headers=auth,
     )

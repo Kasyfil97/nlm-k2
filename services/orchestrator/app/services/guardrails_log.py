@@ -20,8 +20,9 @@ from ocr_common.pipeline.tables import guardrails_results_table
 
 logger = logging.getLogger(__name__)
 
-# Whose threshold decided. Only `service` exists here: the guardrails service's own threshold chain (R15).
-# nilam also writes `request`, for a threshold the central orchestrator sends with the request.
+# Whose threshold decided, as in nilam: the central orchestrator's, sent with the request, or the guardrails
+# service's own threshold chain (R15).
+SOURCE_REQUEST = "request"
 SOURCE_SERVICE = "service"
 
 
@@ -38,6 +39,7 @@ class GuardrailsLog(Protocol):
         request_id: str,
         report: dict[str, Any],
         *,
+        threshold_from_request: bool = False,
         n_pages: int | None = None,
         sequence: Sequence[str] | None = None,
     ) -> None: ...
@@ -53,6 +55,7 @@ class NoGuardrailsLog:
         request_id: str,
         report: dict[str, Any],
         *,
+        threshold_from_request: bool = False,
         n_pages: int | None = None,
         sequence: Sequence[str] | None = None,
     ) -> None:
@@ -73,11 +76,14 @@ class SqlGuardrailsLog:
         request_id: str,
         report: dict[str, Any],
         *,
+        threshold_from_request: bool = False,
         n_pages: int | None = None,
         sequence: Sequence[str] | None = None,
     ) -> None:
         try:
-            await asyncio.wait_for(self._insert(request_id, report, n_pages, sequence), self._timeout)
+            await asyncio.wait_for(
+                self._insert(request_id, report, threshold_from_request, n_pages, sequence), self._timeout
+            )
         except Exception:  # noqa: BLE001 - best-effort, see the module docstring
             logger.exception("guardrails verdict of %s not recorded", request_id)
 
@@ -91,7 +97,12 @@ class SqlGuardrailsLog:
             return None
 
     async def _insert(
-        self, request_id: str, report: dict[str, Any], n_pages: int | None, sequence: Sequence[str] | None
+        self,
+        request_id: str,
+        report: dict[str, Any],
+        threshold_from_request: bool,
+        n_pages: int | None,
+        sequence: Sequence[str] | None,
     ) -> None:
         document = report.get("document") or {}
         now = datetime.now(UTC)
@@ -103,8 +114,8 @@ class SqlGuardrailsLog:
                     verdict=document.get("verdict"),
                     confidence=document.get("confidence"),
                     threshold=document.get("threshold_used"),
-                    threshold_target=None,
-                    threshold_source=SOURCE_SERVICE,
+                    threshold_target=document.get("threshold_target"),
+                    threshold_source=SOURCE_REQUEST if threshold_from_request else SOURCE_SERVICE,
                     n_pages=n_pages,
                     reason=report.get("reason"),
                     pipeline_name_sequence=list(sequence) if sequence else None,

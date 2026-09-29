@@ -11,7 +11,7 @@ from ocr_common.pipeline import DEFAULT_SEQUENCE, GUARDRAILS, STAGE_OF, STAGE_SC
 from ocr_common.types import ScoringResult, StructuringResult
 
 from app.clients.ekstraksi import EkstraksiJobClient
-from app.clients.guardrails import GuardrailsClient
+from app.clients.guardrails import GuardrailsClient, GuardrailsThreshold
 from app.config import Settings
 from app.services.document_checks import check_document
 from app.services.guardrails_log import GuardrailsLog, NoGuardrailsLog
@@ -54,6 +54,7 @@ class ExtractOcrService:
         received_at: float | None = None,
         file_url: str | None = None,
         sequence: Sequence[str] = DEFAULT_SEQUENCE,
+        guardrails_threshold: GuardrailsThreshold | None = None,
         column_thresholds: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
         """Check the file (type, empty, `MAX_UPLOAD_BYTES`, `MAX_DOCUMENT_PAGES`) before anyone else sees it,
@@ -68,8 +69,14 @@ class ExtractOcrService:
         started = time.monotonic() if received_at is None else received_at
         n_pages = check_document(content_type, content, self._settings)
         if GUARDRAILS in sequence:
-            report = await self._guardrails.check(request_id, filename, content_type, content)
-            await self._log.record(request_id, report, n_pages=n_pages, sequence=sequence)
+            report = await self._guardrails.check(request_id, filename, content_type, content, guardrails_threshold)
+            await self._log.record(
+                request_id,
+                report,
+                threshold_from_request=guardrails_threshold is not None,
+                n_pages=n_pages,
+                sequence=sequence,
+            )
             if not report["passed"]:
                 return {**report, "job": None, "pipeline": None, "result": None}
             verdict: dict[str, Any] = report

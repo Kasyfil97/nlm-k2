@@ -1,6 +1,6 @@
 import json
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
@@ -21,6 +21,7 @@ from app.api.extract_contract import (
     extract_response,
 )
 from app.api.schemas import ExtractOcrResponse
+from app.clients.guardrails import GuardrailsThreshold
 from app.config import Settings, get_settings
 from app.dependencies import get_extract_service
 from app.middleware import TOO_MANY_REQUESTS
@@ -138,6 +139,35 @@ class _InvalidParams(Exception):
 
 class _InvalidThreshold(Exception):
     pass
+
+
+# guardrails_tendency as the central orchestrator writes it (accepted / rejected), to the side it names.
+TENDENCIES: dict[str, Literal["accept", "reject"]] = {
+    "accepted": "accept",
+    "accept": "accept",
+    "rejected": "reject",
+    "reject": "reject",
+}
+
+
+def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> GuardrailsThreshold | None:
+    """`guardrails_confidence_threshold` + `guardrails_tendency`, both or neither; None (neither) leaves the
+    guardrails service's own threshold in force. Raises `_InvalidThreshold`. Ported from nilam."""
+    value = (value or "").strip()
+    tendency = (tendency or "").strip().lower()
+    if not value and not tendency:
+        return None
+    if not value or not tendency:
+        raise _InvalidThreshold("send guardrails_confidence_threshold and guardrails_tendency together, or neither")
+    try:
+        threshold = float(value)
+    except ValueError:
+        threshold = float("nan")
+    if not 0 < threshold < 1:
+        raise _InvalidThreshold(f"guardrails_confidence_threshold must be a number between 0 and 1, got {value!r}")
+    if tendency not in TENDENCIES:
+        raise _InvalidThreshold(f"guardrails_tendency must be accepted or rejected, got {tendency!r}")
+    return GuardrailsThreshold(threshold, TENDENCIES[tendency])
 
 
 def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
@@ -298,6 +328,23 @@ async def extract_ocr(
         ),
         examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
     ),
+    guardrails_confidence_threshold: str | None = Form(
+        None,
+        description=(
+            "Guardrails threshold for this document, between 0 and 1 (exclusive), with `guardrails_tendency`. "
+            "Omitted: the guardrails service's own threshold"
+        ),
+        examples=["0.3"],
+    ),
+    guardrails_tendency: str | None = Form(
+        None,
+        description=(
+            "The side `guardrails_confidence_threshold` applies to: `accepted` (the document passes when its "
+            "probability of being good, `1 - probability_bad`, reaches it) or `rejected` (it is rejected when "
+            "`probability_bad` reaches it)"
+        ),
+        examples=["accepted"],
+    ),
     column_confidence_threshold: str | None = Form(
         None,
         description=f"{COLUMN_THRESHOLD_DESCRIPTION}. A JSON object string",
@@ -339,6 +386,7 @@ async def extract_ocr(
             document_type=document_type,
         )
     try:
+        guardrails_threshold = _parse_guardrails_threshold(guardrails_confidence_threshold, guardrails_tendency)
         try:
             column_thresholds = column_thresholds_from_json(column_confidence_threshold)
         except ValueError as exc:
@@ -368,6 +416,7 @@ async def extract_ocr(
             received_at=received_at,
             file_url=file_url,
             sequence=sequence,
+            guardrails_threshold=guardrails_threshold,
             column_thresholds=column_thresholds,
         )
     finally:

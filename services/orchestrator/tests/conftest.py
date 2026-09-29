@@ -130,9 +130,11 @@ class StubGuardrails:
     def __init__(self) -> None:
         self.checked: list[dict] = []
         self.error: Exception | None = None
+        self.thresholds: list = []
 
-    async def check(self, request_id, filename, content_type, content) -> dict:
+    async def check(self, request_id, filename, content_type, content, threshold=None) -> dict:
         self.checked.append({"request_id": request_id, "filename": filename, "content_type": content_type})
+        self.thresholds.append(threshold)
         if self.error is not None:
             raise self.error
         rejected = any(word in filename for word in ("blur", "invalid", "notkk"))
@@ -181,11 +183,12 @@ class RecordingGuardrailsLog:
     def __init__(self) -> None:
         self.records: list[dict] = []
 
-    async def record(self, request_id, report, *, n_pages=None, sequence=None) -> None:
+    async def record(self, request_id, report, *, threshold_from_request=False, n_pages=None, sequence=None) -> None:
         self.records.append(
             {
                 "request_id": request_id,
                 "report": report,
+                "threshold_from_request": threshold_from_request,
                 "n_pages": n_pages,
                 "sequence": list(sequence) if sequence else None,
             }

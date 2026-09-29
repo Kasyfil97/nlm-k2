@@ -1,6 +1,8 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 
-from ocr_common.errors import BadRequest
+from ocr_common.errors import BadRequest, UnprocessableEntity
 from ocr_common.web.envelope import envelope
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import get_request_id
@@ -8,6 +10,7 @@ from ocr_common.web.schemas import UNAUTHORIZED, error, success_examples
 from ocr_common.web.security import verify_api_key
 
 from app.api.schemas import GuardrailReportResponse
+from app.clients.reject_threshold import Threshold
 from app.config import Settings, get_settings
 from app.dependencies import get_guardrails_service
 from app.services.guardrails_service import REASON_REJECT, REASON_UNASSESSABLE, GuardrailsService
@@ -39,22 +42,34 @@ _UNASSESSABLE_REPORT = {
 
 ThresholdField = Form(
     None,
+    gt=0,
+    lt=1,
     description=(
-        "Reject threshold for this request only, overriding every configured source. Strictly between 0 "
-        "and 1; normally not sent. Ignored by the `remote` backend, which judges under its own"
+        "Threshold for this request only, overriding every configured source; sent with `threshold_target`, "
+        "or neither (as in nilam). Strictly between 0 and 1. Ignored by the `remote` backend, which judges "
+        "under its own"
     ),
     examples=[0.5],
 )
 
+ThresholdTargetField = Form(
+    None,
+    description=(
+        "The side `threshold` applies to. `reject`: rejected when `probability_bad >= threshold`. `accept`: "
+        "accepted when `1 - probability_bad >= threshold` -- the KK model gives one probability, so the "
+        "accept side is its complement"
+    ),
+    examples=["accept"],
+)
 
-def _validate_threshold(threshold: float | None) -> float | None:
-    """Rung 1 of the R15 chain. Outside (0, 1) is a 400 and not a clamp: 0 would reject every
-    document and 1 almost none, so a caller who sends one has a bug worth hearing about."""
-    if threshold is None:
+
+def _given_threshold(threshold: float | None, target: str | None) -> Threshold | None:
+    """Rung 1 of the R15 chain: the request's own threshold and side, both or neither (422 otherwise)."""
+    if threshold is None and target is None:
         return None
-    if not 0 < threshold < 1:
-        raise BadRequest(f"threshold must be strictly between 0 and 1, got {threshold}")
-    return threshold
+    if threshold is None or target is None:
+        raise UnprocessableEntity("send threshold and threshold_target together, or neither")
+    return Threshold(threshold, target)
 
 
 @router.post(
@@ -71,9 +86,9 @@ def _validate_threshold(threshold: float | None) -> float | None:
         "**Always 200 when the document was received**: read `data.passed`. An image the model cannot "
         'judge is `verdict: "unassessable"` with `probability_bad: null` and `passed: false`, not an '
         "error status. The 400s below are about the *request*, not about the document: an intake that "
-        "names neither or both of `file` and `file_url`, a `threshold` outside (0, 1), a refused "
-        "`file_url`, or a `file_url` while `GUARDRAILS_FETCH_URL=false`. Type and size are checked by the "
-        "orchestrator before this endpoint is called."
+        "names neither or both of `file` and `file_url`, a refused `file_url`, or a `file_url` while "
+        "`GUARDRAILS_FETCH_URL=false`. A `threshold` outside (0, 1), or one without its `threshold_target`, "
+        "is 422. Type and size are checked by the orchestrator before this endpoint is called."
     ),
     responses={
         200: success_examples(
@@ -82,10 +97,13 @@ def _validate_threshold(threshold: float | None) -> float | None:
             rejected=("Rejected", envelope(200, "OK", _REJECTED_REPORT, RID)),
             unassessable=("Could not be judged", envelope(200, "OK", _UNASSESSABLE_REPORT, RID)),
         ),
-        400: error(400, "Bad intake, or a threshold outside (0, 1)", "Send exactly one of file or file_url"),
+        400: error(400, "Bad intake", "Send exactly one of file or file_url"),
         401: UNAUTHORIZED,
         422: error(
-            422, "Validation Error", "body.threshold: Input should be a valid number", errors="VALIDATION_ERROR"
+            422,
+            "`threshold` outside (0, 1), not a number, or sent without `threshold_target` (or the other way round)",
+            "send threshold and threshold_target together, or neither",
+            errors="VALIDATION_ERROR",
         ),
         500: error(500, "The guardrails model failed", "guardrails model returned an unexpected response"),
         503: error(503, "The guardrails model service (`remote`) is unreachable", "guardrails model is unavailable"),
@@ -102,10 +120,11 @@ async def check_document(
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
     threshold: float | None = ThresholdField,
+    threshold_target: Literal["accept", "reject"] | None = ThresholdTargetField,
     settings: Settings = Depends(get_settings),
     service: GuardrailsService = Depends(get_guardrails_service),
 ):
-    override = _validate_threshold(threshold)
+    override = _given_threshold(threshold, threshold_target)
     if file_url and not settings.guardrails_fetch_url:
         # R18a: with the switch off this service never downloads, and the orchestrator is expected
         # to have fetched the bytes already. Saying so is better than silently ignoring the field.
