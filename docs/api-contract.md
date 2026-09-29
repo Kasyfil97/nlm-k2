@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 13, 29 September 2026.
+Status: draf 14, 29 September 2026.
 
 ---
 
@@ -278,7 +278,7 @@ request tetap dijawab.
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
-| `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `ekstraksi`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya. Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
+| `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `ekstraksi`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
 | `guardrails_confidence_threshold` | string (angka) | tidak | ambang guardrails untuk dokumen ini, `0 < x < 1`, **berpasangan** dengan `guardrails_tendency`. Tidak dikirim = ambang milik service guardrails |
 | `guardrails_tendency` | string | tidak | `accepted` \| `rejected`: sisi yang dikenai ambang. `accepted`: lolos bila `1 − probability_bad ≥ x`; `rejected`: ditolak bila `probability_bad ≥ x`. Salah satu tanpa yang lain → 422 `INVALID_THRESHOLD` |
 | `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
@@ -293,6 +293,13 @@ OCR (7.1), hasil structuring (7.3), atau sembilan field setelah scoring — dan 
 menyebut service itu. Tanpa `guardrails`, cek file tetap berjalan dan aturan structuring tetap menolak.
 Urutannya ikut ke setiap tahap (form ke ekstraksi, badan handoff, `input` job), jadi job basi yang
 dijalankan ulang berhenti di tempat yang sama.
+
+**Field kosong berbeda dengan nilam.** Klien form mengirim field kosong sebagai `""`, bukan
+meninggalkannya, sehingga server menerima `[""]`. nilam memeriksa `""` itu sebagai nama service dan
+menjawab 422 `INVALID_PIPELINE_SEQUENCE` (`unknown service ''`). nlm-k2 membuang entri kosong lebih dulu,
+jadi `""`, `"  "`, atau beberapa field kosong berarti keempat service. Field berulang yang kosong di
+antara nama yang sah juga dibuang. Ini hanya berlaku untuk field form: `""` **di dalam** string JSON array
+(`'["guardrails", ""]'`) tetap 422, karena itu nama service yang ditulis salah, bukan field yang kosong.
 
 ```bash
 curl -X POST http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr \
@@ -314,14 +321,15 @@ OCR-nya `FAILED` dan minta kirim ulang. Presigned URL karena itu harus hidup leb
 Satu tabel untuk semua keadaan yang mungkin dijawab `POST /v1/extract-ocr`. Cabangkan logika pada
 `errors`, bukan pada `message`.
 
-| Keadaan | HTTP | `job_status` | `data` | `guardrails` | `errors` |
-|---|---|---|---|---|---|
-| Selesai | 200 | `completed` | 9 field | `0` | null |
-| Masih berjalan | 202 | `processing` | null | null | null |
-| Ditolak model guardrails | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` |
-| Ditolak aturan structuring | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` |
-| Satu tahap gagal | 422 | `failed` | null | `0` | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` |
-| Ditolak sebelum dinilai | 400 / 413 / 422 | null | null | null | kode masing-masing (2.4) |
+| Keadaan | HTTP | `job_status` | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
+|---|---|---|---|---|---|---|
+| Selesai | 200 | `completed` | 9 field | `0` | null | service terakhir urutan (bawaan `scoring`) |
+| Masih berjalan | 202 | `processing` | null | null | null | service yang sedang berjalan |
+| Ditolak model guardrails | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
+| Ditolak aturan structuring | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
+| Satu tahap gagal | 422 | `failed` | null | `0` | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | tahap yang gagal |
+| Ditolak sebelum dinilai | 400 / 413 / 422 | null | null | null | kode masing-masing (2.4) | `orchestrator` |
+| Service di belakang tak terjangkau | 503 / 504 | null | null | null | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | service itu |
 
 **`job_status`** — `completed`, `processing`, atau `failed`; `null` kalau request ditolak sebelum ada yang
 diproses (tipe file salah, `params` rusak, kunci API salah).
@@ -337,8 +345,8 @@ pernah dijalankan; dalam mode itu `1` hanya bisa berasal dari aturan structuring
 
 **`pipeline_last_stage`** — service tempat jawaban ini berasal, dengan nama seperti di
 `pipeline_name_sequence`: service terakhir urutan saat `completed`; yang menolak (`guardrails`,
-`structuring`) atau gagal; yang masih berjalan saat 202. `null` kalau request ditolak sebelum service
-pipeline mana pun dipanggil.
+`structuring`) atau gagal; yang masih berjalan saat 202. `orchestrator` kalau request ditolak di pintu
+masuk sebelum service pipeline mana pun dipanggil (sejak draf 13; sebelumnya `null`).
 
 ### 3.3 Response `200` — selesai dalam waktu tunggu
 
@@ -448,12 +456,13 @@ Pipeline **tetap berjalan**; orchestrator hanya berhenti menonton. Ambil hasilny
 
 ### 3.5 Response `400` — dokumen ditolak
 
-Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message`.
+Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message` dan `pipeline_last_stage`.
 
 ```json
 {"status_code": 400, "status_desc": "Bad Request",
  "message": "Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas",
  "data": null, "errors": "DOWNSTREAM_VALIDATION_ERROR", "request_id": "REQ_001",
+ "pipeline_last_stage": "guardrails",
  "document_type": "kk", "job_status": "failed", "guardrails": 1,
  "params": {"branch": "0206"}}
 ```
@@ -465,8 +474,10 @@ Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message`.
 | aturan structuring | structuring | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap` |
 
 Semua `message` berbahasa Indonesia dan boleh ditampilkan langsung ke pengguna akhir. Penolakan oleh
-guardrails terjadi **sebelum** tahap mana pun berjalan, jadi tidak ada baris job dan
-`GET /v1/extract-ocr/{request_id}` untuk request itu menjawab `404`.
+guardrails terjadi **sebelum** tahap mana pun berjalan, jadi tidak ada baris job. Putusannya tetap
+tercatat di `guardrails_results`, dan `GET /v1/extract-ocr/{request_id}` menjawab `400` yang sama dari
+sana ([4](#4-get-v1extract-ocrrequest_id--keadaan-request)). `404` hanya bila orchestrator berjalan tanpa
+`DATABASE_URL`.
 
 Hanya dua sumber ini yang bisa menolak dokumen. Tidak ada gerbang yang menolak karena tulisannya buram
 tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
@@ -477,6 +488,7 @@ tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
 {"status_code": 422, "status_desc": "Unprocessable Entity",
  "message": "ekstraksi OCR model is unavailable",
  "data": null, "errors": "OCR_FAILED", "request_id": "REQ_001",
+ "pipeline_last_stage": "ekstraksi",
  "document_type": "kk", "job_status": "failed", "guardrails": 0,
  "params": null}
 ```
@@ -507,14 +519,15 @@ curl http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr/REQ_001 \
   -H "X-API-Key: $API_KEY"
 ```
 
-| Keadaan | HTTP | `job_status` | `guardrails` | `errors` |
-|---|---|---|---|---|
-| selesai | 200 | `completed` + `data` | `0` | null |
-| masih berjalan | 202 | `processing` | null | null |
-| ditolak aturan structuring | 400 | `failed` | `1` | `DOWNSTREAM_VALIDATION_ERROR` |
-| satu tahap gagal | 422 | `failed` | `0` | `<TAHAP>_FAILED` |
-| tidak dikenal | 404 | – | – | = `message` |
-| sebuah tahap tak terbaca | 503 / 504 | – | – | = `message` |
+| Keadaan | HTTP | `job_status` | `guardrails` | `errors` | `pipeline_last_stage` |
+|---|---|---|---|---|---|
+| selesai | 200 | `completed` + `data` | `0` | null | service terakhir urutan |
+| masih berjalan | 202 | `processing` | null | null | service yang sedang berjalan |
+| ditolak model guardrails (dari `guardrails_results`) | 400 | `failed` | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
+| ditolak aturan structuring | 400 | `failed` | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
+| satu tahap gagal | 422 | `failed` | `0` | `<TAHAP>_FAILED` | tahap yang gagal |
+| tidak dikenal | 404 | – | – | `REQUEST_ID_NOT_FOUND` | `orchestrator` |
+| sebuah tahap tak terbaca | 503 / 504 | – | – | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | tahap itu |
 
 - `params` **selalu** `null` di sini (tidak disimpan). `document_type` selalu `kk`.
 - Tahap yang dibaca berhenti di service terakhir `pipeline_name_sequence` yang tersimpan di job ekstraksi.
@@ -1383,6 +1396,25 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 2. **Ambang guardrails menanggung beban lebih besar.** Tanpa gerbang legibilitas per field,
    `GUARDRAILS_THRESHOLD` (default 0.5) adalah satu-satunya gerbang keras untuk mutu gambar. Ambang itu
    dikalibrasi ketika masih ada gerbang kedua di hilir, jadi perlu ditinjau ulang.
+
+   `make e2e-samples` (`scripts/e2e_samples.py`, dokumen sungguhan di `test/data/`) kini mengukurnya
+   (29 September 2026):
+
+   | Berkas | `probability_bad` | Selisih dari 0.5 | Tanpa guardrails |
+   |---|---|---|---|
+   | `kk_true.jpg` (KK benar) | 0.013 | −0.487 | 200 |
+   | `kk_pdf.pdf` (KK benar, PDF) | 0.407 | −0.093 | 200 |
+   | `kk_cut.jpg` (terpotong) | 0.922 | +0.422 | 400, aturan structuring |
+   | `kk_no_nokk.jpg` (tanpa nomor KK) | 0.548 | +0.048 | 400, aturan structuring |
+   | `kk_bad.jpg` (buram / pudar) | 0.681 | +0.181 | **200**, NIK rusak lolos |
+
+   Dua hal dari angka ini. Pertama, `kk_bad.jpg` membuktikan bahwa guardrails memang satu-satunya penjaga
+   untuk gambar buram: tanpa guardrails, structuring meloloskannya dengan NIK seperti
+   `32030853088500031PEREMPUAN1BANDUNG`. Aturan §7.4 hanya menolak dokumen yang tidak punya nomor KK atau
+   tidak punya anggota. Kedua, `kk_no_nokk.jpg` dan `kk_pdf.pdf` hanya berjarak < 0.1 dari ambang, di sisi
+   yang berlawanan. Menggeser ambang atau bobot sedikit saja akan membalik salah satunya. Perlu diputuskan
+   apakah NIK yang formatnya tidak sah (bukan 16 digit) layak menjadi aturan penolakan keempat di
+   structuring.
 3. ~~**Ambang `FIELD_CONFIDENCE_THRESHOLD` per field.**~~ **Selesai di draf 11.** Dugaannya benar dan
    terukur lebih tajam dari perkiraan: satu ambang global menjatuhkan cakupan pada presisi 100% ke **nol**,
    sementara ambang per field mencapai 26.6%. Ambangnya ikut di dalam hasil scoring
@@ -1406,6 +1438,19 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 14 — 29 September 2026
+
+1. **`pipeline_name_sequence` kosong = keempat service** (§3.1). Field form yang dikirim kosong (`""`) kini
+   dianggap tidak dikirim, bukan 422 `INVALID_PIPELINE_SEQUENCE`. Ini **berbeda dari nilam**, yang masih
+   menolaknya.
+2. **Penolakan guardrails terbaca lewat `GET`** (§3.5). Kalimat lama "`GET` menjawab `404`" bertentangan
+   dengan §4 sejak draf 12. Yang benar: `400` yang sama, dibaca dari `guardrails_results`.
+3. **`pipeline_last_stage` di tabel dan contoh** (§3.2, §3.5, §3.6, §4). Tabel §4 masih menulis
+   `errors = message` untuk 404 / 503 / 504, dan §3.2 masih menyebut `null` untuk penolakan pintu masuk.
+   Keduanya sisa dari sebelum draf 13.
+4. **Catatan terbuka 2 diberi angka** dari `make e2e-samples`: `kk_bad.jpg` (buram) lolos tanpa guardrails,
+   dan dua dokumen hanya berjarak < 0.1 dari ambang.
 
 ### draf 13 — 29 September 2026
 
