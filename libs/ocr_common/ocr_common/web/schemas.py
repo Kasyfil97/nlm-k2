@@ -110,6 +110,14 @@ class JobStatusBase(BaseModel):
         ),
         examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
     )
+    column_confidence_threshold: dict[str, float] | None = Field(
+        None,
+        description=(
+            "The central orchestrator's per-field thresholds, as the job was submitted with them; null: the trust "
+            "model's own thresholds for every field"
+        ),
+        examples=[{"no_kk": 0.9, "nik": 0.8}],
+    )
 
 
 PIPELINE_SEQUENCE_DESCRIPTION = (

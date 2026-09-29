@@ -75,7 +75,13 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
     ocr = body.ocr.model_dump() if body.ocr is not None else None
     structuring = body.structuring.model_dump() if body.structuring is not None else None
     data = await service.submit(
-        body.request_id, body.document_type, guardrails, ocr, structuring, body.pipeline_name_sequence
+        body.request_id,
+        body.document_type,
+        guardrails,
+        ocr,
+        structuring,
+        body.pipeline_name_sequence,
+        body.column_confidence_threshold,
     )
     return envelope(202, "Accepted", data, body.request_id)
 

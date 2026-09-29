@@ -1,5 +1,5 @@
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ocr_common.clients.remote import RemoteModelClient
@@ -37,17 +37,21 @@ class EkstraksiJobClient:
         *,
         file_url: str | None = None,
         sequence: Sequence[str] | None = None,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
         """Hand the document to the OCR stage. When the request came as `file_url`, that URL is forwarded
         instead of the bytes: the OCR service downloads it itself, and a job left behind by a dead process
         can be run again from the URL stored with the job. `guardrails` is None when the check was skipped:
         the field is then left out (ekstraksi refuses a `guardrails` that is not a JSON object).
-        `sequence` (pipeline_name_sequence) travels as a JSON array, so each stage knows whether to hand on."""
+        `sequence` (pipeline_name_sequence) travels as a JSON array, so each stage knows whether to hand on;
+        `column_thresholds` (column_confidence_threshold) as a JSON object, only when given."""
         fields = {"request_id": request_id, "document_type": document_type}
         if guardrails is not None:
             fields["guardrails"] = json.dumps(guardrails)
         if sequence:
             fields["pipeline_name_sequence"] = json.dumps(list(sequence))
+        if column_thresholds:
+            fields["column_confidence_threshold"] = json.dumps(dict(column_thresholds))
         if file_url:
             call = lambda: self._client.post_form(self._jobs_path, data={**fields, "file_url": file_url})  # noqa: E731
         else:

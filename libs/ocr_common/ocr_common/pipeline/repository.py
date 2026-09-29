@@ -28,6 +28,8 @@ class JobRecord(TypedDict):
     # The pipeline_name_sequence the job was submitted with (None for jobs from before it existed: the
     # full pipeline). Read by the orchestrator to know which stage ends the request.
     pipeline_name_sequence: list[str] | None
+    # column_confidence_threshold sent with the job (None: the trust model's own thresholds for every field).
+    column_confidence_threshold: dict[str, float] | None
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,12 @@ class JobRepository(Protocol):
         ...
 
 
+def stored_column_thresholds(input: dict[str, Any] | None) -> dict[str, float] | None:
+    """The column_confidence_threshold stored in a job's `input`, if any."""
+    thresholds = (input or {}).get("column_confidence_threshold")
+    return dict(thresholds) if isinstance(thresholds, dict) and thresholds else None
+
+
 def stored_sequence(input: dict[str, Any] | None) -> list[str] | None:
     """The pipeline_name_sequence stored in a job's `input`, if any."""
     sequence = (input or {}).get("pipeline_name_sequence")
@@ -122,6 +130,7 @@ class InMemoryJobRepository:
                 "created_at": now,
                 "updated_at": now,
                 "pipeline_name_sequence": stored_sequence(input),
+                "column_confidence_threshold": stored_column_thresholds(input),
             }
             self._inputs[request_id] = input
             return True
@@ -135,6 +144,7 @@ class InMemoryJobRepository:
                 error_message=None,
                 updated_at=now,
                 pipeline_name_sequence=stored_sequence(input),
+                column_confidence_threshold=stored_column_thresholds(input),
             )
             self._inputs[request_id] = input
             return True

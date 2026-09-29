@@ -82,3 +82,34 @@ def test_a_sequence_without_this_stage_or_out_of_order_is_422(harness, auth, seq
     client, _, _ = harness
 
     assert client.post(JOBS, headers=auth, json=_body("REQ_seq_bad", sequence)).status_code == 422
+
+
+# --- column_confidence_threshold (ported from nilam 708d53f) --------------------------------------
+
+
+def test_column_confidence_threshold_is_kept_with_the_job_and_handed_on_to_scoring(harness, auth):
+    client, _, next_stage = harness
+    body = {**_body("REQ_cols", None), "column_confidence_threshold": {"no_kk": 0.9, "nik": 0.8}}
+
+    assert client.post(JOBS, headers=auth, json=body).status_code == 202
+
+    job = wait_for_job(client, f"{JOBS}/REQ_cols")
+    assert job["column_confidence_threshold"] == {"no_kk": 0.9, "nik": 0.8}
+    [payload] = next_stage.payloads
+    assert payload["column_confidence_threshold"] == {"no_kk": 0.9, "nik": 0.8}
+
+
+def test_without_column_confidence_threshold_nothing_is_handed_on(harness, auth):
+    client, _, next_stage = harness
+    client.post(JOBS, headers=auth, json=_body("REQ_nocols", None))
+
+    wait_for_job(client, f"{JOBS}/REQ_nocols")
+    [payload] = next_stage.payloads
+    assert "column_confidence_threshold" not in payload
+
+
+def test_an_invalid_column_confidence_threshold_is_422(harness, auth):
+    client, _, _ = harness
+    body = {**_body("REQ_badcols", None), "column_confidence_threshold": {"nomor_kk": 0.9}}
+
+    assert client.post(JOBS, headers=auth, json=body).status_code == 422

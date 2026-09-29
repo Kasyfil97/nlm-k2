@@ -8,15 +8,17 @@ readable through `GET /v1/<stage>/jobs/{request_id}`. The contract names (`CONTR
 way out; the other seven keep their names, which is precisely what makes the mix-up easy.
 """
 
-from bisect import bisect_right
+import json
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from ocr_common.types import (
     ContractData,
     ContractField,
-    ContractMember,
     FinalResult,
+    ScoredData,
+    ScoredField,
     ScoringResult,
     StructuringResult,
 )
@@ -202,42 +204,86 @@ DOC_CELL_FEATURES: tuple[str, ...] = (
 )
 
 
-#: Ten equal-width bins, used when the scoring result carries no edges of its own (the `mock`
-#: backend). The calibrated model ships adaptive edges instead: its top bin is cut exactly where
-#: held-out precision reaches 100%, which no fixed grid can land on.
-DEFAULT_BIN_EDGES: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+CONTRACT_FIELDS: tuple[str, ...] = CONTRACT_DOC_FIELDS + CONTRACT_MEMBER_FIELDS
+
+COLUMN_THRESHOLD_DESCRIPTION = (
+    "Per field, from the central orchestrator: the trust model's probability that the field's value is correct "
+    "must reach it for the field's `confidence` to be `1` (else `0`). Keys are the contract names: `no_kk`, "
+    "`nama_kepala_keluarga`, and the seven member fields (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, "
+    "`status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), a member field's threshold applying to every member. "
+    "A field left out (or the whole map omitted) uses the trust model's own threshold for that field; a field the "
+    "model has none for (`no_kk`) is then `0`"
+)
+
+
+def parse_column_thresholds(value: Any) -> dict[str, float] | None:
+    """`column_confidence_threshold` checked: None, or an object whose keys are `CONTRACT_FIELDS` and whose
+    values are numbers from 0 to 1. Raises ValueError with the reason otherwise. Ported from nilam."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError('column_confidence_threshold must be a JSON object, e.g. {"no_kk": 0.9, "nik": 0.8}')
+    unknown = sorted(set(value) - set(CONTRACT_FIELDS))
+    if unknown:
+        raise ValueError(
+            f"column_confidence_threshold has unknown field(s) {', '.join(unknown)}; "
+            f"expected {', '.join(CONTRACT_FIELDS)}"
+        )
+    thresholds = {}
+    for name, threshold in value.items():
+        if isinstance(threshold, bool) or not isinstance(threshold, int | float) or not math.isfinite(threshold):
+            raise ValueError(f"column_confidence_threshold.{name} must be a number, got {threshold!r}")
+        if not 0 <= threshold <= 1:
+            raise ValueError(f"column_confidence_threshold.{name} must be between 0 and 1, got {threshold}")
+        thresholds[name] = float(threshold)
+    return thresholds or None
+
+
+def column_thresholds_from_json(raw: str | None) -> dict[str, float] | None:
+    """`column_confidence_threshold` as a form field carries it (a JSON object string); None when empty.
+    Raises ValueError."""
+    if raw is None or not raw.strip():
+        return None
+    try:
+        value = json.loads(raw)
+    except ValueError as exc:
+        raise ValueError("column_confidence_threshold must be valid JSON: an object of field -> threshold") from exc
+    return parse_column_thresholds(value)
 
 
 def contract_fields(
     structuring: Mapping[str, Any],
     scoring: Mapping[str, Any],
     threshold: float,
+    column_thresholds: Mapping[str, float] | None = None,
 ) -> ContractData:
-    """The `data` of the orchestrator's `extract-ocr` contract: nine fields, each
-    `{value, confidence, bin, auto}`.
+    """The `data` of the orchestrator's `extract-ocr` contract: nine fields, each `{value, confidence}`
+    with `confidence` 1 or 0, as in nilam. See `scored_fields` for how each field is decided."""
+    return contract_data(scored_fields(structuring, scoring, threshold, column_thresholds))
 
-    Both the orchestrator and the scoring stage call this, and §8.5 requires them to agree exactly --
-    otherwise the outcome row and the `extract-ocr` response could differ for one request. Agreement
-    here is by construction, not by discipline: every number comes from the stored scoring result,
-    including the per-field thresholds and the bin edges. `threshold` is only the fallback for a
-    result that carries no thresholds AT ALL (the `mock` backend), and a shared env constant is no
-    longer what has to match.
 
-    A result that does carry thresholds and leaves a field out is saying something: that field had no
-    point on held-out data above which every sample was correct (`nomor_kk` today). Such a field is
-    never `auto`. Falling back to the global 0.5 there would wave through values the model itself
-    could not vouch for -- measured on held-out documents, `nomor_kk` at >= 0.5 is 83% correct.
+def scored_fields(
+    structuring: Mapping[str, Any],
+    scoring: Mapping[str, Any],
+    threshold: float,
+    column_thresholds: Mapping[str, float] | None = None,
+) -> ScoredData:
+    """`contract_fields` plus the threshold each field was decided with: what the scoring stage stores
+    (`decisions`), so the outcome row, the POST and the GET answer the same 0/1 for one request.
 
-    Why the thresholds travel in the result rather than in configuration: they are a property of the
-    trained model, not of the deployment. They differ per field by design -- measured on held-out
-    data, `ayah` reaches 100% precision at 0.935 while `pendidikan` needs 0.993 -- and a single
-    global number collapses the usable coverage to zero. A model swap must move them together with
-    the weights or the numbers silently stop meaning what they say.
+    A field's `confidence` is 1 when it has a value and the trust model's probability reaches the field's
+    threshold, else 0. The threshold, first that applies:
 
-    The member lists of `structuring` and `scoring` are **positionally aligned**. A length mismatch
-    is a defect in this pipeline, not a property of the document, so it raises rather than truncating
-    or padding: an off-by-one would otherwise produce a 200 that looks right while carrying another
-    person's confidence.
+    1. `column_thresholds[contract name]` -- the central orchestrator's, for this request;
+    2. `scoring["thresholds"][internal name]` -- the trust model's own, the point above which every held-out
+       sample of that field was correct. They travel in the result because they belong to the trained model;
+    3. `threshold` (FIELD_CONFIDENCE_THRESHOLD), only for a result that carries no thresholds at all (the
+       `mock` backend). A result that does carry thresholds and leaves a field out is saying the field had
+       no such point (`nomor_kk` today), so that field is 0 unless the request gives it a threshold.
+
+    The member lists of `structuring` and `scoring` are **positionally aligned**. A length mismatch is a
+    defect in this pipeline, not a property of the document, so it raises rather than truncating or
+    padding: an off-by-one would otherwise produce a 200 carrying another person's confidence.
     """
     members = structuring.get("anggota_keluarga") or []
     scored_members = scoring.get("anggota_keluarga") or []
@@ -246,82 +292,51 @@ def contract_fields(
             f"anggota_keluarga length mismatch between structuring and scoring: {len(members)} vs {len(scored_members)}"
         )
 
-    thresholds = scoring.get("thresholds") or {}
+    model = scoring.get("thresholds") or {}
+    columns = column_thresholds or {}
     # A model that ships its own thresholds decides every field; the env fallback is for one that ships none.
-    fallback = None if thresholds else threshold
-    edges = scoring.get("bin_edges") or {}
-    doc_edges = tuple(edges.get("fields") or DEFAULT_BIN_EDGES)
-    member_edges = tuple(edges.get("anggota_keluarga") or DEFAULT_BIN_EDGES)
+    fallback = None if model else threshold
+
+    def limit(out: str, internal: str) -> float | None:
+        for candidate in (columns.get(out), model.get(internal)):
+            if isinstance(candidate, int | float) and not isinstance(candidate, bool):
+                return float(candidate)
+        return fallback
 
     doc_scores = scoring.get("fields") or {}
     data: dict[str, Any] = {
-        out: _field(structuring.get(internal), doc_scores.get(internal), thresholds, internal, fallback, doc_edges)
+        out: _field(structuring.get(internal), doc_scores.get(internal), limit(out, internal))
         for out, internal in DOC_PROJECTION
     }
     data["anggota_keluarga"] = [
-        _member(member, scores, thresholds, fallback, member_edges)
+        {
+            out: _field(member.get(internal), scores.get(internal), limit(out, internal))
+            for out, internal in MEMBER_PROJECTION
+        }
         for member, scores in zip(members, scored_members, strict=True)
+    ]
+    return cast(ScoredData, data)
+
+
+def contract_data(scored: Mapping[str, Any]) -> ContractData:
+    """The `extract-ocr` `data` of stored scored fields: value and 0/1 confidence, without the threshold."""
+
+    def plain(field: Mapping[str, Any]) -> ContractField:
+        return {"value": field["value"], "confidence": field["confidence"]}
+
+    data: dict[str, Any] = {out: plain(scored[out]) for out, _ in DOC_PROJECTION}
+    data["anggota_keluarga"] = [
+        {out: plain(member[out]) for out, _ in MEMBER_PROJECTION} for member in scored.get("anggota_keluarga") or []
     ]
     return cast(ContractData, data)
 
 
-def _member(
-    member: Mapping[str, Any],
-    scores: Mapping[str, Any],
-    thresholds: Mapping[str, Any],
-    fallback: float | None,
-    edges: tuple[float, ...],
-) -> ContractMember:
-    return {
-        out: _field(member.get(internal), scores.get(internal), thresholds, internal, fallback, edges)
-        for out, internal in MEMBER_PROJECTION
-    }
-
-
-def _field(
-    field: Mapping[str, Any] | None,
-    score: Any,
-    thresholds: Mapping[str, Any],
-    name: str,
-    fallback: float | None,
-    edges: tuple[float, ...],
-) -> ContractField:
-    """One contract field.
-
-    `value` is always a string and the object is never null. `confidence` is the calibrated
-    P(this value is exactly correct) -- a float, not the 1/0 flag this contract carried before --
-    `bin` places it in one of the model's ten bins, and `auto` says whether it cleared the threshold
-    for this field, which is the gate calibrated so that everything above it was correct on held-out
-    data. With no threshold for this field and no `fallback`, there is no gate to clear: `auto` is false.
-
-    A field with no value, or with no score, is `confidence: 0.0, bin: 1, auto: false`. It is not
-    null: a consumer reading `confidence` must never have to test for null before comparing.
-    """
+def _field(field: Mapping[str, Any] | None, score: Any, threshold: float | None) -> ScoredField:
+    """One decided field. `value` is always a string, `""` when not found, and the object is never null."""
     value = "" if field is None else str(field.get("value") or "").strip()
-    if not value or not isinstance(score, int | float) or isinstance(score, bool):
-        return {"value": value, "confidence": 0.0, "bin": 1, "auto": False}
-    confidence = max(0.0, min(1.0, float(score)))
-    limit = thresholds.get(name)
-    limit = float(limit) if isinstance(limit, int | float) and not isinstance(limit, bool) else fallback
-    return {
-        "value": value,
-        "confidence": round(confidence, 4),
-        "bin": _bin(confidence, edges),
-        "auto": limit is not None and confidence >= limit,
-    }
-
-
-def _bin(confidence: float, edges: tuple[float, ...]) -> int:
-    """1-based bin of `confidence` over `edges`, which are bin boundaries low to high.
-
-    The last bin is closed on the right so a confidence of exactly 1.0 lands in the top bin rather
-    than past the end, and anything below the first edge is clamped into bin 1 rather than returning
-    0 -- a bin number is shown to people, and there is no bin zero.
-    """
-    if len(edges) < 2:
-        return 1
-    index = bisect_right(edges, confidence) - 1
-    return max(1, min(len(edges) - 1, index + 1))
+    numeric = isinstance(score, int | float) and not isinstance(score, bool)
+    confident = bool(value) and numeric and threshold is not None and float(score) >= threshold
+    return {"value": value, "confidence": 1 if confident else 0, "threshold": threshold}
 
 
 def final_result(

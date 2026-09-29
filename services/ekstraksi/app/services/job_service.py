@@ -46,10 +46,11 @@ class EkstraksiJobService:
         guardrails: dict[str, Any] | None,
         source: Source,
         sequence: Sequence[str] | None = None,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
         """`sequence` (pipeline_name_sequence, None = the full pipeline) decides whether the job is handed to
         structuring or ends here with the OCR result as the answer."""
-        work, handoff = self._spec(request_id, document_type, guardrails, source, sequence)
+        work, handoff = self._spec(request_id, document_type, guardrails, source, sequence, column_thresholds)
         return await self._pipeline.submit(
             request_id,
             work,
@@ -59,6 +60,7 @@ class EkstraksiJobService:
                 "guardrails": guardrails,
                 "file_url": source if isinstance(source, str) else None,
                 "pipeline_name_sequence": stored(sequence),
+                "column_confidence_threshold": dict(column_thresholds) if column_thresholds else None,
             },
         )
 
@@ -76,7 +78,12 @@ class EkstraksiJobService:
             return
         sequence = input.get("pipeline_name_sequence")
         work, handoff = self._spec(
-            request_id, input.get("document_type") or DOCUMENT_TYPE, input.get("guardrails"), file_url, sequence
+            request_id,
+            input.get("document_type") or DOCUMENT_TYPE,
+            input.get("guardrails"),
+            file_url,
+            sequence,
+            input.get("column_confidence_threshold"),
         )
         await self._pipeline.resume(request_id, work, **chain(sequence, EKSTRAKSI, handoff))
 
@@ -90,6 +97,7 @@ class EkstraksiJobService:
         guardrails: dict[str, Any] | None,
         source: Source,
         sequence: Sequence[str] | None = None,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> tuple[Work, Handoff]:
         async def work() -> OcrResult:
             content, filename, content_type = await self._load(source)
@@ -110,6 +118,8 @@ class EkstraksiJobService:
             body: dict[str, Any] = {"request_id": request_id, "document_type": document_type, "guardrails": guardrails}
             if sequence:
                 body["pipeline_name_sequence"] = stored(sequence)
+            if column_thresholds:
+                body["column_confidence_threshold"] = dict(column_thresholds)
             if not self._handoff_by_reference:
                 body["ocr"] = dict(ocr)
             return body

@@ -1,7 +1,8 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, parse_column_thresholds
 from ocr_common.pipeline import STRUCTURING, checked_sequence
 from ocr_common.pipeline.schemas import (
     GuardrailsResult,
@@ -86,6 +87,17 @@ class StructuringJobRequest(BaseModel):
     @classmethod
     def _sequence_includes_this_stage(cls, value: list[str] | None) -> list[str] | None:
         return checked_sequence(value, STRUCTURING)
+
+    column_confidence_threshold: dict[str, float] | None = Field(
+        None,
+        description=COLUMN_THRESHOLD_DESCRIPTION,
+        examples=[{"no_kk": 0.9, "nik": 0.8}],
+    )
+
+    @field_validator("column_confidence_threshold", mode="before")
+    @classmethod
+    def _column_thresholds_are_known_fields(cls, value: Any) -> dict[str, float] | None:
+        return parse_column_thresholds(value)
 
 
 class StructuringJobStatus(JobStatusBase):

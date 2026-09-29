@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
-from ocr_common.kk import DOCUMENT_TYPE, ocr_aggregates
+from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json, ocr_aggregates
 from ocr_common.pipeline import EKSTRAKSI, InvalidSequence, StagePipeline, checked_sequence
 from ocr_common.pipeline.outbox_status import (
     OUTBOX_RELEASE_DESCRIPTION,
@@ -91,6 +91,14 @@ def _parse_guardrails(raw: str | None) -> dict[str, Any] | None:
     return value
 
 
+def _parse_column_thresholds(raw: str | None) -> dict[str, float] | None:
+    """The form's JSON object; None when omitted (the trust model's own thresholds). 400 when invalid."""
+    try:
+        return column_thresholds_from_json(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _parse_sequence(raw: str | None) -> list[str] | None:
     """The form's JSON array; None when omitted (the full pipeline). 400 when it is not a valid sequence
     that includes this stage."""
@@ -161,8 +169,8 @@ def _parse_sequence(raw: str | None) -> list[str] | None:
         ),
         400: error(
             400,
-            "Neither or both of file / file_url, `guardrails` is not a JSON object, or `pipeline_name_sequence` is "
-            "not a valid sequence that includes `ekstraksi`",
+            "Neither or both of file / file_url, `guardrails` is not a JSON object, `pipeline_name_sequence` is "
+            "not a valid sequence that includes `ekstraksi`, or `column_confidence_threshold` is invalid",
             "Send exactly one of file or file_url",
         ),
         401: UNAUTHORIZED,
@@ -192,6 +200,11 @@ async def submit_job(
         description=f"{PIPELINE_SEQUENCE_DESCRIPTION}. Serialised as a JSON array string",
         examples=['["guardrails", "ekstraksi", "structuring", "scoring"]'],
     ),
+    column_confidence_threshold: str | None = Form(
+        None,
+        description=f"{COLUMN_THRESHOLD_DESCRIPTION}. A JSON object string; kept with the job and handed on",
+        examples=['{"no_kk": 0.9, "nik": 0.8}'],
+    ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
     service: EkstraksiJobService = Depends(get_job_service),
@@ -204,7 +217,8 @@ async def submit_job(
         assert url is not None
         source = url
     sequence = _parse_sequence(pipeline_name_sequence)
-    data = await service.submit(request_id, document_type, _parse_guardrails(guardrails), source, sequence)
+    columns = _parse_column_thresholds(column_confidence_threshold)
+    data = await service.submit(request_id, document_type, _parse_guardrails(guardrails), source, sequence, columns)
     return envelope(202, "Accepted", data, request_id)
 
 

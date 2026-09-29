@@ -197,3 +197,32 @@ def test_a_document_sent_as_file_url_is_judged_here_and_handed_over_as_the_same_
     assert "guardrails" in form
     assert form["file_url"] == url
     assert stub_guardrails.checked == [{"request_id": RID, "filename": "kk.jpg", "content_type": "image/jpeg"}]
+
+
+def test_column_confidence_threshold_is_handed_to_the_ocr_stage_as_json(client, auth, ekstraksi):
+    handler = ekstraksi(_accepted)
+    response = client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk", "column_confidence_threshold": '{"no_kk": 0.9}'},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    [sent] = handler.requests
+    fields, _ = _form(sent)
+    assert json.loads(fields["column_confidence_threshold"]) == {"no_kk": 0.9}
+
+
+def test_without_column_confidence_threshold_the_field_is_left_out(client, auth, ekstraksi):
+    handler = ekstraksi(_accepted)
+    client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk"},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
+
+    [sent] = handler.requests
+    fields, _ = _form(sent)
+    assert "column_confidence_threshold" not in fields

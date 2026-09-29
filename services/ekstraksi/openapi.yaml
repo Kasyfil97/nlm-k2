@@ -396,8 +396,8 @@ paths:
                       duplicate: true
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
-          description: Neither or both of file / file_url, `guardrails` is not a JSON object, or `pipeline_name_sequence`
-            is not a valid sequence that includes `ekstraksi`
+          description: Neither or both of file / file_url, `guardrails` is not a JSON object, `pipeline_name_sequence`
+            is not a valid sequence that includes `ekstraksi`, or `column_confidence_threshold` is invalid
           content:
             application/json:
               schema:
@@ -880,6 +880,20 @@ components:
             the full pipeline. Serialised as a JSON array string'
           examples:
           - '["guardrails", "ekstraksi", "structuring", "scoring"]'
+        column_confidence_threshold:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
+            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`. A JSON object string; kept with the job and handed on'
+          examples:
+          - '{"no_kk": 0.9, "nik": 0.8}'
         file:
           anyOf:
           - type: string
@@ -1226,6 +1240,18 @@ components:
             - ekstraksi
             - structuring
             - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'The central orchestrator''s per-field thresholds, as the job was submitted with
+            them; null: the trust model''s own thresholds for every field'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
         result:
           anyOf:
           - $ref: '#/components/schemas/OcrPayload'

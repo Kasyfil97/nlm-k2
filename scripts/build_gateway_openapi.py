@@ -75,10 +75,11 @@ with `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_da
 `GET /v1/structuring/jobs/{request_id}` rather than travelling to you. `value` is `""` when a field
 was not found, never null, and the object is never replaced by null.
 
-`confidence` is the ML team's trust model's calibrated probability that the value is exactly correct,
-and `auto` says whether it cleared the threshold the model calibrated for that field. A field the
-model has no threshold for (`no_kk` today) is never `auto`. There is **no document-level score and no
-approve / reject decision**; thresholds are yours. A member array is positional — member *n* in
+Each field is `{value, confidence}`, as in nilam: `confidence` is `1` when the ML team's
+trust model's probability that the value is exactly correct reaches the field's threshold, else `0`.
+The threshold is yours per request (`column_confidence_threshold`), else the one the model calibrated
+for that field; a field the model has no threshold for (`no_kk` today) is `0` unless you send one.
+There is **no document-level score and no approve / reject decision**. A member array is positional — member *n* in
 `data` is member *n* on the card.
 
 ## Addresses

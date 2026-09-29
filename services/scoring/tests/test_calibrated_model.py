@@ -108,13 +108,14 @@ def test_the_model_reports_its_own_thresholds_and_bin_edges(model):
     assert edges[-1] == 1.0, "bin teratas harus mencakup 1.0"
 
 
-def test_a_field_without_a_threshold_is_never_auto(model):
+def test_a_field_without_a_threshold_is_0_unless_the_request_gives_one(model):
     """`nomor_kk` (dan di v2 `nama_lengkap`) tidak punya ambang: di data uji tidak ada titik yang di
     atasnya semua sel benar.
 
     Ketiadaannya adalah informasi, bukan cacat -- dan justru karena itu field ini tidak boleh jatuh
     ke FIELD_CONFIDENCE_THRESHOLD. Terukur, `nomor_kk` pada >= 0.5 hanya 83% benar. Setinggi apa
-    pun skornya, `contract_fields` tidak meloloskannya.
+    pun skornya, `contract_fields` tidak meloloskannya -- kecuali `column_confidence_threshold` dari
+    request memberinya ambang.
     """
     from ocr_common.kk import contract_fields
 
@@ -130,7 +131,8 @@ def test_a_field_without_a_threshold_is_never_auto(model):
         "thresholds": model.thresholds,
     }
     data = contract_fields(document, yakin, 0.5)
-    assert data["no_kk"]["auto"] is False, "0.99 tanpa ambang milik model tetap bukan AUTO"
+    assert data["no_kk"]["confidence"] == 0, "0.99 tanpa ambang milik model tetap 0"
+    assert contract_fields(document, yakin, 0.5, {"no_kk": 0.9})["no_kk"]["confidence"] == 1
 
 
 # --- the four ways this can be wrong while still looking right ------------------------------
@@ -306,7 +308,7 @@ def test_the_sync_endpoint_serves_the_calibrated_model(client, auth, model):
 
 def test_the_projection_turns_the_scores_into_the_outgoing_contract(model):
     """Ujung ke ujung sampai bentuk yang keluar: hasil model -> `contract_fields` -> sembilan field
-    `{value, confidence, bin, auto}`, dengan ambang dan tepi bin milik model itu sendiri."""
+    `{value, confidence 0|1}`, diputuskan dengan ambang milik model itu sendiri."""
     from ocr_common.kk import CONTRACT_MEMBER_FIELDS, contract_fields
 
     from tests.test_kk_scoring import member as base_member
@@ -326,14 +328,13 @@ def test_the_projection_turns_the_scores_into_the_outgoing_contract(model):
     for orang in data["anggota_keluarga"]:
         assert set(orang) == set(CONTRACT_MEMBER_FIELDS)
         for name, cell in orang.items():
-            assert set(cell) == {"value", "confidence", "bin", "auto"}, name
-            assert 0.0 <= cell["confidence"] <= 1.0 and 1 <= cell["bin"] <= 10
-            assert isinstance(cell["auto"], bool)
+            assert set(cell) == {"value", "confidence"}, name
+            assert cell["confidence"] in (0, 1)
 
-    # `auto` harus mengikuti ambang model, bukan yang global: dengan ambang global 0.0 semuanya
+    # `confidence` harus mengikuti ambang model, bukan yang global: dengan ambang global 0.0 semuanya
     # akan lolos, dan uji ini tidak akan membuktikan apa pun kalau angkanya diabaikan.
     longgar = contract_fields(document, {**scoring, "thresholds": {}}, 0.0)
-    assert all(cell["auto"] for orang in longgar["anggota_keluarga"] for cell in orang.values())
+    assert all(cell["confidence"] == 1 for orang in longgar["anggota_keluarga"] for cell in orang.values())
 
 
 def test_the_job_stores_the_thresholds_with_the_scores(client, auth, model):
@@ -342,7 +343,7 @@ def test_the_job_stores_the_thresholds_with_the_scores(client, auth, model):
     Ambang dan tepi bin ikut DISIMPAN, tidak hanya dipakai sekali: orchestrator merakit `data` dari
     baris hasil ini lewat `contract_fields`, jadi menyimpan angka milik model bersama skornya
     membuat kesamaan itu terjadi secara konstruksi. Yang hilang di sini akan muncul nanti sebagai
-    `auto` yang berbeda antara dua pembaca hasil yang sama.
+    `confidence` 0/1 yang berbeda antara dua pembaca hasil yang sama.
     """
     from ocr_common.testing import wait_for_job
 

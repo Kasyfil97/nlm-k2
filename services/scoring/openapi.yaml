@@ -1386,6 +1386,23 @@ components:
             - ekstraksi
             - structuring
             - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
+            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
       type: object
       required:
       - request_id
@@ -1450,10 +1467,10 @@ components:
           description: The confidence above which a field of that name was correct on every held-out sample
             -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
             configuration because they are a property of the trained model, not of the deployment, and
-            because this is what makes the orchestrator's `auto` and the outcome row's `auto` identical
+            because this is what makes the orchestrator's `confidence` and the outcome row's identical
             by construction instead of by keeping two env vars in step. A field absent here had no such
-            point and is never `auto`; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result that carries
-            no thresholds at all (the `mock` backend)
+            point and is 0 unless the request's `column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD`
+            applies only to a result that carries no thresholds at all (the `mock` backend)
           examples:
           - ayah: 0.9353
             nik: 0.9637
@@ -1469,7 +1486,8 @@ components:
           title: Bin Edges
           description: 'Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model
             families have their own. Deliberately NOT equal width: the top bin is cut exactly where held-out
-            precision reached 100%, which no fixed grid lands on. Null falls back to ten equal-width bins'
+            precision reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer
+            carries a bin'
           examples:
           - anggota_keluarga:
             - 0.0
@@ -1483,6 +1501,16 @@ components:
             - 0.979
             - 0.9874
             - 1.0
+        decisions:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Decisions
+          description: 'The 0/1 decision per CONTRACT field, with the threshold that decided it: `{no_kk:
+            {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`.
+            The outcome row and the `extract-ocr` answer are projected from it, so both say the same for
+            one request. `threshold` null: no threshold applied, so `confidence` is 0'
       additionalProperties: true
       type: object
       title: ScoringJobResult
@@ -1549,6 +1577,18 @@ components:
             - ekstraksi
             - structuring
             - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'The central orchestrator''s per-field thresholds, as the job was submitted with
+            them; null: the trust model''s own thresholds for every field'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
         result:
           anyOf:
           - $ref: '#/components/schemas/ScoringJobResult'
@@ -1661,10 +1701,10 @@ components:
           description: The confidence above which a field of that name was correct on every held-out sample
             -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
             configuration because they are a property of the trained model, not of the deployment, and
-            because this is what makes the orchestrator's `auto` and the outcome row's `auto` identical
+            because this is what makes the orchestrator's `confidence` and the outcome row's identical
             by construction instead of by keeping two env vars in step. A field absent here had no such
-            point and is never `auto`; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result that carries
-            no thresholds at all (the `mock` backend)
+            point and is 0 unless the request's `column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD`
+            applies only to a result that carries no thresholds at all (the `mock` backend)
           examples:
           - ayah: 0.9353
             nik: 0.9637
@@ -1680,7 +1720,8 @@ components:
           title: Bin Edges
           description: 'Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model
             families have their own. Deliberately NOT equal width: the top bin is cut exactly where held-out
-            precision reached 100%, which no fixed grid lands on. Null falls back to ten equal-width bins'
+            precision reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer
+            carries a bin'
           examples:
           - anggota_keluarga:
             - 0.0
@@ -1694,6 +1735,16 @@ components:
             - 0.979
             - 0.9874
             - 1.0
+        decisions:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Decisions
+          description: 'The 0/1 decision per CONTRACT field, with the threshold that decided it: `{no_kk:
+            {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`.
+            The outcome row and the `extract-ocr` answer are projected from it, so both say the same for
+            one request. `threshold` null: no threshold applied, so `confidence` is 0'
       additionalProperties: true
       type: object
       title: ScoringPayload

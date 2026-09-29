@@ -298,10 +298,10 @@ class ScoringPayload(_Forwarded):
             "The confidence above which a field of that name was correct on every held-out sample -- one per "
             "scored field, keyed by INTERNAL name. They travel in the result rather than in configuration "
             "because they are a property of the trained model, not of the deployment, and because this is what "
-            "makes the orchestrator's `auto` and the outcome row's `auto` identical by construction instead of "
-            "by keeping two env vars in step. A field absent here had no such point and is never `auto`; "
-            "`FIELD_CONFIDENCE_THRESHOLD` applies only to a result that carries no thresholds at all "
-            "(the `mock` backend)"
+            "makes the orchestrator's `confidence` and the outcome row's identical by construction instead of "
+            "by keeping two env vars in step. A field absent here had no such point and is 0 unless the request's "
+            "`column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result "
+            "that carries no thresholds at all (the `mock` backend)"
         ),
         examples=[{"nik": 0.9637, "ayah": 0.9353, "pendidikan": 0.9929}],
     )
@@ -310,9 +310,18 @@ class ScoringPayload(_Forwarded):
         description=(
             "Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model families have "
             "their own. Deliberately NOT equal width: the top bin is cut exactly where held-out precision "
-            "reached 100%, which no fixed grid lands on. Null falls back to ten equal-width bins"
+            "reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer carries a bin"
         ),
         examples=[{"anggota_keluarga": [0.0, 0.631, 0.776, 0.839, 0.899, 0.925, 0.943, 0.965, 0.979, 0.9874, 1.0]}],
+    )
+    decisions: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The 0/1 decision per CONTRACT field, with the threshold that decided it: "
+            "`{no_kk: {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`. "
+            "The outcome row and the `extract-ocr` answer are projected from it, so both say the same for one "
+            "request. `threshold` null: no threshold applied, so `confidence` is 0"
+        ),
     )
 
 

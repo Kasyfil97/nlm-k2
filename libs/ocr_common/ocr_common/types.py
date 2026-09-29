@@ -129,6 +129,9 @@ class ScoringResult(TypedDict):
     payload: NotRequired[dict[str, Any]]
     thresholds: NotRequired[dict[str, float]]
     bin_edges: NotRequired[dict[str, list[float]]]
+    # The 0/1 decision per contract field with the threshold that decided it (`kk.scored_fields`): what the
+    # outcome row and the `extract-ocr` answer are projected from, so both say the same for one request.
+    decisions: NotRequired["ScoredData"]
 
 
 class FinalResult(TypedDict):
@@ -146,26 +149,34 @@ class FinalResult(TypedDict):
 
 
 class ContractField(TypedDict):
-    """A field of the orchestrator's `extract-ocr` contract.
+    """A field of the orchestrator's `extract-ocr` contract, as in nilam: `{value, confidence}`.
 
-    `value` is a string, never `None`, and the object itself is never replaced by null: a field that
-    was not found is `{"value": "", "confidence": 0.0, "bin": 1, "auto": False}`.
-
-    `confidence` is the calibrated P(this value is exactly correct) as a float. It replaced a 1/0
-    flag, which threw away the one thing a consumer needs to triage: a field at 0.52 and a field at
-    0.99 are not the same claim. `bin` is the model's ten-bin placement, and `auto` says the field
-    cleared its own field-specific threshold -- the gate calibrated so that every field above it was
-    correct on held-out data. Read `auto` to decide whether a human has to look; read `confidence`
-    to decide what to look at first.
+    `value` is a string, never `None`, and the object itself is never replaced by null: a field that was
+    not found is `{"value": "", "confidence": 0}`. `confidence` is 1 when the trust model's probability that
+    the value is exactly correct reaches the field's threshold (`kk.scored_fields`), else 0.
     """
 
     value: str
-    confidence: float
-    bin: int
-    auto: bool
+    confidence: int
 
 
 ContractMember = dict[str, ContractField]
+
+
+class ScoredField(TypedDict):
+    """A `ContractField` with the threshold it was decided against; None: no threshold, so `confidence` 0."""
+
+    value: str
+    confidence: int
+    threshold: float | None
+
+
+class ScoredData(TypedDict):
+    """`ContractData` with thresholds: what scoring stores as `decisions`."""
+
+    no_kk: ScoredField
+    nama_kepala_keluarga: ScoredField
+    anggota_keluarga: list[dict[str, ScoredField]]
 
 
 class ContractData(TypedDict):

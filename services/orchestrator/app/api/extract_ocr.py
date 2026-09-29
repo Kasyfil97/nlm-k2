@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
-from ocr_common.kk import DOCUMENT_TYPE
+from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
 from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
@@ -32,6 +32,7 @@ router = APIRouter(tags=["Extract OCR"], dependencies=[Depends(verify_api_key)])
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 INVALID_PARAMS_MESSAGE = "params must be valid JSON: an object, or a quoted string"
 INVALID_SEQUENCE_CODE = "INVALID_PIPELINE_SEQUENCE"
+INVALID_THRESHOLD_CODE = "INVALID_THRESHOLD"
 
 # Setiap nomor di contoh ini memakai kode provinsi 99, yang tidak pernah diberikan Indonesia (lihat
 # ocr_common.synthetic_kk). Contoh OpenAPI adalah tempat paling terlihat di seluruh repo, jadi nomor
@@ -46,31 +47,26 @@ UPLOAD_LIMIT = upload_limit_label(DEFAULT_MAX_UPLOAD_BYTES)
 
 _PARAMS = {"nik": "9901011203850001", "refno": "PK19039Y8U"}
 _DATA = {
-    "no_kk": {"value": "9901012609260001", "confidence": 0.9913, "bin": 10, "auto": True},
-    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0.9041, "bin": 9, "auto": True},
+    "no_kk": {"value": "9901012609260001", "confidence": 1},
+    "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
     "anggota_keluarga": [
         {
-            "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 0.9886, "bin": 10, "auto": True},
-            "nik": {"value": "9901011203850001", "confidence": 0.9902, "bin": 10, "auto": True},
-            "pendidikan": {"value": "S1", "confidence": 0.9951, "bin": 10, "auto": True},
-            "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 0.9833, "bin": 10, "auto": True},
-            "status_hubungan_dalam_rumah_tangga": {
-                "value": "KEPALA KELUARGA",
-                "confidence": 0.9914,
-                "bin": 10,
-                "auto": True,
-            },
-            "ayah": {"value": "SUTRISNO", "confidence": 0.9602, "bin": 9, "auto": True},
-            "ibu": {"value": "SITI AMINAH", "confidence": 0.9418, "bin": 8, "auto": False},
+            "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 1},
+            "nik": {"value": "9901011203850001", "confidence": 1},
+            "pendidikan": {"value": "S1", "confidence": 1},
+            "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 1},
+            "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 1},
+            "ayah": {"value": "SUTRISNO", "confidence": 1},
+            "ibu": {"value": "SITI AMINAH", "confidence": 0},
         },
         {
-            "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 0.9077, "bin": 6, "auto": False},
-            "nik": {"value": "9901015506880002", "confidence": 0.9701, "bin": 9, "auto": True},
-            "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 0.9724, "bin": 9, "auto": False},
-            "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0.6318, "bin": 2, "auto": False},
-            "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0.9130, "bin": 6, "auto": False},
-            "ayah": {"value": "AHMAD DAHLAN", "confidence": 0.9355, "bin": 8, "auto": True},
-            "ibu": {"value": "RATNA SARI", "confidence": 0.8802, "bin": 5, "auto": False},
+            "nama_lengkap": {"value": "SITI NURHALIZA", "confidence": 0},
+            "nik": {"value": "9901015506880002", "confidence": 1},
+            "pendidikan": {"value": "SLTA/SEDERAJAT", "confidence": 0},
+            "jenis_pekerjaan": {"value": "MENGURUS RUMAH TANGGA", "confidence": 0},
+            "status_hubungan_dalam_rumah_tangga": {"value": "ISTRI", "confidence": 0},
+            "ayah": {"value": "AHMAD DAHLAN", "confidence": 1},
+            "ibu": {"value": "RATNA SARI", "confidence": 0},
         },
     ],
 }
@@ -140,6 +136,10 @@ class _InvalidParams(Exception):
     pass
 
 
+class _InvalidThreshold(Exception):
+    pass
+
+
 def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
     """`pipeline_name_sequence` as repeated form fields, or as one JSON array string; the full pipeline when
     omitted. Raises `InvalidSequence`."""
@@ -182,11 +182,12 @@ def _parse_params(raw: str | None) -> Any:
         + "`data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven per "
         "member. Structuring extracts 11 document fields and 15 per member; only these leave, and the rest "
         "stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is "
-        "`{value, confidence, bin, auto}`: `value` is empty when not found -- never null -- `confidence` is "
-        "the trust model's calibrated P(this value is exactly correct), `bin` places it in one of ten bins "
-        "whose top one is cut where held-out precision reached 100%, and `auto` is true when the field "
-        "cleared the threshold calibrated for that field specifically. Read `auto` to decide whether a "
-        "human must look, `confidence` to decide what to look at first. `params` is returned as sent.\n\n"
+        "`{value, confidence}`, as in nilam: `value` is empty when not found -- never null -- and `confidence` "
+        "is `1` when the trust model's probability that the value is exactly correct reaches the field's "
+        "threshold, else `0`. The threshold is `column_confidence_threshold` for that field when sent, else the "
+        "trust model's own (the point above which every held-out sample of the field was correct); `no_kk` has "
+        f"none, so it is `0` unless the request gives it one. An unreadable threshold is `422` "
+        f"`{INVALID_THRESHOLD_CODE}` and nothing runs. `params` is returned as sent.\n\n"
         "**Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring. "
         "Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member with "
         "both a NIK and a name. `message` is the gate's Indonesian reason. A rejected document is still a "
@@ -250,7 +251,8 @@ def _parse_params(raw: str | None) -> Any:
             "description": (
                 "A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`; "
                 "`message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence` is "
-                f"not a valid sequence (`{INVALID_SEQUENCE_CODE}`), or a required field is missing (`VALIDATION_ERROR`)"
+                f"not a valid sequence (`{INVALID_SEQUENCE_CODE}`), a threshold cannot be read "
+                f"(`{INVALID_THRESHOLD_CODE}`), or a required field is missing (`VALIDATION_ERROR`)"
             ),
             "content": {"application/json": {"example": _FAILED}},
         },
@@ -296,6 +298,11 @@ async def extract_ocr(
         ),
         examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
     ),
+    column_confidence_threshold: str | None = Form(
+        None,
+        description=f"{COLUMN_THRESHOLD_DESCRIPTION}. A JSON object string",
+        examples=['{"no_kk": 0.9, "nik": 0.8}'],
+    ),
     service: ExtractOcrService = Depends(get_extract_service),
     settings: Settings = Depends(get_settings),
 ):
@@ -331,6 +338,20 @@ async def extract_ocr(
             request_id=request_id,
             document_type=document_type,
         )
+    try:
+        try:
+            column_thresholds = column_thresholds_from_json(column_confidence_threshold)
+        except ValueError as exc:
+            raise _InvalidThreshold(str(exc)) from exc
+    except _InvalidThreshold as exc:
+        response.status_code = 422
+        return extract_body(
+            422,
+            str(exc),
+            errors=INVALID_THRESHOLD_CODE,
+            request_id=request_id,
+            document_type=document_type,
+        )
 
     # The central orchestrator's request_id becomes the id of this request: in the envelope of an error raised
     # below (413, a bad file, an unreachable stage), in the X-Request-ID response header and outbound calls, and
@@ -347,6 +368,7 @@ async def extract_ocr(
             received_at=received_at,
             file_url=file_url,
             sequence=sequence,
+            column_thresholds=column_thresholds,
         )
     finally:
         reset_request_id(token)
@@ -356,6 +378,7 @@ async def extract_ocr(
         document_type=document_type,
         params=parsed_params,
         threshold=settings.field_confidence_threshold,
+        column_thresholds=column_thresholds,
     )
     response.status_code = status_code
     return body
@@ -450,6 +473,7 @@ async def get_extract_ocr(
         document_type=DOCUMENT_TYPE,
         params=None,
         threshold=settings.field_confidence_threshold,
+        column_thresholds=outcome.get("column_thresholds"),
     )
     response.status_code = status_code
     return body

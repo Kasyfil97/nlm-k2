@@ -1,7 +1,7 @@
 from collections.abc import Mapping
 from typing import Any
 
-from ocr_common.kk import REJECTED_CODE, contract_fields
+from ocr_common.kk import REJECTED_CODE, contract_data, contract_fields
 from ocr_common.pipeline import EKSTRAKSI, GUARDRAILS, SERVICE_OF_STAGE, STAGE_SCORING, STATUS_DONE, STATUS_FAILED
 from ocr_common.web.envelope import envelope
 
@@ -47,8 +47,16 @@ def last_stage(outcome: dict[str, Any]) -> str | None:
 
 
 def extract_response(
-    outcome: dict[str, Any], *, request_id: str, document_type: str, params: Any, threshold: float
+    outcome: dict[str, Any],
+    *,
+    request_id: str,
+    document_type: str,
+    params: Any,
+    threshold: float,
+    column_thresholds: Mapping[str, float] | None = None,
 ) -> tuple[int, dict[str, Any]]:
+    """`threshold` is FIELD_CONFIDENCE_THRESHOLD and `column_thresholds` the central orchestrator's per-field
+    ones; both only matter for a scoring result stored without `decisions` (see `_contract_data`)."""
     stage_name = last_stage(outcome)
     if not outcome["passed"]:
         body = extract_body(
@@ -84,7 +92,7 @@ def extract_response(
         # last service of the pipeline_name_sequence: its result, as it is.
         final = outcome["result"]
         if pipeline.get("stage") == STAGE_SCORING:
-            data = contract_fields(final["structuring"], final["scoring"], threshold)
+            data = _contract_data(final, threshold, column_thresholds)
         else:
             data = final
         return 200, extract_body(
@@ -121,3 +129,15 @@ def extract_response(
         params=params,
         pipeline_last_stage=stage_name,
     )
+
+
+def _contract_data(
+    final: Mapping[str, Any], threshold: float, column_thresholds: Mapping[str, float] | None
+) -> Mapping[str, Any]:
+    """The nine `{value, confidence 0|1}` fields. From the decisions scoring stored with its result when there
+    are any -- the same ones the outcome row was written from, so the POST, the GET and the row cannot
+    disagree -- else decided here, for a result stored before `decisions` existed."""
+    decisions = (final.get("scoring") or {}).get("decisions")
+    if decisions:
+        return contract_data(decisions)
+    return contract_fields(final["structuring"], final["scoring"], threshold, column_thresholds)

@@ -12,8 +12,8 @@ What the numbers mean, and what they do not:
   (upper-cased, whitespace collapsed). It covers placement and recognition together, because both
   have to be right for the strings to be equal.
 * The per-field thresholds are the point above which every held-out sample of that field was
-  correct. They are reported with the scores so the orchestrator's `auto` cannot drift from this
-  stage's: nothing in configuration has to agree.
+  correct. They are reported with the scores, and the 0/1 `confidence` decided from them is stored
+  as `decisions`, so the orchestrator's answer cannot drift from the outcome row.
 * 100% is a measurement on held-out data, not a guarantee. The training report carries the
   Clopper-Pearson lower bound, which is the number that can be promised.
 
@@ -126,7 +126,8 @@ class CalibratedTrustModel:
     def thresholds(self) -> dict[str, float]:
         """Per-field confidence above which every held-out sample was correct, both families in one
         flat map. A field missing here has no such point in the training data -- `nomor_kk` is one,
-        with only 5 clean cells out of 97 -- and is therefore never `auto` (`ocr_common.kk.contract_fields`)."""
+        with only 5 clean cells out of 97 -- and is therefore `confidence` 0 unless the request sends a
+        threshold (`ocr_common.kk.scored_fields`)."""
         out = dict(self._member.get("ambang") or {})
         out.update((self._doc or {}).get("ambang") or {})
         return {k: float(v) for k, v in out.items()}

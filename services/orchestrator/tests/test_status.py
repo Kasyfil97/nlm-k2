@@ -279,3 +279,20 @@ def test_a_request_that_ended_before_scoring_is_answered_with_that_result(client
     assert response.status_code == 200
     assert (response.json()["job_status"], response.json()["data"]) == ("completed", structuring)
     assert response.json()["pipeline_last_stage"] == "structuring"
+
+
+async def test_the_snapshot_carries_the_thresholds_stored_with_the_first_job():
+    ocr = {**_job("DONE", {"texts": []}), "column_confidence_threshold": {"no_kk": 0.9}}
+    stages = _stages(ocr, _job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None and outcome.column_thresholds == {"no_kk": 0.9}
+
+
+async def test_a_job_without_thresholds_gives_none():
+    stages = _stages(_job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None and outcome.column_thresholds is None

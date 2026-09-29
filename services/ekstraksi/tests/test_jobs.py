@@ -42,8 +42,9 @@ def harness():
     app.dependency_overrides.pop(get_job_service, None)
 
 
-def _submit(client, auth, request_id, filename="kk.jpg", **kwargs):
+def _submit(client, auth, request_id, filename="kk.jpg", data_extra=None, **kwargs):
     data = {"request_id": request_id, "document_type": DOCUMENT_TYPE, "guardrails": json.dumps(GUARDRAILS)}
+    data.update(data_extra or {})
     return client.post("/v1/ekstraksi/jobs", headers=auth, data=data, files=image_upload(filename), **kwargs)
 
 
@@ -313,3 +314,59 @@ async def test_a_stale_job_is_run_again_with_the_sequence_it_was_submitted_with(
 
     assert next_stage.payloads == []
     assert [(c["stage"], c.get("final")) for c in callback.calls] == [("OCR", True)]
+
+
+# --- column_confidence_threshold (ported from nilam 708d53f) --------------------------------------
+
+
+def test_column_confidence_threshold_is_kept_with_the_job_and_handed_on(harness, auth):
+    client, _, next_stage = harness
+    columns = {"no_kk": 0.9, "nik": 0.8}
+
+    response = _submit(client, auth, "REQ_cols", data_extra={"column_confidence_threshold": json.dumps(columns)})
+    assert response.status_code == 202
+
+    job = wait_for_job(client, "/v1/ekstraksi/jobs/REQ_cols")
+    assert job["column_confidence_threshold"] == columns
+    [payload] = next_stage.payloads
+    assert payload["column_confidence_threshold"] == columns
+
+
+def test_without_column_confidence_threshold_nothing_is_handed_on(harness, auth):
+    client, _, next_stage = harness
+    _submit(client, auth, "REQ_nocols")
+
+    wait_for_job(client, "/v1/ekstraksi/jobs/REQ_nocols")
+    [payload] = next_stage.payloads
+    assert "column_confidence_threshold" not in payload
+
+
+@pytest.mark.parametrize("raw", ["{not json", '{"nomor_kk": 0.9}', '{"nik": 2}'])
+def test_an_invalid_column_confidence_threshold_is_400(harness, auth, raw):
+    client, _, _ = harness
+
+    response = _submit(client, auth, "REQ_badcols", data_extra={"column_confidence_threshold": raw})
+
+    assert response.status_code == 400
+    assert "column_confidence_threshold" in response.json()["message"]
+
+
+async def test_a_stale_job_hands_on_its_stored_column_thresholds(monkeypatch):
+    service, pipeline, _, next_stage = _service()
+    stored = {
+        "document_type": DOCUMENT_TYPE,
+        "guardrails": GUARDRAILS,
+        "file_url": FILE_URL,
+        "column_confidence_threshold": {"no_kk": 0.9},
+    }
+    await pipeline.repository.claim("REQ_stale_cols", input=stored)
+
+    async def fake_fetch(url, *, limit, timeout=10.0, policy):
+        return b"\xff\xd8fake-jpeg-bytes", "kk.jpg", "image/jpeg"
+
+    monkeypatch.setattr("app.services.job_service.fetch", fake_fetch)
+    await service.resume("REQ_stale_cols", stored)
+    await pipeline.runner.drain(5)
+
+    [payload] = next_stage.payloads
+    assert payload["column_confidence_threshold"] == {"no_kk": 0.9}

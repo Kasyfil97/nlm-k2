@@ -147,7 +147,17 @@ class StubEkstraksi:
         self.submitted: list[dict] = []
 
     async def submit(
-        self, request_id, document_type, guardrails, filename, content_type, content, *, file_url=None, sequence=None
+        self,
+        request_id,
+        document_type,
+        guardrails,
+        filename,
+        content_type,
+        content,
+        *,
+        file_url=None,
+        sequence=None,
+        column_thresholds=None,
     ) -> dict:
         self.submitted.append(
             {
@@ -156,6 +166,7 @@ class StubEkstraksi:
                 "guardrails": guardrails,
                 "file_url": file_url,
                 "sequence": list(sequence) if sequence is not None else None,
+                "column_thresholds": column_thresholds,
             }
         )
         return {"request_id": request_id, "stage": "OCR", "status": "PROCESSING", "duplicate": False}

@@ -1,6 +1,6 @@
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from prometheus_client import Counter
@@ -54,6 +54,7 @@ class ExtractOcrService:
         received_at: float | None = None,
         file_url: str | None = None,
         sequence: Sequence[str] = DEFAULT_SEQUENCE,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
         """Check the file (type, empty, `MAX_UPLOAD_BYTES`, `MAX_DOCUMENT_PAGES`) before anyone else sees it,
         judge it with the guardrails model, hand it to the OCR stage when it passes, and wait for the
@@ -82,7 +83,15 @@ class ExtractOcrService:
             verdict = {"passed": True, "reason": None}
 
         job = await self._ekstraksi.submit(
-            request_id, document_type, report, filename, content_type, content, file_url=file_url, sequence=sequence
+            request_id,
+            document_type,
+            report,
+            filename,
+            content_type,
+            content,
+            file_url=file_url,
+            sequence=sequence,
+            column_thresholds=column_thresholds,
         )
         wait_seconds = self._settings.pipeline_wait_seconds
         if wait_seconds <= 0:
@@ -102,7 +111,12 @@ class ExtractOcrService:
             if judged is None:
                 raise NotFound(f"No request found for request_id {request_id}")
             return judged
-        return {"passed": True, "reason": None, **_pipeline(DOCUMENT_TYPE, None, outcome)}
+        return {
+            "passed": True,
+            "reason": None,
+            **_pipeline(DOCUMENT_TYPE, None, outcome),
+            "column_thresholds": outcome.column_thresholds,
+        }
 
     async def _judged_only(self, request_id: str) -> dict[str, Any] | None:
         """A request no stage has a job for, answered from its last guardrails verdict, as its POST was: rejected

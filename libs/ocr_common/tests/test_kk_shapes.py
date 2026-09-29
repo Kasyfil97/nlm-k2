@@ -20,7 +20,9 @@ from ocr_common.kk import (
     MEMBER_FIELDS,
     SCORED_DOC_FIELDS,
     SCORED_MEMBER_FIELDS,
+    contract_data,
     contract_fields,
+    scored_fields,
 )
 from ocr_common.pipeline.schemas import GuardrailsResult, OcrPayload, StructuringPayload
 
@@ -189,79 +191,83 @@ def test_projection_renames_exactly_two_keys(structuring, scoring):
         assert "status_hubungan_dalam_keluarga" not in member
 
 
-def test_confidence_is_the_probability_and_auto_is_the_verdict(structuring, scoring):
-    """Anggota kedua: jenis_pekerjaan diskor 0.3184, di bawah 0.5.
-
-    `confidence` membawa probabilitasnya apa adanya; yang menjadi 0/1 sekarang adalah `auto`.
-    Angkanya sendiri harus tetap keluar: field di 0.52 dan field di 0.99 bukan klaim yang sama,
-    dan bendera 1/0 dulu membuat keduanya tak terbedakan.
-    """
+def test_every_field_is_value_and_a_0_1_confidence(structuring, scoring):
+    """Seperti nilam: `{value, confidence}` saja, confidence 1 atau 0. Tidak ada lagi `bin`/`auto`."""
     data = contract_fields(structuring, scoring, 0.5)
-    kedua = data["anggota_keluarga"][1]["jenis_pekerjaan"]
-    pertama = data["anggota_keluarga"][0]["jenis_pekerjaan"]
-    assert (kedua["confidence"], kedua["auto"]) == (0.3184, False)
-    assert (pertama["confidence"], pertama["auto"]) == (0.7733, True)
+    for field in [
+        data["no_kk"],
+        data["nama_kepala_keluarga"],
+        *(f for m in data["anggota_keluarga"] for f in m.values()),
+    ]:
+        assert set(field) == {"value", "confidence"}
+        assert field["confidence"] in (0, 1)
+
+
+def test_confidence_is_1_from_the_threshold_up_and_0_below(structuring, scoring):
+    """Anggota kedua: jenis_pekerjaan diskor 0.3184, di bawah 0.5; anggota pertama 0.7733, di atas."""
+    tanpa_ambang = {**scoring, "thresholds": None}
+    data = contract_fields(structuring, tanpa_ambang, 0.5)
+    assert data["anggota_keluarga"][1]["jenis_pekerjaan"]["confidence"] == 0
+    assert data["anggota_keluarga"][0]["jenis_pekerjaan"]["confidence"] == 1
+    assert (
+        contract_fields(structuring, tanpa_ambang, 0.7733)["anggota_keluarga"][0]["jenis_pekerjaan"]["confidence"] == 1
+    )
 
 
 def test_per_field_thresholds_from_the_result_beat_the_global_one(structuring, scoring):
-    """Ambang milik model mengalahkan FIELD_CONFIDENCE_THRESHOLD, per field.
-
-    Inilah yang membuat cakupan pada presisi 100% mungkin: satu angka global memaksa field
-    mudah dan field sulit memakai batas yang sama, dan di data latih itu menjatuhkan cakupan
-    ke nol. `pendidikan` butuh 0.993 sementara `ayah` sudah aman di 0.935.
-    """
+    """Ambang milik model mengalahkan FIELD_CONFIDENCE_THRESHOLD, per field: `pendidikan` butuh 0.993
+    sementara `ayah` sudah aman di 0.935, dan satu angka global menjatuhkan cakupan ke nol."""
     scored = {**scoring, "thresholds": {"pendidikan": 0.99, "ayah": 0.80}}
-    data = contract_fields(structuring, scored, 0.5)
-    pertama = data["anggota_keluarga"][0]
-    assert pertama["pendidikan"]["confidence"] == 0.8410
-    assert pertama["pendidikan"]["auto"] is False, "0.8410 di bawah ambang khusus 0.99"
-    assert pertama["ayah"]["auto"] is True, "0.8064 di atas ambang khusus 0.80"
+    pertama = contract_fields(structuring, scored, 0.5)["anggota_keluarga"][0]
+    assert pertama["pendidikan"]["confidence"] == 0, "0.8410 di bawah ambang khusus 0.99"
+    assert pertama["ayah"]["confidence"] == 1, "0.8064 di atas ambang khusus 0.80"
 
 
-def test_a_field_the_model_gave_no_threshold_is_never_auto(structuring, scoring):
+def test_a_field_the_model_gave_no_threshold_is_0(structuring, scoring):
     """Model yang membawa ambang sendiri memutuskan SETIAP field; yang tidak ia beri ambang tidak lolos.
-
-    Ketiadaan ambang berarti di data uji tidak ada titik yang di atasnya semua sel benar. Jatuh ke
-    ambang global 0.5 di situ meloloskan nilai yang modelnya sendiri tidak bisa jamin -- terukur,
-    `nomor_kk` pada >= 0.5 hanya 83% benar.
-    """
+    Jatuh ke 0.5 di situ meloloskan nilai yang modelnya sendiri tidak bisa jamin -- terukur, `nomor_kk`
+    pada >= 0.5 hanya 83% benar."""
     scored = {**scoring, "thresholds": {"ayah": 0.80}}
     data = contract_fields(structuring, scored, 0.5)
-    pertama = data["anggota_keluarga"][0]["jenis_pekerjaan"]
-    assert (pertama["confidence"], pertama["auto"]) == (0.7733, False), "0.7733 lolos 0.5, tapi tidak punya ambang"
-    assert data["anggota_keluarga"][0]["ayah"]["auto"] is True
+    assert data["anggota_keluarga"][0]["jenis_pekerjaan"]["confidence"] == 0, "0.7733 lolos 0.5, tapi tanpa ambang"
+    assert data["anggota_keluarga"][0]["ayah"]["confidence"] == 1
 
 
 def test_the_global_threshold_is_only_for_a_result_with_no_thresholds(structuring, scoring):
     """Backend `mock` tidak membawa ambang; hanya di situ FIELD_CONFIDENCE_THRESHOLD berlaku."""
     for tanpa in ({**scoring, "thresholds": None}, {**scoring, "thresholds": {}}):
         data = contract_fields(structuring, tanpa, 0.5)
-        assert data["anggota_keluarga"][0]["jenis_pekerjaan"]["auto"] is True, "0.7733 >= 0.5"
+        assert data["anggota_keluarga"][0]["jenis_pekerjaan"]["confidence"] == 1, "0.7733 >= 0.5"
 
 
-def test_bin_edges_from_the_result_place_the_confidence(structuring, scoring):
-    """Bin memakai tepi milik model, dan bin teratas tertutup di kanan.
+def test_the_requests_column_thresholds_win_over_the_models(structuring, scoring):
+    """`column_confidence_threshold` dari Orkestrasi pusat, per nama KONTRAK, berlaku untuk tiap anggota;
+    field yang tidak ia sebut tetap memakai ambang model, dan field tanpa ambang model bisa diberi satu."""
+    scored = {**scoring, "thresholds": {"ayah": 0.80, "nik": 0.99}}
+    columns = {"ayah": 0.9, "jenis_pekerjaan": 0.3, "status_hubungan_dalam_rumah_tangga": 0.0}
+    data = contract_fields(structuring, scored, 0.5, columns)
+    pertama, kedua = data["anggota_keluarga"]
+    assert pertama["ayah"]["confidence"] == 0, "0.8064 di bawah 0.9 dari request, walau lolos 0.80 model"
+    assert (pertama["jenis_pekerjaan"]["confidence"], kedua["jenis_pekerjaan"]["confidence"]) == (1, 1)
+    assert pertama["nik"]["confidence"] == 0, "tidak disebut request: ambang model 0.99"
+    assert pertama["status_hubungan_dalam_rumah_tangga"]["confidence"] == 1, "nama kontrak, bukan nama internal"
 
-    Tepinya sengaja tidak selebar sama: bin teratas dipotong tepat di titik presisi 100%
-    terukur, yang tidak pernah jatuh pas di kisi 0.1 mana pun.
-    """
-    edges = [0.0, 0.5, 0.75, 0.9, 0.95, 0.9874, 1.0]
-    scored = {**scoring, "bin_edges": {"anggota_keluarga": edges, "fields": edges}}
-    data = contract_fields(structuring, scored, 0.5)
-    assert data["anggota_keluarga"][0]["nama_lengkap"]["bin"] == 5, "0.9702 -> [0.95, 0.9874)"
-    assert data["anggota_keluarga"][1]["jenis_pekerjaan"]["bin"] == 1, "0.3184 -> [0.0, 0.5)"
-    penuh = {**scoring, "fields": {**scoring["fields"], "nomor_kk": 1.0}}
-    penuh["bin_edges"] = {"fields": edges}
-    assert contract_fields(structuring, penuh, 0.5)["no_kk"]["bin"] == 6, "1.0 masuk bin teratas"
+
+def test_scored_fields_keep_the_threshold_that_decided(structuring, scoring):
+    scored = {**scoring, "thresholds": {"ayah": 0.80}}
+    decided = scored_fields(structuring, scored, 0.5, {"no_kk": 0.5})
+    assert decided["no_kk"]["threshold"] == 0.5
+    assert decided["anggota_keluarga"][0]["ayah"]["threshold"] == 0.80
+    assert decided["anggota_keluarga"][0]["nik"]["threshold"] is None
+    assert contract_data(decided) == contract_fields(structuring, scored, 0.5, {"no_kk": 0.5})
 
 
 def test_member_scores_are_positional_not_shared(structuring, scoring):
-    """Salah geser satu indeks menghasilkan 200 yang tampak benar dengan confidence milik
-    anggota lain, jadi skor tiap anggota sengaja dibuat berbeda di fixture."""
-    data = contract_fields(structuring, scoring, 0.8)
+    """Salah geser satu indeks menghasilkan 200 yang tampak benar dengan confidence milik anggota lain,
+    jadi skor tiap anggota sengaja dibuat berbeda di fixture."""
+    data = contract_fields(structuring, {**scoring, "thresholds": None}, 0.8)
     first, second = data["anggota_keluarga"]
-    assert (first["ayah"]["confidence"], first["ayah"]["auto"]) == (0.8064, True)
-    assert (second["ayah"]["confidence"], second["ayah"]["auto"]) == (0.7702, False)
+    assert (first["ayah"]["confidence"], second["ayah"]["confidence"]) == (1, 0), "0.8064 vs 0.7702"
 
 
 def test_length_mismatch_is_an_error_not_a_silent_truncation(structuring, scoring):
@@ -271,21 +277,16 @@ def test_length_mismatch_is_an_error_not_a_silent_truncation(structuring, scorin
 
 
 def test_contract_field_value_is_empty_string_never_null(structuring, scoring):
-    """§3.3: field yang tidak ditemukan adalah confidence 0.0, bin 1, auto false -- bukan null.
-
-    Bukan null pada `confidence`: pembaca tidak boleh harus menguji null sebelum membandingkan.
-    Dan bukan bin 0: nomor bin ditampilkan ke orang, dan tidak ada bin nol.
-    """
+    """§3.3: field yang tidak ditemukan adalah `{"value": "", "confidence": 0}` -- bukan null."""
     blank = {**structuring, "nama_kepala_keluarga": {"value": "", "ocr_conf": None, "crf_conf": None}}
     data = contract_fields(blank, scoring, 0.5)
-    assert data["nama_kepala_keluarga"] == {"value": "", "confidence": 0.0, "bin": 1, "auto": False}
+    assert data["nama_kepala_keluarga"] == {"value": "", "confidence": 0}
 
 
 def test_null_score_yields_zero_confidence(structuring, scoring):
     unscored = {**scoring, "fields": {**scoring["fields"], "nomor_kk": None}}
-    data = contract_fields(structuring, unscored, 0.5)
-    assert (data["no_kk"]["confidence"], data["no_kk"]["auto"], data["no_kk"]["bin"]) == (0.0, False, 1)
-    assert data["no_kk"]["value"] == "3273012345678901", "nilainya tetap keluar"
+    data = contract_fields(structuring, unscored, 0.5, {"no_kk": 0.0})
+    assert data["no_kk"] == {"value": "3273012345678901", "confidence": 0}, "nilainya tetap keluar"
 
 
 def test_empty_member_list_projects_to_empty_list(structuring, scoring):
