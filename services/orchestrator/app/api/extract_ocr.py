@@ -216,7 +216,8 @@ def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> Guar
 
 def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
     """`pipeline_name_sequence` as repeated form fields, or as one JSON array string; the full pipeline when
-    omitted. Raises `InvalidSequence`."""
+    omitted. A blank field (a form client's "send empty value") counts as omitted. Raises `InvalidSequence`."""
+    values = [value.strip() for value in values or () if value.strip()]
     if not values:
         return DEFAULT_SEQUENCE
     if len(values) == 1 and values[0].lstrip().startswith("["):
@@ -374,7 +375,7 @@ async def extract_ocr(
         description=(
             "The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`; guardrails "
             "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, or "
-            "one JSON array string. Omitted: all four. The last one's result is `data`, as it is"
+            "one JSON array string. Omitted or blank: all four. The last one's result is `data`, as it is"
         ),
         examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
     ),

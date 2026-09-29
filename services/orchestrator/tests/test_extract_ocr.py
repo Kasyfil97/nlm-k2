@@ -217,6 +217,15 @@ def test_the_sequence_is_taken_as_repeated_fields_or_as_a_json_array(client, aut
     assert stub_waiter.last_stages == ["OCR", "OCR"]
 
 
+@pytest.mark.parametrize("blank", ["", "  ", ["", ""]])
+def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrails, stub_ekstraksi, blank):
+    """Swagger UI and Postman send an empty form field as "" rather than leaving it out."""
+    response = _submit(client, auth, pipeline_name_sequence=blank)
+
+    assert response.status_code == 200
+    assert stub_ekstraksi.submitted[0]["sequence"] == FULL
+
+
 @pytest.mark.parametrize(
     ("sequence", "reason"),
     [
