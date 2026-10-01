@@ -39,3 +39,6 @@ tools/load-tester/out/*
 
 # Unggahan dari tracker (load test): bisa dokumen nasabah asli, tidak pernah ikut repo.
 tools/load-tester/assets/
+
+# Dokumen sampel e2e (scripts/e2e_samples.py) harus ikut repo.
+!test/data/*.jpg

@@ -122,8 +122,9 @@ services:
     startupFailureThreshold: 30
     terminationGracePeriodSeconds: 30
     env:
-      GUARDRAILS_BACKEND: efficientnet
-      GUARDRAILS_MODEL_PATH: weights/best_model.pt
+      # kk_quality = inti K2Quality; menolak start tanpa keenam artefak di GUARDRAILS_WEIGHTS_DIR (ikut di image).
+      GUARDRAILS_BACKEND: kk_quality
+      GUARDRAILS_WEIGHTS_DIR: weights
       GUARDRAILS_DEVICE: cpu
       # Samakan dengan limits.cpu; tanpa ini torch membuat thread sebanyak core node.
       GUARDRAILS_TORCH_THREADS: "2"
@@ -175,7 +176,7 @@ services:
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      STRUCTURING_BACKEND: mock
+      STRUCTURING_BACKEND: kk_regex
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:
@@ -197,7 +198,8 @@ services:
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      SCORING_BACKEND: heuristic
+      SCORING_BACKEND: calibrated
+      SCORING_MODEL_PATH: weights/kk_trust_model.joblib
       SCORING_APPROVE_THRESHOLD: "0.8"
       SCORING_REVIEW_THRESHOLD: "0.5"
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"

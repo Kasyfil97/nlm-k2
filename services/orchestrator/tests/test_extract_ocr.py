@@ -234,7 +234,7 @@ def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrai
         (["structuring", "scoring"], "structuring cannot come first"),
         (["guardrails", "scoring", "structuring", "extraction"], "without skipping one in the middle"),
         (["guardrails", "guardrails"], "listed twice"),
-        (["guardrails", "extraction"], "unknown service 'extraction'"),
+        (["guardrails", "ocr"], "unknown service 'ocr'"),
         ('["guardrails", ', "JSON array of strings"),
     ],
 )
