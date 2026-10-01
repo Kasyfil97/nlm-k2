@@ -74,7 +74,15 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
     guardrails = body.guardrails.model_dump(exclude_unset=True) if body.guardrails is not None else None
     ocr = body.ocr.model_dump() if body.ocr is not None else None
     structuring = body.structuring.model_dump() if body.structuring is not None else None
-    data = await service.submit(body.request_id, body.document_type, guardrails, ocr, structuring)
+    data = await service.submit(
+        body.request_id,
+        body.document_type,
+        guardrails,
+        ocr,
+        structuring,
+        body.pipeline_name_sequence,
+        body.column_confidence_threshold,
+    )
     return envelope(202, "Accepted", data, body.request_id)
 
 
@@ -85,7 +93,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
     summary="Status and result of the scoring stage",
     description=(
         "Status of this stage only and, once `DONE`, the two confidences plus the exact payload that was scored. "
-        "Internal: the orchestrator NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`); "
+        "Internal: the orchestrator reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`); "
         "the central orchestrator receives the final result in the callback. Also useful to audit a score."
     ),
     responses={
@@ -101,7 +109,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
                         "status": "DONE",
                         "error_message": None,
                         "result": {
-                            "npwp_confidence": 0.9806,
+                            "nomor_kk": 0.9806,
                             "name_confidence": 0.9948,
                             "payload": CONFIDENCE_PAYLOAD_EXAMPLE,
                         },
@@ -118,7 +126,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
                     {
                         **_JOB,
                         "status": "FAILED",
-                        "error_message": "Unsupported document_type: ktp. Supported: ['npwp']",
+                        "error_message": "Unsupported document_type: ktp. Supported: ['kk']",
                         "result": None,
                         "updated_at": "2026-09-18T04:00:01+00:00",
                     },
@@ -132,6 +140,7 @@ async def submit_job(body: ScoringJobRequest, service: ScoringJobService = Depen
             "No scoring job for this request_id",
             f"No SCORING job found for request_id: {REQUEST_ID_EXAMPLE}",
             request_id=REQUEST_ID_EXAMPLE,
+            errors="REQUEST_ID_NOT_FOUND",
         ),
         422: error(
             422,

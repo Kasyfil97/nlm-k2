@@ -62,11 +62,11 @@ async def lifespan(app: FastAPI):
 
 app = create_app(
     settings=settings,
-    title="OCR NPWP Structuring API",
+    title="OCR Kartu Keluarga Structuring API",
     service_name="structuring",
     description=(
-        "Pipeline step 3 for Indonesian NPWP documents: turns raw OCR text lines into named "
-        "fields (nomor_npwp, nama, nama_badan) with per-field confidence. "
+        "Pipeline step 3 for Indonesian Kartu Keluarga: turns raw OCR text lines into named "
+        "fields (nomor_kk, nama, nama_badan) with per-field confidence. "
         "**Async pipeline:** the OCR service POSTs /v1/structuring/jobs and gets 202; this service "
         "structures in the background, stores the result, POSTs a stage callback to the orchestrator, and "
         "hands the job to the scoring service. /v1/structuring/structure is the same work, synchronous. "
@@ -83,7 +83,7 @@ app = create_app(
         "storage": "postgres" if settings.database_url else "memory",
     },
     readiness=database_readiness(settings.database_url),
-    backends_example={"structuring": "npwp_rules", "storage": "postgres"},
+    backends_example={"structuring": "mock", "storage": "postgres"},
     readiness_example={"database": "ok"},
     lifespan=lifespan,
 )
@@ -93,7 +93,7 @@ add_stage_callback_webhook(
     body_model=StageCallback,
     sent=(
         "Once per job of `POST /v1/structuring/jobs`: `stage: STRUCTURING` with `status: DONE` once the fields "
-        "are stored, or `status: FAILED` with `error_message` when the upload is not a lone NPWP card or has no "
+        "are stored, or `status: FAILED` with `error_message` when the upload is not a lone KK card or has no "
         "text (the chain stops there). Additionally `stage: SCORING`, `status: FAILED` when structuring succeeded "
         "but the scoring service could not be reached after retries. Without `PIPELINE_OUTBOX` the `STRUCTURING` "
         "callback is sent before the hand-off to scoring; with it the hand-off goes first, so the `SCORING` "

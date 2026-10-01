@@ -6,11 +6,15 @@ event log (`ORCHESTRATION_API_EVENTS_TABLE`, one appended row per final state).
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Protocol
 
 from ocr_common.config import PipelineSettings
-from ocr_common.npwp import DOCUMENT_TYPE, REJECTED_CODE
+from ocr_common.kk import DOCUMENT_TYPE, REJECTED_CODE
+from ocr_common.pipeline import metrics
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from sqlalchemy import Table
@@ -52,14 +56,22 @@ class OrchestrationOutcome:
         self._document_type = document_type
 
     async def claimed(self, conn: AsyncConnection, request_id: str) -> None:
-        """Upsert `processing` plus this stage."""
+        """Upsert `processing` plus this stage. Writes the three status columns and nothing else:
+        it must not blank a `result_data` that a later stage already wrote."""
         await self._write(conn, request_id, 202, STATUS_PROCESSING)
 
     async def completed(self, conn: AsyncConnection, request_id: str, data: dict[str, Any] | None) -> None:
-        """Upsert `completed` with `result_data`; nothing when `data` is None (not the last stage)."""
+        """Upsert `completed` with `result_data`; nothing when `data` is None (not the last stage).
+
+        Clears the error columns explicitly: `claim()` re-claims a `FAILED` job, so fail -> re-claim
+        -> succeed is reachable, and without this the row would read `200/completed` while still
+        carrying the old `error_code`.
+        """
         if data is None:
             return
-        await self._write(conn, request_id, 200, STATUS_COMPLETED, result_data=data)
+        await self._write(
+            conn, request_id, 200, STATUS_COMPLETED, result_data=data, error_code=None, error_message=None, clear=True
+        )
 
     async def failed(
         self, conn: AsyncConnection, request_id: str, error_message: str, *, stage: str | None = None
@@ -91,15 +103,32 @@ class OrchestrationOutcome:
         result_data: dict[str, Any] | None = None,
         error_code: str | None = None,
         error_message: str | None = None,
+        clear: bool = False,
     ) -> None:
+        """Upsert the row, writing **only the columns this caller owns**.
+
+        Two rules, both about a row another team reads as the real result channel:
+
+        * Each caller writes its own columns. `claimed()` must not blank a `result_data` a later
+          stage wrote; `failed()` must not blank one either.
+        * The row is monotonic at `completed`. A finished request cannot be walked back by a late
+          write -- an outbox hand-off that dead-letters after the next stage already completed, or a
+          duplicate run left behind by an earlier `resume()` failing afterwards. Both are reachable.
+
+        A refused write is logged and counted, never silent: an invisible race cannot be measured,
+        and the measurement is what tells you whether the heartbeat is doing its job.
+        """
         values: dict[str, Any] = {
             "status_code": status_code,
             "downstream_status": downstream_status,
             "downstream_stage": stage or self._stage,
-            "error_code": error_code,
-            "error_message": error_message,
-            "result_data": result_data,
         }
+        if result_data is not None:
+            values["result_data"] = result_data
+        if clear or error_code is not None or error_message is not None:
+            values["error_code"] = error_code
+            values["error_message"] = error_message
+
         from sqlalchemy.dialects import postgresql, sqlite
 
         dialect = postgresql if conn.dialect.name == "postgresql" else sqlite
@@ -109,7 +138,25 @@ class OrchestrationOutcome:
             ds=datetime.now(UTC).strftime("%Y%m%d"),
             **values,
         )
-        await conn.execute(statement.on_conflict_do_update(index_elements=["request_id"], set_=values))
+        upsert = statement.on_conflict_do_update(
+            index_elements=["request_id"],
+            set_=values,
+            # A completed row may only be overwritten by another completed one.
+            where=(
+                None
+                if downstream_status == STATUS_COMPLETED
+                else self.table.c.downstream_status.is_distinct_from(STATUS_COMPLETED)
+            ),
+        )
+        result = await conn.execute(upsert)
+        if result.rowcount == 0:
+            logger.warning(
+                "outcome write suppressed for request_id %s: row is already completed, refused %s from %s",
+                request_id,
+                downstream_status,
+                stage or self._stage,
+            )
+            metrics.OUTCOME_WRITES_SUPPRESSED.labels(self._stage, downstream_status).inc()
 
 
 # Our stage names -> the orchestrator's `downstream_stage` enum.

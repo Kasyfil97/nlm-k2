@@ -17,7 +17,7 @@ RID = "REQ_testing"
 
 def _submit(client, auth, path, **data):
     return client.post(
-        path, headers=auth, data={"request_id": RID, **data}, files={"file": ("npwp.jpg", JPEG, "image/jpeg")}
+        path, headers=auth, data={"request_id": RID, **data}, files={"file": ("kk.jpg", JPEG, "image/jpeg")}
     )
 
 
@@ -82,7 +82,7 @@ def test_testing_endpoint_refuses_a_run_id_that_would_garble_the_request_id(test
     assert response.json()["errors"] == "VALIDATION_ERROR"
 
 
-def test_testing_endpoint_takes_skip_guardrails_like_the_live_one(auth):
+def test_testing_endpoint_takes_the_sequence_like_the_live_one(auth):
     guardrails, ekstraksi, waiter = StubGuardrails(), StubEkstraksi(), StubWaiter()
     app = create_app(settings=get_settings(), title="Orchestrator", description="testing", routers=testing.routers)
     app.dependency_overrides[get_guardrails_client] = lambda: guardrails
@@ -90,11 +90,12 @@ def test_testing_endpoint_takes_skip_guardrails_like_the_live_one(auth):
     app.dependency_overrides[get_testing_pipeline_waiter] = lambda: waiter
     client = make_client(app)
 
-    refused = _submit(client, auth, "/v1/extract-ocr-test", skip_guardrails="true")
-    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(update={"guardrails_skip_allowed": True})
-    skipped = _submit(client, auth, "/v1/extract-ocr-test", skip_guardrails="true")
+    refused = _submit(client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["ekstraksi", "scoring"])
+    skipped = _submit(
+        client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["ekstraksi", "structuring", "scoring"]
+    )
 
-    assert refused.status_code == 403
+    assert refused.status_code == 422
     assert skipped.status_code == 200
     assert guardrails.checked == []
     assert [job["guardrails"] for job in ekstraksi.submitted] == [None]

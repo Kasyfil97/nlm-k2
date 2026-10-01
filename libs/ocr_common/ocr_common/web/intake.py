@@ -1,17 +1,22 @@
 """Receiving a document: as an uploaded `file`, or as a `file_url` this service downloads."""
 
-from fastapi import File, Form, HTTPException, Request, UploadFile
+from fastapi import File, Form, Request, UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ocr_common.clients.fetch_url import FetchUrlError, fetch
+from ocr_common.errors import FILE_URL_REJECTED, INVALID_FILE_SOURCE, BadRequest
 
-FileField = File(None, description="Document image (JPEG/PNG/PDF). Omit when sending file_url.")
+FileField = File(
+    None,
+    description="Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when sending file_url.",
+)
 FileUrlField = Form(
     None,
     description=(
-        "URL this service fetches the document image from (e.g. a presigned MinIO GET). Omit when uploading file. "
-        "The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`, or resolve to a public address when "
-        "that is empty; redirects are not followed."
+        "URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when uploading file. "
+        "The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`: an EMPTY list denies every URL "
+        "rather than allowing public ones. https only, redirects are not followed, and a host that resolves "
+        "to a private or loopback address is refused even when it is listed."
     ),
 )
 
@@ -23,7 +28,7 @@ def resolve_intake(
     file_url = file_url or None
     upload = file if isinstance(file, StarletteUploadFile) and file.filename else None
     if (upload is None) == (file_url is None):
-        raise HTTPException(status_code=400, detail="Send exactly one of file or file_url")
+        raise BadRequest("Send exactly one of file or file_url", INVALID_FILE_SOURCE)
     return upload, file_url
 
 
@@ -38,6 +43,6 @@ async def read_image(
             settings = request.app.state.settings
             return await fetch(file_url, limit=settings.max_upload_bytes, policy=settings.file_url_policy)
         except FetchUrlError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise BadRequest(str(exc), FILE_URL_REJECTED) from exc
     assert upload is not None
     return await upload.read(), upload.filename or "", upload.content_type

@@ -6,40 +6,43 @@ from ocr_common.web.app import create_app
 
 from app.api import guardrails
 from app.config import get_settings
-from app.dependencies import get_page_classifier, get_reject_threshold
+from app.dependencies import get_quality_model, get_reject_threshold
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    classifier = get_page_classifier()
+    model = get_quality_model()
     threshold = get_reject_threshold()
     yield
     await threshold.aclose()
-    close = getattr(classifier, "aclose", None)  # only the HTTP-backed models hold a connection
+    close = getattr(model, "aclose", None)  # only the HTTP-backed models hold a connection
     if close is not None:
         await close()
 
 
 app = create_app(
     settings=settings,
-    title="OCR NPWP Guardrails API",
+    title="OCR Kartu Keluarga Guardrails API",
     service_name="guardrails",
     description=(
-        "The guardrails model of the OCR NPWP pipeline, internal: the orchestrator NPWP calls "
-        "`POST /v1/guardrails/check` for every document it receives, and hands a document that passes to the "
-        "OCR stage itself. The check classifies every page of the document (image or PDF) as accepted / reject "
-        "and aggregates a document verdict. The model runs in this process (`efficientnet`) or in the ML team's "
-        "model service (`remote`). All endpoints except /health, /ready and /metrics require an X-API-Key "
-        "header."
+        "The image-quality judge of the nlm-k2 Kartu Keluarga pipeline, internal: the orchestrator calls "
+        "`POST /v1/guardrails/check` for every document it receives, and hands one that passes to the OCR "
+        "stage. A Kartu Keluarga is a single image, so the check produces one verdict -- `accepted`, "
+        "`reject`, or `unassessable` when the image could not be judged at all -- and never an HTTP error "
+        "for the document itself. The model runs in this process (`kk_quality`: patch blur CNN + XGBoost + "
+        "isotonic calibration) or in the ML team's quality service (`remote`). This is the only image-quality "
+        "gate in the pipeline, so `GUARDRAILS_THRESHOLD` is the single lever for refusing a bad photo. All "
+        "endpoints except /health, /ready and /metrics require an X-API-Key header."
     ),
     tags=[
-        {"name": "Guardrails", "description": "The guardrails check (internal: called by the orchestrator NPWP)"},
+        {"name": "Guardrails", "description": "The guardrails check (internal: called by the orchestrator)"},
     ],
     routers=[guardrails.router],
     backends={"guardrails": settings.guardrails_backend},
+    # No database and nothing to warm: /ready is always 200 for this service.
     readiness={},
-    backends_example={"guardrails": "efficientnet"},
+    backends_example={"guardrails": "kk_quality"},
     lifespan=lifespan,
 )

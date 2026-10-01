@@ -15,6 +15,7 @@ from ocr_common.pipeline import STATUS_DONE, STATUS_FAILED, STATUS_PROCESSING, J
 from ocr_common.pipeline.database import get_engine
 from ocr_common.pipeline.outbox import Outbox, OutboxMessage
 from ocr_common.pipeline.outcomes import StageOutcome
+from ocr_common.pipeline.repository import stored_column_thresholds, stored_sequence
 from ocr_common.pipeline.tables import pipeline_tables
 
 
@@ -183,6 +184,21 @@ class SqlJobRepository:
         async with self.engine.begin() as conn:
             await self._outcome.failed(conn, request_id, error_message, stage=next_stage)
 
+    async def touch(self, request_id: str) -> None:
+        """See `JobRepository.touch`.
+
+        The `status == PROCESSING` guard is what makes a beat that is already in flight harmless:
+        it cannot move `updated_at` on a job that finished or failed in the meantime, so it can
+        never make a settled job look alive again.
+        """
+        jobs = self._jobs
+        async with self.engine.begin() as conn:
+            await conn.execute(
+                update(jobs)
+                .where(jobs.c.request_id == request_id, jobs.c.status == STATUS_PROCESSING)
+                .values(updated_at=datetime.now(UTC))
+            )
+
     def _wake(self, messages: Sequence[OutboxMessage]) -> None:
         # After the commit: a relay woken inside the transaction would poll before the rows are visible.
         if self._outbox is not None and messages:
@@ -194,7 +210,14 @@ class SqlJobRepository:
         async with self.engine.connect() as conn:
             row = (
                 await conn.execute(
-                    select(jobs.c.status, jobs.c.error_message, jobs.c.created_at, jobs.c.updated_at, results.c.result)
+                    select(
+                        jobs.c.status,
+                        jobs.c.error_message,
+                        jobs.c.created_at,
+                        jobs.c.updated_at,
+                        jobs.c.input,
+                        results.c.result,
+                    )
                     .select_from(jobs.outerjoin(results, results.c.request_id == jobs.c.request_id))
                     .where(jobs.c.request_id == request_id)
                 )
@@ -208,4 +231,6 @@ class SqlJobRepository:
             "error_message": row.error_message,
             "created_at": _iso(row.created_at),
             "updated_at": _iso(row.updated_at),
+            "pipeline_name_sequence": stored_sequence(row.input),
+            "column_confidence_threshold": stored_column_thresholds(row.input),
         }

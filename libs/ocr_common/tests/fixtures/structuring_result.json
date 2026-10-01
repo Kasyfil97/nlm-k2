@@ -1,0 +1,50 @@
+{
+  "nomor_kk":             {"value": "3273012345678901", "ocr_conf": 0.9991, "crf_conf": null},
+  "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "ocr_conf": 0.9873, "crf_conf": null},
+  "alamat":               {"value": "JL. MERDEKA NO. 12", "ocr_conf": 0.9642, "crf_conf": null},
+  "desa_kelurahan":       {"value": "CIHAPIT", "ocr_conf": 0.9810, "crf_conf": null},
+  "rt":                   {"value": "003", "ocr_conf": 0.9755, "crf_conf": null},
+  "rw":                   {"value": "007", "ocr_conf": 0.9755, "crf_conf": null},
+  "kecamatan":            {"value": "BANDUNG WETAN", "ocr_conf": 0.9888, "crf_conf": null},
+  "kabupaten_kota":       {"value": "KOTA BANDUNG", "ocr_conf": 0.9901, "crf_conf": null},
+  "provinsi":             {"value": "JAWA BARAT", "ocr_conf": 0.9934, "crf_conf": null},
+  "kode_pos":             {"value": "40114", "ocr_conf": 0.9702, "crf_conf": null},
+  "tanggal_dikeluarkan":  {"value": "12-03-2019", "ocr_conf": 0.9219, "crf_conf": null},
+  "anggota_keluarga": [
+    {
+      "nama_lengkap":                   {"value": "BUDI SANTOSO", "ocr_conf": 0.9954, "crf_conf": 0.9931},
+      "nik":                            {"value": "3273011203850001", "ocr_conf": 0.9975, "crf_conf": 0.9887},
+      "jenis_kelamin":                  {"value": "LAKI-LAKI", "ocr_conf": 0.9968, "crf_conf": 0.9954},
+      "tempat_lahir":                   {"value": "BANDUNG", "ocr_conf": 0.9891, "crf_conf": 0.9803},
+      "tanggal_lahir":                  {"value": "12-03-1985", "ocr_conf": 0.9903, "crf_conf": 0.9877},
+      "agama":                          {"value": "ISLAM", "ocr_conf": 0.9944, "crf_conf": 0.9912},
+      "pendidikan":                     {"value": "S1", "ocr_conf": 0.9840, "crf_conf": 0.9102},
+      "jenis_pekerjaan":                {"value": "KARYAWAN SWASTA", "ocr_conf": 0.9611, "crf_conf": 0.8774},
+      "golongan_darah":                 {"value": "O", "ocr_conf": 0.7120, "crf_conf": 0.4415},
+      "status_perkawinan":              {"value": "KAWIN", "ocr_conf": 0.9821, "crf_conf": 0.9688},
+      "tanggal_perkawinan":             {"value": "08-08-2010", "ocr_conf": 0.9560, "crf_conf": 0.9341},
+      "status_hubungan_dalam_keluarga": {"value": "KEPALA KELUARGA", "ocr_conf": 0.9788, "crf_conf": 0.9440},
+      "kewarganegaraan":                {"value": "WNI", "ocr_conf": 0.9972, "crf_conf": 0.9955},
+      "ayah":                           {"value": "SUTRISNO", "ocr_conf": 0.9705, "crf_conf": 0.8312},
+      "ibu":                            {"value": "SITI AMINAH", "ocr_conf": 0.9682, "crf_conf": 0.8190}
+    },
+    {
+      "nama_lengkap":                   {"value": "SITI NURHALIZA", "ocr_conf": 0.9812, "crf_conf": 0.9744},
+      "nik":                            {"value": "3273015506880002", "ocr_conf": 0.9930, "crf_conf": 0.9801},
+      "jenis_kelamin":                  {"value": "PEREMPUAN", "ocr_conf": 0.9955, "crf_conf": 0.9903},
+      "tempat_lahir":                   {"value": "GARUT", "ocr_conf": 0.9744, "crf_conf": 0.9612},
+      "tanggal_lahir":                  {"value": "15-06-1988", "ocr_conf": 0.9877, "crf_conf": 0.9790},
+      "agama":                          {"value": "ISLAM", "ocr_conf": 0.9941, "crf_conf": 0.9908},
+      "pendidikan":                     {"value": "SLTA/SEDERAJAT", "ocr_conf": 0.9503, "crf_conf": 0.8866},
+      "jenis_pekerjaan":                {"value": "MENGURUS RUMAH TANGGA", "ocr_conf": 0.4127, "crf_conf": 0.3902},
+      "golongan_darah":                 {"value": "", "ocr_conf": null, "crf_conf": null},
+      "status_perkawinan":              {"value": "KAWIN", "ocr_conf": 0.9833, "crf_conf": 0.9671},
+      "tanggal_perkawinan":             {"value": "08-08-2010", "ocr_conf": 0.9548, "crf_conf": 0.9320},
+      "status_hubungan_dalam_keluarga": {"value": "ISTRI", "ocr_conf": 0.9791, "crf_conf": 0.9455},
+      "kewarganegaraan":                {"value": "WNI", "ocr_conf": 0.9969, "crf_conf": 0.9948},
+      "ayah":                           {"value": "AHMAD DAHLAN", "ocr_conf": 0.9688, "crf_conf": 0.8277},
+      "ibu":                            {"value": "RATNA SARI", "ocr_conf": 0.9671, "crf_conf": 0.8154}
+    }
+  ],
+  "reject_reason": null
+}

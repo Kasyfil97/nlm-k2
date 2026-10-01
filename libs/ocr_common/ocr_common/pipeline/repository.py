@@ -25,6 +25,11 @@ class JobRecord(TypedDict):
     error_message: str | None
     created_at: str
     updated_at: str
+    # The pipeline_name_sequence the job was submitted with (None for jobs from before it existed: the
+    # full pipeline). Read by the orchestrator to know which stage ends the request.
+    pipeline_name_sequence: list[str] | None
+    # column_confidence_threshold sent with the job (None: the trust model's own thresholds for every field).
+    column_confidence_threshold: dict[str, float] | None
 
 
 @dataclass(frozen=True)
@@ -72,9 +77,29 @@ class JobRepository(Protocol):
         """Record in the outcome row that `next_stage` never received the job."""
         ...
 
+    async def touch(self, request_id: str) -> None:
+        """Push the job's lease forward while it is still running (`PIPELINE_HEARTBEAT_SECONDS`).
+
+        Only touches a row that is still `PROCESSING`, so a finished or failed job is never
+        resurrected by a beat that was already in flight.
+        """
+        ...
+
     async def get(self, request_id: str) -> JobRecord | None:
         """The job's record, or None when the request_id is unknown to this stage."""
         ...
+
+
+def stored_column_thresholds(input: dict[str, Any] | None) -> dict[str, float] | None:
+    """The column_confidence_threshold stored in a job's `input`, if any."""
+    thresholds = (input or {}).get("column_confidence_threshold")
+    return dict(thresholds) if isinstance(thresholds, dict) and thresholds else None
+
+
+def stored_sequence(input: dict[str, Any] | None) -> list[str] | None:
+    """The pipeline_name_sequence stored in a job's `input`, if any."""
+    sequence = (input or {}).get("pipeline_name_sequence")
+    return list(sequence) if isinstance(sequence, list | tuple) else None
 
 
 def _now_iso() -> str:
@@ -104,6 +129,8 @@ class InMemoryJobRepository:
                 "error_message": None,
                 "created_at": now,
                 "updated_at": now,
+                "pipeline_name_sequence": stored_sequence(input),
+                "column_confidence_threshold": stored_column_thresholds(input),
             }
             self._inputs[request_id] = input
             return True
@@ -112,7 +139,13 @@ class InMemoryJobRepository:
             and datetime.fromisoformat(record["updated_at"]) < current - self._lease
         )
         if record["status"] == STATUS_FAILED or expired:
-            record.update(status=STATUS_PROCESSING, error_message=None, updated_at=now)
+            record.update(
+                status=STATUS_PROCESSING,
+                error_message=None,
+                updated_at=now,
+                pipeline_name_sequence=stored_sequence(input),
+                column_confidence_threshold=stored_column_thresholds(input),
+            )
             self._inputs[request_id] = input
             return True
         return False
@@ -153,6 +186,13 @@ class InMemoryJobRepository:
     async def handoff_failed(self, request_id: str, next_stage: str, error_message: str) -> None:
         """No outcome row in memory: nothing to record."""
         pass
+
+    async def touch(self, request_id: str) -> None:
+        """See `JobRepository.touch`. In memory there is one process and no lease contention, but the
+        timestamp is still moved so the in-process reaper behaves the same way as the SQL one."""
+        record = self._jobs.get(request_id)
+        if record is not None and record["status"] == STATUS_PROCESSING:
+            record["updated_at"] = _now_iso()
 
     async def get(self, request_id: str) -> JobRecord | None:
         """See `JobRepository.get`."""

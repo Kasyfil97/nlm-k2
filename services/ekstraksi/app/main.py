@@ -27,6 +27,8 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     if settings.database_url:
         await check_connection(settings.database_url)
+    # Built here rather than on the first request: an in-process backend loads weights, and a
+    # missing runtime should stop the process instead of failing one job at a time.
     ocr_engine = get_ocr_engine()
     pipeline = get_pipeline()
     next_stage = get_next_stage()
@@ -53,7 +55,7 @@ async def lifespan(app: FastAPI):
             await testing_reaper.stop()
         await get_testing_pipeline().aclose(settings.pipeline_drain_timeout_seconds, relay=testing_relay)
         await get_testing_next_stage().aclose()
-    close = getattr(ocr_engine, "aclose", None)  # only the HTTP-backed models hold a connection
+    close = getattr(ocr_engine, "aclose", None)  # only the HTTP-backed model holds a connection
     if close is not None:
         await close()
     await dispose_engines()
@@ -61,22 +63,24 @@ async def lifespan(app: FastAPI):
 
 app = create_app(
     settings=settings,
-    title="OCR NPWP API",
+    title="OCR Kartu Keluarga Ekstraksi API",
     service_name="ekstraksi",
     description=(
-        "OCR service for Indonesian NPWP (tax ID card) documents; ServiceOCR in the pipeline. "
-        "**Async pipeline:** the orchestrator NPWP POSTs /v1/ekstraksi/jobs once a document passed the guardrails "
-        "check and gets 202; this service runs OCR in the background, stores the result, reports to the central "
-        "orchestrator (callback / its tables), and hands the job to the structuring service. "
-        "The raw OCR step is also exposed as /v1/ekstraksi/extract. "
-        "All endpoints except /health require an X-API-Key header."
+        "Pipeline step 2 for Indonesian Kartu Keluarga: reads the card photo and produces one "
+        "`{text, score, poly}` box per recognised line, plus the three document aggregates the trust model "
+        "uses. It does not name fields and it does not judge the document.\n\n"
+        "The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the document and gets "
+        "202; this service reads the image in the background, stores the result (`ocr_results`) and hands the "
+        "job to the structuring service in the same transaction. /v1/ekstraksi/extract runs the same OCR "
+        "synchronously and stores nothing, for debugging. All endpoints except /health require an X-API-Key "
+        "header."
     ),
     tags=[
+        {"name": "Ekstraksi", "description": "Synchronous OCR: the §7.1 payload in the response, nothing stored"},
         {"name": "Pipeline", "description": "Asynchronous pipeline stage: 202, background work, callback, hand-off"},
         {"name": "Callbacks", "description": "Requests this service SENDS to the orchestrator (see Webhooks)"},
-        {"name": "Ekstraksi", "description": "Raw OCR text, synchronous"},
     ],
-    routers=[jobs.router, ekstraksi.router, *([testing.router] if settings.testing_endpoints else [])],
+    routers=[ekstraksi.router, jobs.router, *([testing.router] if settings.testing_endpoints else [])],
     backends={
         "ekstraksi": settings.ekstraksi_backend,
         "storage": "postgres" if settings.database_url else "memory",
@@ -93,9 +97,10 @@ add_stage_callback_webhook(
     sent=(
         "Once per job of `POST /v1/ekstraksi/jobs`: `stage: OCR` with `status: DONE` once the OCR result is "
         "stored, or `status: FAILED` with `error_message` when the document could not be read (the chain stops "
-        "there). Additionally `stage: STRUCTURING`, `status: FAILED` when OCR succeeded but the structuring "
-        "service could not be reached after retries. Without `PIPELINE_OUTBOX` the `OCR` callback is sent before "
-        "the hand-off to structuring; with it the hand-off goes first, so the `STRUCTURING` callback may arrive "
-        "before this one."
+        "there). An image with no readable text is `DONE`, not `FAILED`: it is rejected by the structuring "
+        "rules. Additionally `stage: STRUCTURING`, `status: FAILED` when OCR succeeded but the structuring "
+        "service could not be reached after retries. Without `PIPELINE_OUTBOX` the `OCR` callback is sent "
+        "before the hand-off to structuring; with it the hand-off goes first, so the `STRUCTURING` callback "
+        "may arrive before this one."
     ),
 )

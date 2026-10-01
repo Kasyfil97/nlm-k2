@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 from ocr_common.pipeline.callbacks import stage_callback_body
 from ocr_common.web.openapi import spec_text
 
-TEST_API_KEY = "test-key"
+#: An API key long enough to pass the production guard. Tests that build *deployed* settings need
+#: one; tests that only need a local app do not, but using it everywhere keeps the intent obvious.
+TEST_API_KEY = "test-key-not-a-placeholder"
 
 
 def set_test_env(**extra: str) -> None:
@@ -32,7 +34,7 @@ def auth_headers() -> dict[str, str]:
     return {"X-API-Key": TEST_API_KEY}
 
 
-def image_upload(filename="npwp.jpg", content=b"\xff\xd8fake-jpeg-bytes", content_type="image/jpeg"):
+def image_upload(filename="kk.jpg", content=b"\xff\xd8fake-jpeg-bytes", content_type="image/jpeg"):
     """A multipart `file` field with a small fake JPEG."""
     return {"file": (filename, content, content_type)}
 
@@ -53,11 +55,19 @@ class RecordingCallback:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def notify(self, request_id, stage, status, *, result=None, error_message=None, error_code=None) -> bool:
-        """Record the callback, in the body shape a stage sends (`error_code` only when set)."""
+    async def notify(
+        self, request_id, stage, status, *, result=None, error_message=None, error_code=None, final=False
+    ) -> bool:
+        """Record the callback, in the body shape a stage sends (`error_code` and `final` only when set)."""
         self.calls.append(
             stage_callback_body(
-                request_id, stage, status, result=result, error_message=error_message, error_code=error_code
+                request_id,
+                stage,
+                status,
+                result=result,
+                error_message=error_message,
+                error_code=error_code,
+                final=final,
             )
         )
         return True

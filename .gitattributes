@@ -3,3 +3,7 @@
 # menulis CRLF ke working tree, dan working tree itulah build context Docker — Makefile dan
 # skrip ber-CRLF gagal di dalam container Linux.
 * text=auto eol=lf
+
+# Artefak model adalah pickle biner: byte 0x0D 0x0A di dalamnya bukan akhir baris dan tidak boleh
+# dinormalisasi.
+*.joblib binary

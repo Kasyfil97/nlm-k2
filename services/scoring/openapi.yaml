@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
-  title: OCR NPWP Scoring API
-  description: 'Pipeline step 4 (last) for Indonesian NPWP documents: combines per-field confidence and
-    format validation into one document score plus an approve/review/reject decision. **Async pipeline:**
-    the structuring service POSTs /v1/scoring/jobs and gets 202; this service scores in the background,
-    stores the result, and POSTs the stage callback carrying the final result to the orchestrator. /v1/scoring/score
-    is the same work, synchronous. All endpoints except /health require an X-API-Key header.
+  title: OCR Kartu Keluarga Scoring API
+  description: 'Pipeline step 4 (last) for Indonesian Kartu Keluarga: P(correct) per contract field, after
+    fusing the two structuring scores. There is no document score and no approve/reject decision -- the
+    threshold belongs to the caller. **Async pipeline:** the structuring service POSTs /v1/scoring/jobs
+    and gets 202; this service scores in the background, stores the result, and POSTs the stage callback
+    carrying the final result to the orchestrator. /v1/scoring/confidence is the same work, synchronous.
+    All endpoints except /health require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -23,15 +24,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -42,14 +53,14 @@ info:
     without it the service generates one.
 
 
-    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+    **Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 
     .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
     a
 
     callback to the central orchestrator (see *Webhooks*), and can be read at any time with
 
-    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+    `GET .../jobs/{request_id}`, which the orchestrator''s `GET /v1/extract-ocr/{request_id}` combines
 
     over the three stages. Submitting the same request_id again is idempotent:
 
@@ -104,7 +115,6 @@ paths:
                     device: cpu
                     backends:
                       scoring: trust_model
-                      legacy_score: heuristic
                       storage: postgres
   /ready:
     get:
@@ -226,7 +236,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
         '422':
           description: Validation Error
           content:
@@ -238,6 +249,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'body.request_id: Field required'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: scoring
       security:
       - APIKeyHeader: []
   /v1/scoring/jobs/{request_id}:
@@ -246,7 +258,7 @@ paths:
       - Pipeline
       summary: Status and result of the scoring stage
       description: 'Status of this stage only and, once `DONE`, the two confidences plus the exact payload
-        that was scored. Internal: the orchestrator NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`);
+        that was scored. Internal: the orchestrator reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`);
         the central orchestrator receives the final result in the callback. Also useful to audit a score.'
       operationId: getScoringJob
       security:
@@ -278,18 +290,15 @@ paths:
                       created_at: '2026-09-18T04:00:01+00:00'
                       status: DONE
                       result:
-                        npwp_confidence: 0.9806
+                        nomor_kk: 0.9806
                         name_confidence: 0.9948
                         payload:
-                          npwp: 12.345.678.9-012.000
-                          npwp_score: 0.98
-                          npwp_candidate_count: 1
-                          name_base: PT CONTOH INDONESIA
-                          name_score: 0.95
-                          avg_doc_score: 0.91
-                          min_doc_score: 0.62
-                          flag: false
-                          guardrail_probability: 0.98
+                          structuring: '{...the §7.3 structuring result, whole...}'
+                          guardrail_probability: 0.0287
+                          guardrail_verdict: accepted
+                          avg_doc_score: 0.814
+                          min_doc_score: 0.2822
+                          text_regions_count: 177
                       updated_at: '2026-09-18T04:00:01+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
                 failed:
@@ -303,7 +312,7 @@ paths:
                       stage: SCORING
                       created_at: '2026-09-18T04:00:01+00:00'
                       status: FAILED
-                      error_message: 'Unsupported document_type: ktp. Supported: [''npwp'']'
+                      error_message: 'Unsupported document_type: ktp. Supported: [''kk'']'
                       updated_at: '2026-09-18T04:00:01+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '401':
@@ -314,7 +323,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
@@ -325,8 +335,9 @@ paths:
                 status_code: 404
                 status_desc: Not Found
                 message: 'No SCORING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
-                errors: 'No SCORING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                errors: REQUEST_ID_NOT_FOUND
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -339,6 +350,7 @@ paths:
                 message: 'path.request_id: Field required'
                 errors: VALIDATION_ERROR
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/scoring/outbox:
@@ -410,7 +422,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
       security:
       - APIKeyHeader: []
   /v1/scoring/outbox/release:
@@ -472,7 +485,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
@@ -483,7 +497,8 @@ paths:
                 status_code: 409
                 status_desc: Conflict
                 message: 'PIPELINE_OUTBOX is off: there is no outbox to release'
-                errors: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+                errors: CONFLICT
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -495,6 +510,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'query.request_id: Input should be a valid string'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/scoring/confidence:
@@ -502,14 +518,15 @@ paths:
       tags:
       - Scoring
       summary: Per-field confidence from the trust model, synchronous (no job, no callback)
-      description: 'The ML team''s scoring contract (`POST /v1/score` of their scoring service, model
-        of 21 Sep 2026): the payload carries the signals of the previous stages, the answer is the probability
-        that each extracted field is correct (`npwp_confidence`, `name_confidence`), from `weights/trust_model.joblib`
-        (imputer -> scaler -> logistic regression, one feature row per field: `field_is_npwp`, `field_score`,
-        `shape_confidence`, `field_multiple_candidates`, `name_max_char_len`, `avg_doc_score`, `min_doc_score`,
-        `flag`, `guardrail_probability`). There is no document score and no approve/reject decision here;
-        thresholds are the caller''s. A field whose value is null gets a null confidence. Any other null
-        is treated as missing and filled by the model''s own median imputer.'
+      description: 'P(each extracted field is correct), after fusing the two structuring scores and calibrating.
+        Only the **nine contract fields** are scored -- two document fields and seven per household member
+        -- not all 26 that structuring extracts: each field needs its own calibrator, and training 26
+        of them for 9 numbers anyone reads would be waste. The keys here are the INTERNAL names; the rename
+        to the outgoing contract happens in the orchestrator.
+
+
+        `anggota_keluarga` comes back with exactly as many rows as were sent, in the same order. There
+        is no document-level score and no approve/reject decision: the threshold belongs to the caller.'
       operationId: predictConfidence
       requestBody:
         content:
@@ -519,40 +536,38 @@ paths:
         required: true
       responses:
         '200':
-          description: Probability that each extracted field is correct
+          description: P(correct) per contract field
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ConfidenceResponse'
               examples:
-                both:
-                  summary: Both fields present
+                scored:
+                  summary: Two members; the second one's occupation was not read, so it scores null
                   value:
                     status_code: 200
                     status_desc: OK
                     message: Success
                     data:
-                      npwp_confidence: 0.9835
-                      name_confidence: 0.9806
-                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-                flagged:
-                  summary: '`flag: true` (a review flag of the structuring rules) lowers both confidences'
-                  value:
-                    status_code: 200
-                    status_desc: OK
-                    message: Success
-                    data:
-                      npwp_confidence: 0.9757
-                      name_confidence: 0.9725
-                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-                no_name:
-                  summary: '`name_base` is null: a field that was not found has no confidence'
-                  value:
-                    status_code: 200
-                    status_desc: OK
-                    message: Success
-                    data:
-                      npwp_confidence: 0.9835
+                      document_type: kk
+                      fields:
+                        nomor_kk: 0.9412
+                        nama_kepala_keluarga: 0.8871
+                      anggota_keluarga:
+                      - nama_lengkap: 0.9702
+                        nik: 0.9655
+                        pendidikan: 0.841
+                        jenis_pekerjaan: 0.7733
+                        status_hubungan_dalam_keluarga: 0.9218
+                        ayah: 0.8064
+                        ibu: 0.7951
+                      - nama_lengkap: 0.9333
+                        nik: 0.951
+                        pendidikan: 0.7126
+                        status_hubungan_dalam_keluarga: 0.9047
+                        ayah: 0.7702
+                        ibu: 0.7588
+                      model: kk-trust-mock-v1
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '401':
           description: Missing or invalid X-API-Key
@@ -564,7 +579,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
         '422':
           description: Validation Error
           content:
@@ -574,89 +590,9 @@ paths:
               example:
                 status_code: 422
                 status_desc: Unprocessable Entity
-                message: 'body.npwp_score: Input should be a valid number'
+                message: 'body.structuring: Field required'
                 errors: VALIDATION_ERROR
-      security:
-      - APIKeyHeader: []
-  /v1/scoring/score:
-    post:
-      tags:
-      - Scoring
-      summary: 'Legacy: heuristic document score (used only by the legacy extract-ocr contract)'
-      description: Combines per-field confidence and format validation into one document score (the `guardrails`
-        value of extract-ocr), then applies the configured thresholds to decide approve / review / reject.
-      operationId: scoreDocument
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ScoreRequest'
-        required: true
-      responses:
-        '200':
-          description: The document was scored
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScoreResponse'
-              examples:
-                approve:
-                  summary: 'A person''s card: `nama_badan` is optional, so missing it does not lower the
-                    score'
-                  value:
-                    status_code: 200
-                    status_desc: OK
-                    message: Success
-                    data:
-                      score: 0.9904
-                      decision: approve
-                      field_scores:
-                      - name: nomor_npwp
-                        score: 0.9992
-                        issues: []
-                      - name: nama
-                        score: 0.9773
-                        issues: []
-                      - name: nama_badan
-                        score: 0.0
-                        issues:
-                        - missing
-                      reasons: []
-                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-        '400':
-          description: Unsupported document_type or no fields
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 400
-                status_desc: Bad Request
-                message: No fields to score
-                errors: No fields to score
-        '401':
-          description: Missing or invalid X-API-Key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 401
-                status_desc: Unauthorized
-                message: Invalid or missing API key
-                errors: Invalid or missing API key
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 422
-                status_desc: Unprocessable Entity
-                message: 'body.fields: Field required'
-                errors: VALIDATION_ERROR
-      deprecated: true
+                pipeline_last_stage: scoring
       security:
       - APIKeyHeader: []
 webhooks:
@@ -681,9 +617,9 @@ webhooks:
         **Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are
         retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A callback
         that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the orchestrator
-        can reconcile with the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` and should time
-        a request out on its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction
-        as the result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
+        can reconcile with its own `GET /v1/extract-ocr/{request_id}` and should time a request out on
+        its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the
+        result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
         (24 h by default); a `4xx`, or that age, makes it a dead letter that stays in the table and is
         counted by `GET .../outbox`.
 
@@ -718,119 +654,11 @@ webhooks:
               schema: {}
 components:
   schemas:
-    BoundingBoxPayload:
-      properties:
-        x1:
-          type: number
-          title: X1
-          description: Left edge, pixels
-          examples:
-          - 271
-        y1:
-          type: number
-          title: Y1
-          description: Top edge, pixels
-          examples:
-          - 358
-        x2:
-          type: number
-          title: X2
-          description: Right edge, pixels
-          examples:
-          - 1347
-        y2:
-          type: number
-          title: Y2
-          description: Bottom edge, pixels
-          examples:
-          - 511
-      additionalProperties: true
-      type: object
-      required:
-      - x1
-      - y1
-      - x2
-      - y2
-      title: BoundingBoxPayload
-      description: Upright box around a text line.
     ConfidenceRequest:
       properties:
-        npwp:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Npwp
-          description: Extracted NPWP number, digits or printed form; null when not found
-          examples:
-          - 12.345.678.9-012.000
-        npwp_score:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Npwp Score
-          description: OCR score of the line the number came from
-          examples:
-          - 0.98
-        npwp_candidate_count:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: Npwp Candidate Count
-          description: NPWP-shaped numbers found in the document (a card may print a 15- and a 16-digit
-            one)
-          examples:
-          - 1
-        name_base:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Name Base
-          description: The name as OCR read it, BEFORE any normalisation or correction (`signals.name_base`
-            of the structuring result); null when not found. The model measures the name's shape on this
-          examples:
-          - PT CONTOH INDONESIA
-        name_score:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Name Score
-          description: OCR score of the line the name came from
-          examples:
-          - 0.95
-        avg_doc_score:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Avg Doc Score
-          description: Mean OCR score over all lines
-          examples:
-          - 0.91
-        min_doc_score:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Min Doc Score
-          description: Lowest OCR score over all lines
-          examples:
-          - 0.62
-        flag:
-          anyOf:
-          - type: boolean
-          - type: 'null'
-          title: Flag
-          description: Review flag of the structuring rules (`flag` of the structuring result); null counts
-            as false
-          examples:
-          - false
+        structuring:
+          $ref: '#/components/schemas/StructuringPayload'
+          description: The structuring result, whole (§7.3)
         guardrail_probability:
           anyOf:
           - type: number
@@ -838,13 +666,58 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Guardrail Probability
-          description: '`document.confidence` of the guardrails result when the document was accepted'
+          description: '`document.probability_bad` of the guardrails result -- the RAW model output, not
+            the verdict''s confidence. Null when guardrails was skipped, and also when the verdict was
+            `unassessable`, which the model must impute rather than read as a number'
           examples:
-          - 0.98
+          - 0.0287
+        guardrail_verdict:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Guardrail Verdict
+          description: '`accepted`, `reject` or `unassessable`; null when guardrails was skipped'
+        avg_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Avg Doc Score
+          description: Mean of the OCR box scores; null when there were none
+          examples:
+          - 0.814
+        min_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Min Doc Score
+          description: Lowest OCR box score; null when there were none
+          examples:
+          - 0.2822
+        text_regions_count:
+          anyOf:
+          - type: integer
+            minimum: 0.0
+          - type: 'null'
+          title: Text Regions Count
+          description: Number of OCR boxes
+          examples:
+          - 177
       type: object
+      required:
+      - structuring
       title: ConfidenceRequest
-      description: The ML team's scoring payload (nilamnpwp `scoring/schemas.py`, model retrained 21 Sep
-        2026).
+      description: 'Body of the synchronous `POST /v1/scoring/confidence` (§8.4).
+
+
+        The structuring result is passed whole rather than pre-extracted into per-field signals: a
+
+        Kartu Keluarga has a variable-length member list, so there is no fixed set of signal columns to
+
+        flatten it into, and the model needs the two scores per field anyway.'
     ConfidenceResponse:
       properties:
         status_code:
@@ -882,7 +755,7 @@ components:
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
         data:
-          $ref: '#/components/schemas/FieldConfidences'
+          $ref: '#/components/schemas/ScoringPayload'
       type: object
       required:
       - data
@@ -914,10 +787,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -926,6 +799,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code
@@ -934,107 +816,6 @@ components:
       - errors
       title: ErrorResponse
       description: Every error response.
-    FieldConfidences:
-      properties:
-        npwp_confidence:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Npwp Confidence
-          description: P(the NPWP number is correct); null when no number was found
-          examples:
-          - 0.7296
-        name_confidence:
-          anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
-          - type: 'null'
-          title: Name Confidence
-          description: P(the name is correct); null when no name was found
-          examples:
-          - 0.9471
-      type: object
-      required:
-      - npwp_confidence
-      - name_confidence
-      title: FieldConfidences
-      description: 'Output of the ML team''s trust model: probability that each extracted field is correct.'
-    FieldScore:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Field name
-          examples:
-          - nomor_npwp
-        score:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Score
-          description: OCR confidence, or 0 when missing / badly formatted
-          examples:
-          - 0.96
-        issues:
-          items:
-            type: string
-          type: array
-          title: Issues
-          description: '`missing`, or `invalid format: ...`'
-          examples:
-          - []
-      type: object
-      required:
-      - name
-      - score
-      title: FieldScore
-    FieldValue:
-      properties:
-        value:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Value
-          description: null when the field was not found
-          examples:
-          - 12.345.678.9-012.345
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: OCR score of the line the value came from
-          default: 1.0
-          examples:
-          - 0.96
-      type: object
-      title: FieldValue
-    FinalField:
-      properties:
-        value:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Value
-          description: null when the field was not found
-          examples:
-          - '3201234567890001'
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: OCR score of the line the value came from
-          examples:
-          - 0.9762
-      type: object
-      required:
-      - confidence
-      title: FinalField
-      description: A field of the final result.
     FinalResult:
       properties:
         document_type:
@@ -1042,54 +823,24 @@ components:
           title: Document Type
           description: Document type the fields were read as
           examples:
-          - npwp
-        fields:
-          additionalProperties:
-            $ref: '#/components/schemas/FinalField'
-          type: object
-          title: Fields
-          description: '`nomor_npwp`, `nama`, `nama_badan`. A 15-digit number is formatted `XX.XXX.XXX.X-XXX.XXX`;
-            a 16-digit (NIK-based) number is 16 plain digits. A card printing both reports the 16-digit
-            one'
-          examples:
-          - nama:
-              confidence: 0.9931
-              value: BUDI SANTOSO
-            nama_badan:
-              confidence: 0.0
-            nomor_npwp:
-              confidence: 0.9762
-              value: '3201234567890001'
+          - kk
+        structuring:
+          $ref: '#/components/schemas/StructuringPayload'
+          description: 'The structuring result whole: all 11 document fields and 15 per member'
         scoring:
-          $ref: '#/components/schemas/FieldConfidences'
-          description: 'Per-field trust. There is NO document-level score and NO approve / reject decision:
-            thresholds belong to the caller'
+          $ref: '#/components/schemas/ScoringPayload'
+          description: 'Per-field trust for the nine contract fields. There is NO document-level score
+            and NO approve / reject decision: thresholds belong to the caller'
         guardrails:
           anyOf:
           - $ref: '#/components/schemas/GuardrailsResult'
           - type: 'null'
           description: The guardrails result that was submitted with the job, returned unchanged
-        flag:
-          type: boolean
-          title: Flag
-          description: 'Flag of the structuring rules (see the structuring result), an input of the trust
-            model. Only a tolerated flag (single-word name, letter in the number) reaches this result:
-            any other rejects the document at structuring'
-          default: false
-          examples:
-          - false
-        flag_reason:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Flag Reason
-          description: Why `flag` is true, in Indonesian; null when not flagged
-          examples:
-          - null
+      additionalProperties: true
       type: object
       required:
       - document_type
-      - fields
+      - structuring
       - scoring
       title: FinalResult
       description: What the pipeline produced for one request_id. Carried by the SCORING / DONE callback.
@@ -1101,6 +852,7 @@ components:
             enum:
             - accepted
             - reject
+            - unassessable
           - type: 'null'
           title: Verdict
           description: Document verdict
@@ -1113,87 +865,52 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Confidence
-          description: 'Confidence in the verdict: accepted -> lowest `proba_approve` over the pages.
-            Sent to the scoring model as `guardrail_probability`'
+          description: 'Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad`
+            when accepted. Null when the image could not be assessed'
           examples:
-          - 0.9821
-        n_pages:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Pages
-          description: Pages that were checked
-          examples:
-          - 1
-        n_approve:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Approve
-          description: Pages with verdict `accepted`
-          examples:
-          - 1
-        n_reject:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Reject
-          description: Pages with verdict `rejected`
-          examples:
-          - 0
-      additionalProperties: true
-      type: object
-      title: GuardrailsDocument
-      description: The guardrails verdict for the whole document.
-    GuardrailsPage:
-      properties:
-        page_index:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: Page Index
-          description: 0-based page number
-          examples:
-          - 0
-        proba_approve:
+          - 0.9713
+        probability_bad:
           anyOf:
           - type: number
             maximum: 1.0
             minimum: 0.0
           - type: 'null'
-          title: Proba Approve
-          description: Probability that this page is an acceptable document
+          title: Probability Bad
+          description: Raw model output. Travels unchanged to scoring as the `guardrail_probability` feature.
+            Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number
           examples:
-          - 0.9821
-        proba_reject:
+          - 0.0287
+        threshold_used:
           anyOf:
           - type: number
-            maximum: 1.0
-            minimum: 0.0
+            exclusiveMaximum: 1.0
+            exclusiveMinimum: 0.0
           - type: 'null'
-          title: Proba Reject
-          description: 1 - `proba_approve`
+          title: Threshold Used
+          description: The threshold in force at the moment of the judgement. Echoed because it can be
+            changed at the central orchestrator without a deploy here, so the verdict records the one
+            it actually used
           examples:
-          - 0.0179
-        verdict:
+          - 0.5
+        threshold_target:
           anyOf:
           - type: string
             enum:
-            - accepted
+            - accept
             - reject
           - type: 'null'
-          title: Verdict
-          description: Verdict for this page alone
+          title: Threshold Target
+          description: 'The side `threshold_used` applied to: `reject` (the default) or `accept` (on 1
+            - probability_bad)'
           examples:
-          - accepted
+          - reject
       additionalProperties: true
       type: object
-      title: GuardrailsPage
-      description: One page of the guardrails report.
+      title: GuardrailsDocument
+      description: 'The guardrails verdict. A Kartu Keluarga is always a single image, so there is no
+        page
+
+        concept here and no aggregation across pages.'
     GuardrailsResult:
       properties:
         passed:
@@ -1209,20 +926,14 @@ components:
           - type: string
           - type: 'null'
           title: Reason
-          description: Why it was rejected; null when passed
+          description: Why it was rejected, in Indonesian; null when passed
           examples:
           - null
         document:
           anyOf:
           - $ref: '#/components/schemas/GuardrailsDocument'
           - type: 'null'
-          description: Verdict for the document as a whole
-        pages:
-          items:
-            $ref: '#/components/schemas/GuardrailsPage'
-          type: array
-          title: Pages
-          description: One entry per page, in page order
+          description: The verdict and its numbers
       additionalProperties: true
       type: object
       title: GuardrailsResult
@@ -1354,44 +1065,53 @@ components:
       - data
       title: JobAcceptedResponse
       description: Envelope of `POST /v1/<stage>/jobs`.
-    OcrBlockPayload:
+    OcrBoxPayload:
       properties:
         text:
           type: string
           title: Text
-          description: One OCR text line
+          description: The recognised text
           examples:
-          - 12.345.678.9-012.345
-        confidence:
+          - '9924187486671285'
+        score:
           type: number
           maximum: 1.0
           minimum: 0.0
-          title: Confidence
+          title: Score
           description: Recognition score of this line
-          default: 1.0
           examples:
-          - 0.9999
-        bbox:
-          anyOf:
-          - $ref: '#/components/schemas/BoundingBoxPayload'
-          - type: 'null'
-          description: Upright box around the line, in pixels of the ORIENTATION-CORRECTED image the OCR
-            model worked on (not of the uploaded photo). Structuring finds the name by its distance to
-            the NPWP number
-        page:
-          type: integer
-          minimum: 0.0
-          title: Page
-          description: 0-based page number
-          default: 0
+          - 0.9991
+        poly:
+          items:
+            items:
+              type: number
+            type: array
+            maxItems: 2
+            minItems: 2
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Poly
+          description: 'Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright
+            box: the detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle
+            would lose information. Structuring depends on this geometry to assign cells to columns'
           examples:
-          - 0
+          - - - 291.0
+              - 7.0
+            - - 306.0
+              - 6.0
+            - - 309.0
+              - 26.0
+            - - 294.0
+              - 28.0
       additionalProperties: true
       type: object
       required:
       - text
-      title: OcrBlockPayload
-      description: One OCR text line.
+      - score
+      - poly
+      title: OcrBoxPayload
+      description: One recognised text line.
     OcrPayload:
       properties:
         engine:
@@ -1399,17 +1119,17 @@ components:
           - type: string
           - type: 'null'
           title: Engine
-          description: OCR backend that produced the blocks
+          description: OCR backend that produced the boxes
           examples:
-          - paddle
+          - kk_ocr
         model:
           anyOf:
           - type: string
           - type: 'null'
           title: Model
-          description: Model identity reported by the OCR model service
+          description: Model identity reported by the OCR backend
           examples:
-          - PP-OCRv6_medium_det+PP-OCRv6_medium_rec
+          - PP-OCRv5_server_det+PP-OCRv5_server_rec
         elapsed_ms:
           anyOf:
           - type: number
@@ -1417,23 +1137,45 @@ components:
           title: Elapsed Ms
           description: Time spent in the OCR model
           examples:
-          - 412.5
-        full_text:
+          - 4182.7
+        text_regions_count:
+          type: integer
+          minimum: 0.0
+          title: Text Regions Count
+          description: Number of text boxes; may be 0
+          default: 0
+          examples:
+          - 177
+        avg_doc_score:
           anyOf:
-          - type: string
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
           - type: 'null'
-          title: Full Text
-          description: All blocks joined by newline
-        blocks:
+          title: Avg Doc Score
+          description: Mean of `texts[].score`; null when `texts` is empty rather than 0
+          examples:
+          - 0.814
+        min_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Min Doc Score
+          description: Lowest of `texts[].score`; null when `texts` is empty
+          examples:
+          - 0.2822
+        texts:
           items:
-            $ref: '#/components/schemas/OcrBlockPayload'
+            $ref: '#/components/schemas/OcrBoxPayload'
           type: array
-          title: Blocks
-          description: Text lines in reading order (top to bottom)
+          title: Texts
+          description: 'Text boxes. May be EMPTY: an image with no readable text must reach the structuring
+            rules to be rejected there, so neither this model nor the structuring job endpoint may require
+            at least one'
       additionalProperties: true
       type: object
-      required:
-      - blocks
       title: OcrPayload
       description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
     OutboxRelease:
@@ -1636,111 +1378,6 @@ components:
       - checks
       title: ReadyResponse
       description: '`GET /ready`.'
-    ScoreReport:
-      properties:
-        score:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Score
-          description: Weighted mean of the field scores
-          examples:
-          - 0.91
-        decision:
-          type: string
-          enum:
-          - approve
-          - review
-          - reject
-          title: Decision
-          description: '`score` against the configured thresholds (0.8 / 0.5 by default)'
-          examples:
-          - approve
-        field_scores:
-          items:
-            $ref: '#/components/schemas/FieldScore'
-          type: array
-          title: Field Scores
-          description: One entry per scored field
-        reasons:
-          items:
-            type: string
-          type: array
-          title: Reasons
-          description: Why a required field lowered the score
-          examples:
-          - []
-      type: object
-      required:
-      - score
-      - decision
-      - field_scores
-      title: ScoreReport
-    ScoreRequest:
-      properties:
-        document_type:
-          type: string
-          title: Document Type
-          description: Only `npwp` is supported
-          default: npwp
-          examples:
-          - npwp
-        fields:
-          additionalProperties:
-            $ref: '#/components/schemas/FieldValue'
-          type: object
-          title: Fields
-          description: Structured fields (`data.fields` of the structuring service)
-          examples:
-          - nomor_npwp:
-              confidence: 0.96
-              value: 12.345.678.9-012.345
-      type: object
-      required:
-      - fields
-      title: ScoreRequest
-    ScoreResponse:
-      properties:
-        status_code:
-          type: integer
-          title: Status Code
-          description: Same as the HTTP status code
-          default: 200
-          examples:
-          - 200
-        status_desc:
-          type: string
-          title: Status Desc
-          description: Reason phrase of `status_code`
-          default: OK
-          examples:
-          - OK
-        message:
-          type: string
-          title: Message
-          description: Human-readable outcome
-          default: Success
-          examples:
-          - Success
-        errors:
-          type: 'null'
-          title: Errors
-          description: Always null on success
-        request_id:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Request Id
-          description: 'The request_id this response belongs to: the one sent in the form / body / path,
-            otherwise the `X-Request-ID` header, otherwise one generated by the service'
-          examples:
-          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
-        data:
-          $ref: '#/components/schemas/ScoreReport'
-      type: object
-      required:
-      - data
-      title: ScoreResponse
     ScoringJobRequest:
       properties:
         request_id:
@@ -1753,10 +1390,10 @@ components:
         document_type:
           type: string
           title: Document Type
-          description: Only `npwp` is supported; anything else fails the job
-          default: npwp
+          description: Only `kk` is supported; anything else fails the job
+          default: kk
           examples:
-          - npwp
+          - kk
         guardrails:
           anyOf:
           - $ref: '#/components/schemas/GuardrailsResult'
@@ -1766,51 +1403,160 @@ components:
           anyOf:
           - $ref: '#/components/schemas/OcrPayload'
           - type: 'null'
-          description: Result of the OCR stage; `avg_doc_score` / `min_doc_score` are computed from `blocks`
+          description: Result of the OCR stage; its aggregates feed the model as document-level features
         structuring:
           anyOf:
           - $ref: '#/components/schemas/StructuringPayload'
           - type: 'null'
           description: 'Result of the structuring stage. Left out when the structuring service hands off
-            by reference (`PIPELINE_HANDOFF_BY_REFERENCE`): this service then reads `structuring_results`
-            (and `ocr_results`) of the shared database'
+            by reference (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads
+            `structuring_results` (and `ocr_results`) of the shared database'
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, in order, from the central orchestrator (forwarded
+            by the orchestrator and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`,
+            guardrails optional at the front and the end cut off, never one skipped in the middle. The
+            last one ends the request: its result is the answer, as it is, and nothing is handed on. Omitted:
+            the full pipeline'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
+            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
       type: object
       required:
       - request_id
       title: ScoringJobRequest
+      description: Body of `POST /v1/scoring/jobs` (§8.1).
     ScoringJobResult:
       properties:
-        npwp_confidence:
+        document_type:
           anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
+          - type: string
           - type: 'null'
-          title: Npwp Confidence
-          description: P(the NPWP number is correct); null when no number was found
+          title: Document Type
+          description: Document type the fields were read as
           examples:
-          - 0.7296
-        name_confidence:
+          - kk
+        fields:
+          additionalProperties:
+            anyOf:
+            - type: number
+            - type: 'null'
+          type: object
+          title: Fields
+          description: '`nomor_kk` and `nama_kepala_keluarga`. Null for a field whose value is empty'
+          examples:
+          - nama_kepala_keluarga: 0.8871
+            nomor_kk: 0.9412
+        anggota_keluarga:
+          items:
+            additionalProperties:
+              anyOf:
+              - type: number
+              - type: 'null'
+            type: object
+          type: array
+          title: Anggota Keluarga
+          description: Seven scores per member, positionally aligned with the structuring result. A length
+            mismatch is a defect in this pipeline, not a property of the document, and is rejected rather
+            than truncated
+        model:
           anyOf:
-          - type: number
-            maximum: 1.0
-            minimum: 0.0
+          - type: string
           - type: 'null'
-          title: Name Confidence
-          description: P(the name is correct); null when no name was found
+          title: Model
+          description: Identity of the trust model
           examples:
-          - 0.9471
+          - kk-trust-isotonic-v1
         payload:
-          $ref: '#/components/schemas/ConfidenceRequest'
-          description: 'Exactly what was scored, built from the chained results: an audit trail for the
-            two numbers'
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Payload
+          description: 'Exactly what was scored, as an audit trail: §8.3 requires the numbers to be reproducible
+            without re-running the pipeline, which is only true if the input is stored with the output'
+        thresholds:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Thresholds
+          description: The confidence above which a field of that name was correct on every held-out sample
+            -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
+            configuration because they are a property of the trained model, not of the deployment, and
+            because this is what makes the orchestrator's `confidence` and the outcome row's identical
+            by construction instead of by keeping two env vars in step. A field absent here had no such
+            point and is 0 unless the request's `column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD`
+            applies only to a result that carries no thresholds at all (the `mock` backend)
+          examples:
+          - ayah: 0.9353
+            nik: 0.9637
+            pendidikan: 0.9929
+        bin_edges:
+          anyOf:
+          - additionalProperties:
+              items:
+                type: number
+              type: array
+            type: object
+          - type: 'null'
+          title: Bin Edges
+          description: 'Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model
+            families have their own. Deliberately NOT equal width: the top bin is cut exactly where held-out
+            precision reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer
+            carries a bin'
+          examples:
+          - anggota_keluarga:
+            - 0.0
+            - 0.631
+            - 0.776
+            - 0.839
+            - 0.899
+            - 0.925
+            - 0.943
+            - 0.965
+            - 0.979
+            - 0.9874
+            - 1.0
+        decisions:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Decisions
+          description: 'The 0/1 decision per CONTRACT field, with the threshold that decided it: `{no_kk:
+            {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`.
+            The outcome row and the `extract-ocr` answer are projected from it, so both say the same for
+            one request. `threshold` null: no threshold applied, so `confidence` is 0'
+      additionalProperties: true
       type: object
-      required:
-      - npwp_confidence
-      - name_confidence
-      - payload
       title: ScoringJobResult
-      description: 'Output of the ML team''s trust model: probability that each extracted field is correct.'
+      description: 'Trust model output: P(each extracted field is correct), fused and calibrated.'
     ScoringJobStatus:
       properties:
         request_id:
@@ -1859,6 +1605,32 @@ components:
           description: Last status change (ISO 8601, UTC)
           examples:
           - '2026-09-18T04:00:01+00:00'
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, as the job was submitted with them; the last one
+            ends the request. Null for a job submitted without it: the full pipeline'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'The central orchestrator''s per-field thresholds, as the job was submitted with
+            them; null: the trust model''s own thresholds for every field'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
         result:
           anyOf:
           - $ref: '#/components/schemas/ScoringJobResult'
@@ -1913,6 +1685,112 @@ components:
       required:
       - data
       title: ScoringJobStatusResponse
+    ScoringPayload:
+      properties:
+        document_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Type
+          description: Document type the fields were read as
+          examples:
+          - kk
+        fields:
+          additionalProperties:
+            anyOf:
+            - type: number
+            - type: 'null'
+          type: object
+          title: Fields
+          description: '`nomor_kk` and `nama_kepala_keluarga`. Null for a field whose value is empty'
+          examples:
+          - nama_kepala_keluarga: 0.8871
+            nomor_kk: 0.9412
+        anggota_keluarga:
+          items:
+            additionalProperties:
+              anyOf:
+              - type: number
+              - type: 'null'
+            type: object
+          type: array
+          title: Anggota Keluarga
+          description: Seven scores per member, positionally aligned with the structuring result. A length
+            mismatch is a defect in this pipeline, not a property of the document, and is rejected rather
+            than truncated
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+          description: Identity of the trust model
+          examples:
+          - kk-trust-isotonic-v1
+        payload:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Payload
+          description: Exactly what was scored, as an audit trail, so the numbers can be reproduced
+        thresholds:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Thresholds
+          description: The confidence above which a field of that name was correct on every held-out sample
+            -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
+            configuration because they are a property of the trained model, not of the deployment, and
+            because this is what makes the orchestrator's `confidence` and the outcome row's identical
+            by construction instead of by keeping two env vars in step. A field absent here had no such
+            point and is 0 unless the request's `column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD`
+            applies only to a result that carries no thresholds at all (the `mock` backend)
+          examples:
+          - ayah: 0.9353
+            nik: 0.9637
+            pendidikan: 0.9929
+        bin_edges:
+          anyOf:
+          - additionalProperties:
+              items:
+                type: number
+              type: array
+            type: object
+          - type: 'null'
+          title: Bin Edges
+          description: 'Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model
+            families have their own. Deliberately NOT equal width: the top bin is cut exactly where held-out
+            precision reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer
+            carries a bin'
+          examples:
+          - anggota_keluarga:
+            - 0.0
+            - 0.631
+            - 0.776
+            - 0.839
+            - 0.899
+            - 0.925
+            - 0.943
+            - 0.965
+            - 0.979
+            - 0.9874
+            - 1.0
+        decisions:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Decisions
+          description: 'The 0/1 decision per CONTRACT field, with the threshold that decided it: `{no_kk:
+            {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`.
+            The outcome row and the `extract-ocr` answer are projected from it, so both say the same for
+            one request. `threshold` null: no threshold applied, so `confidence` is 0'
+      additionalProperties: true
+      type: object
+      title: ScoringPayload
+      description: 'Trust model output: P(each extracted field is correct), fused and calibrated.'
     ScoringStageCallback:
       properties:
         request_id:
@@ -1956,9 +1834,8 @@ components:
           - type: string
           - type: 'null'
           title: Error Code
-          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the stage rejected the
-            document (a rejecting check of the structuring rules; `error_message` is the Indonesian reason).
-            Absent when a stage broke'
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected
+            the document (`error_message` is the Indonesian reason). Absent when a stage broke'
           examples:
           - null
       type: object
@@ -1970,98 +1847,169 @@ components:
     StructuredFieldPayload:
       properties:
         value:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
           title: Value
-          description: null when the field was not found
+          description: The value; `""` when not found -- never null
+          default: ''
           examples:
-          - '3201234567890001'
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: OCR score of the line the value came from
-          default: 1.0
-          examples:
-          - 0.9762
-        source:
+          - '3273012345678901'
+        ocr_conf:
           anyOf:
-          - type: string
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
           - type: 'null'
-          title: Source
-          description: Raw OCR line the value came from
+          title: Ocr Conf
+          description: Lowest recognition score among the OCR boxes that formed this value; null when
+            not found
           examples:
-          - NPWP16:3201 2345 6789 0001
-        signals:
+          - 0.9991
+        crf_conf:
           anyOf:
-          - additionalProperties: true
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Crf Conf
+          description: Forward-backward marginal of the column placement. ALWAYS null for document fields,
+            which are found by regex or position and never pass through Viterbi, and null for member cells
+            Viterbi did not place
+          examples:
+          - null
+        features:
+          anyOf:
+          - additionalProperties:
+              type: number
             type: object
           - type: 'null'
-          title: Signals
-          description: 'Inputs for the scoring model and review signals of the ML team''s rules. nomor_npwp:
-            `candidate_count` (NPWP-shaped numbers found in the document), `has_homoglyph` (OCR read a
-            letter where a digit belongs), `invalid_province_prefix` / `invalid_kecamatan_prefix` / `invalid_birthdate`
-            (16-digit NIK-based number fails the Kode Wilayah / birthdate check), `invalid_kpp_prefix`
-            (15-digit number''s KPP office code is unknown). nama / nama_badan: `name_base` (the read
-            before any normalisation; the trust model measures the name on this), `corrected` (the returned
-            name differs from `name_base`)'
+          title: Features
+          description: 'The trust model''s input vector for this field, present only for the NINE scored
+            contract fields and null everywhere else. It exists because the two scores above do not separate
+            a correct value from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502,
+            no better than a coin, while the parser internals that do carry the signal are computed and
+            then discarded. Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES`
+            (document fields); scoring assembles them and never recomputes one, because the same feature
+            computed in two places is how a model ends up good in training and bad in production'
           examples:
-          - candidate_count: 2
-            has_homoglyph: false
+          - emis_assigned_min: 0.0
+            lebar_rel: 0.87
+            marg_min: 0.9967
+            margin_min: 0.9934
       additionalProperties: true
       type: object
       title: StructuredFieldPayload
-      description: One named field read by structuring.
+      description: One named field read by structuring, carrying two scores that are deliberately not
+        fused.
+    StructuredMemberPayload:
+      properties:
+        nama_lengkap:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        nik:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_kelamin:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tempat_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        agama:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        pendidikan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_pekerjaan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        golongan_darah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_hubungan_dalam_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kewarganegaraan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ayah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ibu:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+      additionalProperties: true
+      type: object
+      required:
+      - nama_lengkap
+      - nik
+      - jenis_kelamin
+      - tempat_lahir
+      - tanggal_lahir
+      - agama
+      - pendidikan
+      - jenis_pekerjaan
+      - golongan_darah
+      - status_perkawinan
+      - tanggal_perkawinan
+      - status_hubungan_dalam_keluarga
+      - kewarganegaraan
+      - ayah
+      - ibu
+      title: StructuredMemberPayload
+      description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
     StructuringPayload:
       properties:
-        document_type:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Document Type
-          description: Document type the fields were read as
-          examples:
-          - npwp
-        fields:
-          additionalProperties:
-            $ref: '#/components/schemas/StructuredFieldPayload'
-          type: object
-          title: Fields
-          description: Always `nomor_npwp`, `nama`, `nama_badan`. A person's card fills `nama`, a company's
-            `nama_badan`
-        flag:
-          type: boolean
-          title: Flag
-          description: 'Flag of the ML team''s rules, a feature of the trust model: another document bundled
-            in, CAPTCHA or lookup screenshot, number or name not found, single-word name, letter in the
-            number, invalid Kode Wilayah / birthdate / KPP code, more than 2 pages'
-          default: false
-          examples:
-          - false
-        flag_reason:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Flag Reason
-          description: Why `flag` is true, in Indonesian; null when not flagged
-          examples:
-          - null
+        nomor_kk:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator'
+        nama_kepala_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        alamat:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        desa_kelurahan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        rt:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'Shares one `ocr_conf` with `rw`: both are cut from the same OCR box'
+        rw:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kecamatan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kabupaten_kota:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        provinsi:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kode_pos:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_dikeluarkan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        anggota_keluarga:
+          items:
+            $ref: '#/components/schemas/StructuredMemberPayload'
+          type: array
+          title: Anggota Keluarga
+          description: One entry per row on the card, in card order. May be empty, which the validity
+            gate rejects
         reject_reason:
           anyOf:
           - type: string
           - type: 'null'
           title: Reject Reason
-          description: Set when a check that rejects the document fired (all but a single-word name and
-            a letter in the number). A rejected document is never handed to scoring; the client gets a
-            400 with this message
+          description: The first rejecting rule of the KK validity gate, in Indonesian; null when accepted.
+            It lives in this payload rather than only in the outcome row because the orchestrator is stateless
+            and reads stages through their API -- a reason kept elsewhere could never become the client's
+            400
           examples:
           - null
       additionalProperties: true
       type: object
       required:
-      - fields
+      - nomor_kk
+      - nama_kepala_keluarga
+      - alamat
+      - desa_kelurahan
+      - rt
+      - rw
+      - kecamatan
+      - kabupaten_kota
+      - provinsi
+      - kode_pos
+      - tanggal_dikeluarkan
       title: StructuringPayload
       description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
   securitySchemes:
@@ -2076,6 +2024,6 @@ tags:
 - name: Callbacks
   description: Requests this service SENDS to the orchestrator (see Webhooks)
 - name: Scoring
-  description: Document score & approve/review/reject decision, synchronous
+  description: Per-field confidence from the trust model, synchronous
 - name: Health
   description: Liveness and readiness probes; no API key

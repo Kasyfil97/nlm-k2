@@ -7,10 +7,9 @@ import pytest
 from ocr_common.clients.remote import RemoteModelClient
 
 from app.clients.ekstraksi import EkstraksiJobClient
-from app.config import get_settings
 from app.dependencies import get_ekstraksi_client
 from app.main import app
-from tests.conftest import JPEG
+from tests.conftest import JPEG, REJECTED_REPORT
 
 RID = "REQ_orchestrator_jobs"
 
@@ -61,11 +60,11 @@ def ekstraksi():
     app.dependency_overrides.pop(get_ekstraksi_client, None)
 
 
-def _submit(client, auth, filename="npwp.jpg"):
+def _submit(client, auth, filename="kk.jpg"):
     return client.post(
         "/v1/extract-ocr",
         headers=auth,
-        data={"request_id": RID, "document_type": "npwp"},
+        data={"request_id": RID, "document_type": "kk"},
         files={"file": (filename, JPEG, "image/jpeg")},
     )
 
@@ -102,7 +101,7 @@ def test_accepted_document_is_handed_to_the_ocr_stage(client, auth, ekstraksi):
     assert sent.headers["X-API-Key"] == "k"
     fields, file_bytes = _form(sent)
     assert fields["request_id"] == RID
-    assert fields["document_type"] == "npwp"
+    assert fields["document_type"] == "kk"
     guardrails = json.loads(fields["guardrails"])
     assert guardrails["passed"] is True
     assert guardrails["document"]["verdict"] == "accepted"
@@ -111,30 +110,29 @@ def test_accepted_document_is_handed_to_the_ocr_stage(client, auth, ekstraksi):
 
 
 def test_a_document_that_skipped_guardrails_is_handed_over_without_a_guardrails_field(client, auth, ekstraksi):
-    """ekstraksi refuses a `guardrails` that is not a JSON object, so no report means no field, not `null`."""
+    """ekstraksi refuses a `guardrails` that is not a JSON object, so no report means no field, not `null`.
+    The sequence goes along as a JSON array, so each stage knows where the chain stops."""
     handler = ekstraksi(_accepted)
-    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(update={"guardrails_skip_allowed": True})
-    try:
-        response = client.post(
-            "/v1/extract-ocr",
-            headers=auth,
-            data={"request_id": RID, "document_type": "npwp", "skip_guardrails": "true"},
-            files={"file": ("npwp.jpg", JPEG, "image/jpeg")},
-        )
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+    sequence = ["ekstraksi", "structuring", "scoring"]
+    response = client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk", "pipeline_name_sequence": sequence},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
 
     assert response.status_code == 200
     [sent] = handler.requests
     fields, file_bytes = _form(sent)
     assert "guardrails" not in fields
+    assert json.loads(fields["pipeline_name_sequence"]) == sequence
     assert (fields["request_id"], file_bytes) == (RID, JPEG)
 
 
 def test_rejected_document_stops_here(client, auth, ekstraksi):
     handler = ekstraksi(_accepted)
 
-    response = _submit(client, auth, filename="notnpwp.jpg")
+    response = _submit(client, auth, filename="notkk.jpg")
 
     assert response.status_code == 400
     body = response.json()
@@ -144,7 +142,7 @@ def test_rejected_document_stops_here(client, auth, ekstraksi):
         1,
         None,
     )
-    assert body["message"].startswith("Document rejected by guardrails")
+    assert body["message"] == REJECTED_REPORT["reason"]
     assert handler.requests == []
 
 
@@ -179,15 +177,15 @@ def test_a_document_sent_as_file_url_is_judged_here_and_handed_over_as_the_same_
     client, auth, ekstraksi, stub_guardrails, monkeypatch
 ):
     handler = ekstraksi(_accepted)
-    url = "http://minio.local/bucket/npwp.jpg?X-Amz-Signature=abc"
+    url = "http://minio.local/bucket/kk.jpg?X-Amz-Signature=abc"
 
     async def fake_fetch(fetched, *, limit, timeout=10.0, policy):
         assert fetched == url
-        return JPEG, "npwp.jpg", "image/jpeg"
+        return JPEG, "kk.jpg", "image/jpeg"
 
     monkeypatch.setattr("ocr_common.web.intake.fetch", fake_fetch)
     response = client.post(
-        "/v1/extract-ocr", headers=auth, data={"request_id": RID, "document_type": "npwp", "file_url": url}
+        "/v1/extract-ocr", headers=auth, data={"request_id": RID, "document_type": "kk", "file_url": url}
     )
 
     assert response.status_code == 200
@@ -198,4 +196,33 @@ def test_a_document_sent_as_file_url_is_judged_here_and_handed_over_as_the_same_
     assert form["request_id"] == RID
     assert "guardrails" in form
     assert form["file_url"] == url
-    assert stub_guardrails.checked == [{"request_id": RID, "filename": "npwp.jpg", "content_type": "image/jpeg"}]
+    assert stub_guardrails.checked == [{"request_id": RID, "filename": "kk.jpg", "content_type": "image/jpeg"}]
+
+
+def test_column_confidence_threshold_is_handed_to_the_ocr_stage_as_json(client, auth, ekstraksi):
+    handler = ekstraksi(_accepted)
+    response = client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk", "column_confidence_threshold": '{"no_kk": 0.9}'},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
+
+    assert response.status_code == 200
+    [sent] = handler.requests
+    fields, _ = _form(sent)
+    assert json.loads(fields["column_confidence_threshold"]) == {"no_kk": 0.9}
+
+
+def test_without_column_confidence_threshold_the_field_is_left_out(client, auth, ekstraksi):
+    handler = ekstraksi(_accepted)
+    client.post(
+        "/v1/extract-ocr",
+        headers=auth,
+        data={"request_id": RID, "document_type": "kk"},
+        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+    )
+
+    [sent] = handler.requests
+    fields, _ = _form(sent)
+    assert "column_confidence_threshold" not in fields

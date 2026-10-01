@@ -12,13 +12,13 @@ from ocr_common.pipeline.outbox import KIND_CALLBACK, KIND_HANDOFF, OutboxRelay,
 from ocr_common.pipeline.outbox_sql import SqlOutbox
 from ocr_common.pipeline.outbox_status import OutboxStatusResponse, outbox_status, outbox_status_responses
 from ocr_common.pipeline.repository_sql import SqlJobRepository
-from ocr_common.testing import RecordingCallback, make_client
+from ocr_common.testing import TEST_API_KEY, RecordingCallback, make_client
 from ocr_common.web.app import create_app
 from ocr_common.web.envelope import envelope
 from ocr_common.web.security import verify_api_key
 
 RID = "REQ_outbox"
-PAYLOAD = {"request_id": RID, "ocr": {"full_text": "NPWP"}}
+PAYLOAD = {"request_id": RID, "ocr": {"texts": [{"text": "KARTU KELUARGA"}]}}
 
 
 class Sink:
@@ -62,7 +62,7 @@ async def _run(pipeline, *, fails: bool = False) -> None:
     async def work():
         if fails:
             raise ServiceError(503, "ekstraksi OCR model is unavailable")
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     await pipeline.submit(
         RID,
@@ -238,7 +238,9 @@ async def test_the_messages_and_the_job_are_written_in_one_transaction(pipeline)
 
     with pytest.raises(OperationalError):
         await stage.repository.complete(
-            RID, {"full_text": "NPWP"}, messages=stage._messages(RID, None, PAYLOAD, STAGE_STRUCTURING)
+            RID,
+            {"texts": [{"text": "KARTU KELUARGA"}]},
+            messages=stage._messages(RID, None, PAYLOAD, STAGE_STRUCTURING),
         )
 
     assert await stage.repository.get(RID) is None
@@ -324,7 +326,7 @@ def _status_app(pipeline_factory):
     async def status():
         return envelope(200, "Success", await outbox_status(pipeline_factory()), RID)
 
-    settings = PipelineSettings(api_key="k", environment="local", _env_file=None)
+    settings = PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None)
     app = create_app(settings=settings, title="Demo", description="demo", routers=[router])
     return make_client(app)
 
@@ -336,7 +338,7 @@ async def test_outbox_status_reports_the_backlog(pipeline):
     client = _status_app(lambda: stage)
 
     assert client.get("/v1/ocr/outbox").status_code == 401
-    body = client.get("/v1/ocr/outbox", headers={"X-API-Key": "k"}).json()
+    body = client.get("/v1/ocr/outbox", headers={"X-API-Key": TEST_API_KEY}).json()
     assert body["status_code"] == 200
     data = body["data"]
     assert (data["enabled"], data["stage"], data["pending"], data["retrying"], data["dead_letters"]) == (
@@ -353,7 +355,7 @@ def test_outbox_status_says_so_when_the_outbox_is_off():
     stage = StagePipeline(stage=STAGE_OCR, repository=InMemoryJobRepository(), callback=RecordingCallback())
     client = _status_app(lambda: stage)
 
-    data = client.get("/v1/ocr/outbox", headers={"X-API-Key": "k"}).json()["data"]
+    data = client.get("/v1/ocr/outbox", headers={"X-API-Key": TEST_API_KEY}).json()["data"]
     assert data == {
         "enabled": False,
         "stage": STAGE_OCR,

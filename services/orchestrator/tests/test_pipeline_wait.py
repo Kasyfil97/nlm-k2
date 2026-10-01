@@ -12,12 +12,12 @@ from app.config import get_settings
 from app.main import app
 from app.services.extract_service import ExtractOcrService
 from app.services.pipeline_waiter import STATUS_REJECTED, PipelineWaiter, WaitOutcome
-from tests.conftest import ACCEPTED_REPORT, JPEG
+from tests.conftest import ACCEPTED_REPORT, EXPECTED_DATA, JPEG, OCR_RESULT, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_wait"
 
 
-def _submit(client, auth, filename="npwp.jpg"):
+def _submit(client, auth, filename="kk.jpg"):
     return client.post(
         "/v1/extract-ocr", headers=auth, data={"request_id": RID}, files={"file": (filename, JPEG, "image/jpeg")}
     )
@@ -47,17 +47,14 @@ def test_finished_within_the_wait_is_200_with_the_final_result(client, auth, stu
     assert response.status_code == 200
     body = response.json()
     assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
-    assert body["data"] == {
-        "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-        "nama": {"value": "BUDI SANTOSO", "confidence": 1},
-    }
+    assert body["data"] == EXPECTED_DATA
     [(request_id, timeout)] = stub_waiter.calls
     assert request_id == RID
-    assert 10 < timeout <= 15
+    assert 25 < timeout <= 30, "the budget is PIPELINE_WAIT_SECONDS minus the time already spent"
 
 
 def test_still_running_when_the_wait_runs_out_is_202(client, auth, stub_waiter):
-    stub_waiter.outcome = WaitOutcome("STRUCTURING", "PROCESSING", results={"OCR": {"blocks": []}})
+    stub_waiter.outcome = WaitOutcome("STRUCTURING", "PROCESSING", results={"OCR": OCR_RESULT})
 
     response = _submit(client, auth)
 
@@ -82,8 +79,8 @@ def test_failure_within_the_wait_is_422_with_the_failed_stage(client, auth, stub
     assert (body["job_status"], body["data"], body["guardrails"]) == ("failed", None, 0)
 
 
-def test_rejection_by_the_structuring_rules_is_400_with_their_reason(client, auth, stub_waiter):
-    reason = "Kode provinsi pada NPWP tidak valid, mohon dicek kembali"
+def test_rejection_by_the_kk_validity_gate_is_400_with_its_reason(client, auth, stub_waiter):
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
     stub_waiter.outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, reason)
 
     response = _submit(client, auth)
@@ -95,7 +92,7 @@ def test_rejection_by_the_structuring_rules_is_400_with_their_reason(client, aut
 
 
 def test_rejected_document_answers_at_once_without_waiting(client, auth, stub_waiter):
-    response = _submit(client, auth, filename="notnpwp.jpg")
+    response = _submit(client, auth, filename="notkk.jpg")
 
     assert response.status_code == 400
     assert response.json()["errors"] == "DOWNSTREAM_VALIDATION_ERROR"
@@ -137,7 +134,7 @@ async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
         GuardrailsClient(guardrails), EkstraksiJobClient(remote, attempts=1, delay=0), stub_waiter, settings
     )
 
-    await service.submit(RID, "npwp", "npwp.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 10)
+    await service.submit(RID, "kk", "kk.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 10)
 
     [(_, timeout)] = stub_waiter.calls
     assert 4 < timeout <= 5
@@ -145,18 +142,18 @@ async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
 
 async def test_waiter_follows_the_stages_in_order_and_collects_their_results():
     stages = [
-        FakeStage("OCR", _job("PROCESSING"), _job("DONE", {"blocks": []})),
-        FakeStage("STRUCTURING", None, _job("DONE", {"fields": {}})),
-        FakeStage("SCORING", _job("DONE", {"npwp_confidence": 0.7, "name_confidence": 0.9})),
+        FakeStage("OCR", _job("PROCESSING"), _job("DONE", OCR_RESULT)),
+        FakeStage("STRUCTURING", None, _job("DONE", STRUCTURING_RESULT)),
+        FakeStage("SCORING", _job("DONE", SCORING_RESULT)),
     ]
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).wait(RID, 5)
 
     assert (outcome.stage, outcome.status, outcome.error_message) == ("SCORING", "DONE", None)
     assert outcome.results == {
-        "OCR": {"blocks": []},
-        "STRUCTURING": {"fields": {}},
-        "SCORING": {"npwp_confidence": 0.7, "name_confidence": 0.9},
+        "OCR": OCR_RESULT,
+        "STRUCTURING": STRUCTURING_RESULT,
+        "SCORING": SCORING_RESULT,
     }
     assert [stage.calls for stage in stages] == [2, 2, 1]
 
@@ -178,10 +175,10 @@ async def test_waiter_stops_at_the_first_failed_stage():
     assert stages[2].calls == 0
 
 
-async def test_waiter_stops_at_a_rejection_of_the_structuring_rules():
+async def test_waiter_stops_at_a_rejection_of_the_kk_validity_gate():
     reason = "dokumen blur / blank"
     stages = [
-        FakeStage("OCR", _job("DONE", {"blocks": []})),
+        FakeStage("OCR", _job("DONE", OCR_RESULT)),
         FakeStage("STRUCTURING", _job("DONE", {"fields": {}, "flag": True, "reject_reason": reason})),
         FakeStage("SCORING", _job("DONE", {})),
     ]
@@ -196,7 +193,7 @@ async def test_waiter_goes_on_past_a_tolerated_flag():
     stages = [
         FakeStage("OCR", _job("DONE", {})),
         FakeStage("STRUCTURING", _job("DONE", {"fields": {}, "flag": True, "reject_reason": None})),
-        FakeStage("SCORING", _job("DONE", {"npwp_confidence": 0.7, "name_confidence": 0.9})),
+        FakeStage("SCORING", _job("DONE", SCORING_RESULT)),
     ]
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).wait(RID, 5)
@@ -218,7 +215,7 @@ async def test_waiter_keeps_polling_through_status_errors():
     stages = [
         FakeStage("OCR", ServiceError(503, "ekstraksi service is unavailable"), _job("DONE", {})),
         FakeStage("STRUCTURING", _job("DONE", {})),
-        FakeStage("SCORING", _job("DONE", {"npwp_confidence": 0.7, "name_confidence": 0.9})),
+        FakeStage("SCORING", _job("DONE", SCORING_RESULT)),
     ]
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).wait(RID, 5)
@@ -257,3 +254,38 @@ async def test_stage_status_client_quotes_the_request_id_and_maps_404_to_none():
     assert await stage.get("a/b?c") == {"status": "DONE", "result": {"fields": {}}}
     assert paths[0] == b"/v1/structuring/jobs/a%2Fb%3Fc"
     assert await stage.get("missing") is None
+
+
+async def test_a_slow_guardrails_check_that_eats_the_budget_answers_202(stub_waiter):
+    """§3.7 only defines `PIPELINE_WAIT_SECONDS = 0`. This is the other way to arrive at no time
+    left: the budget is counted from arrival and never reset, so a guardrails check that took
+    longer than the whole budget leaves `remaining <= 0` with the setting still positive. The
+    answer is an explicit 202 at the first stage, not a wait that overruns the budget."""
+    remote = RemoteModelClient(
+        "http://ekstraksi:8042",
+        5.0,
+        name="ekstraksi service",
+        passthrough_client_errors=True,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                202, json={"data": {"request_id": RID, "stage": "OCR", "status": "PROCESSING", "duplicate": False}}
+            )
+        ),
+    )
+    guardrails = RemoteModelClient(
+        "http://guardrails:8041",
+        5.0,
+        name="guardrails service",
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"data": ACCEPTED_REPORT})),
+    )
+    settings = get_settings().model_copy(update={"pipeline_wait_seconds": 30})
+    service = ExtractOcrService(
+        GuardrailsClient(guardrails), EkstraksiJobClient(remote, attempts=1, delay=0), stub_waiter, settings
+    )
+
+    # Arrived 40 s ago: the whole 30 s budget is already gone.
+    outcome = await service.submit(RID, "kk", "kk.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 40)
+
+    [(_, timeout)] = stub_waiter.calls
+    assert timeout <= 0, "the waiter is still called, and answers PROCESSING without polling"
+    assert outcome["job"] is not None, "the hand-off happened; only the waiting was skipped"

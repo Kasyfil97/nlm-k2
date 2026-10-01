@@ -290,7 +290,7 @@ tempat yang menuliskannya.
 
 ---
 
-- [ ] **Unit 2: Bentuk ulang `ocr_common` untuk KK**
+- [x] **Unit 2: Bentuk ulang `ocr_common` untuk KK** — selesai (2a+2b bentuk/impor/penamaan, 2c kebijakan config)
 
 **Goal:** Pustaka bersama membawa bentuk KK, bukan NPWP, dan suite ujinya membuktikannya.
 
@@ -314,8 +314,13 @@ tempat yang menuliskannya.
   `openapi.yaml` yang diregenerasi R24 dan digabung R26. Ia mengiklankan
   `Document image (JPEG/PNG/PDF)` padahal §3.1 menolak PDF, dan menyatakan host `file_url` boleh
   "resolve to a public address when that is empty" — persis semantik yang dibalik R18a
-- Test: `libs/ocr_common/tests/**` (16 berkas, ~2.440 baris — ditulis ulang, bukan disesuaikan;
-  assertion-nya dibangun di atas bentuk NPWP)
+- Test: `libs/ocr_common/tests/**`. **Koreksi estimasi, terukur saat pelaksanaan:** suitenya memang
+  16 berkas / ~2.440 baris, tetapi hanya **lima uji** yang benar-benar menegaskan bentuk NPWP —
+  `test_outcomes`, `test_api_events`, `test_result_callback` ×2, dan `test_gateway_spec` yang
+  sebenarnya cuma butuh artefak Unit 10. Sisanya menguji mesin pipeline yang netral dokumen dan
+  lolos tanpa perubahan logika; yang berubah hanya muatan contohnya. Hasil akhir: 229 lolos,
+  1 di-skip. Perkiraan "tulis ulang seluruh suite" meleset jauh ke arah yang menguntungkan, jadi
+  fase 0 lebih kecil daripada yang ditaksir Key Decisions.
 - Create: `libs/ocr_common/tests/fixtures/` — fixture emas §5.2, §6.1/§7.1, §7.3, §8.3, §3.3.1
 
 **Approach:**
@@ -346,6 +351,11 @@ tempat yang menuliskannya.
   placeholder (R29), saklar PDF (R34a).
 - `clients/fetch_url.py`: https-only, tanpa redirect, tolak alamat privat/loopback/link-local
   setelah resolusi DNS.
+  **Diperketat saat pelaksanaan:** `address_allowed()` lama berakhir dengan
+  `ip.is_global or bool(allowed_hosts)`, sehingga begitu ada allow-list, alamat privat RFC1918
+  lolos. Itu disengaja agar object store di dalam cluster terjangkau, tetapi digabung entri
+  wildcard (`.internal`) ia jadi lubang: penguasa DNS di bawah sufiks itu bisa mengarahkan nama
+  ke alamat internal mana pun. Alamat privat kini hanya untuk host yang terdaftar **persis**.
 
 **Execution note:** Tulis fixture emas lebih dulu sebagai uji yang gagal, lalu bentuk tipenya sampai
 fixture lolos. Fixture inilah gerbang R6 butir pertama, jadi ia artefak, bukan alat bantu.
@@ -394,7 +404,7 @@ tersisa; setiap fixture emas lolos.
 
 ---
 
-- [ ] **Unit 3: Integritas baris outcome dan detak job**
+- [x] **Unit 3: Integritas baris outcome dan detak job** — selesai
 
 **Goal:** Baris outcome tidak pernah mundur, dan job yang sah-berjalan-lama tidak dianggap basi.
 
@@ -441,8 +451,13 @@ dikerjakan sebagai pertahanan berlapis, bukan sebagai judulnya.
   ini perbaiki jadi tak terlihat di produksi — dan justru pengukuran itulah yang memberi tahu apakah
   detaknya bekerja. Perubahan semantik penulisan ini juga masuk daftar yang disepakati dengan
   Orkestrasi pusat, bukan sekadar keputusan sepihak nlm-k2, karena tabelnya milik mereka.
-- Detak: `JobRepository` memperoleh `touch(request_id)` yang memperbarui `updated_at` hanya
-  `WHERE status = PROCESSING`, no-op di `InMemoryJobRepository`, dijalankan sebagai task yang
+- Detak **dipasang tetapi dimatikan bawaannya** (`PIPELINE_HEARTBEAT_SECONDS = 0`). Reviewer benar
+  bahwa intervalnya dirancang melawan durasi yang belum diukur, dan batch ini tidak bisa melatihnya:
+  mock selesai dalam milidetik, dan hook `delay…s` dibatasi 120 detik melawan lease 300 detik. Tetapi
+  `repository.py`, `stage.py`, dan `factory.py` beku setelah gerbang R6, jadi menambahkan `touch()`
+  belakangan berarti satu siklus R22b. Mekanismenya ada, angkanya tidak dikarang — batch yang
+  menjalankan model sungguhan tinggal menyetelnya. `JobRepository` memperoleh `touch(request_id)`
+  yang memperbarui `updated_at` hanya `WHERE status = PROCESSING`, dijalankan sebagai task yang
   `StagePipeline._run_bound` mulai dan **batalkan di `finally`** — detak yang hidup lebih lama dari
   job yang dibatalkan akan menjaga lease job mati tetap hangat dan melumpuhkan reaper sepenuhnya.
   Intervalnya diteruskan dari `build_stage_pipeline`.
@@ -488,7 +503,7 @@ suite; reaper masih memulihkan job yang benar-benar terlantar.
 
 ---
 
-- [ ] **Unit 4: Baseline database dan keputusan yang tercatat**
+- [x] **Unit 4: Baseline database dan keputusan yang tercatat** — selesai
 
 **Goal:** Skema KK berdiri dalam satu baseline, dan lima keputusan yang dibekukan gerbang tertulis
 sebelum ditulis.
@@ -512,7 +527,10 @@ sebelum ditulis.
   penyelarasan larik anggota
 
 **Approach:**
-- Baseline membentuk keadaan akhir langsung: `ocr_jobs/_results`, `structuring_jobs/_results`,
+- Baseline membentuk keadaan akhir **tabel pipeline** langsung. *Dipersempit saat pelaksanaan:*
+  ia **tidak** memuat tabel audit R27 — bentuknya diputuskan dan dicatat, tetapi tabel kosong tanpa
+  penulis tidak menghasilkan apa pun, dan bentuk yang salah sama mahalnya untuk diperbaiki seperti
+  menambahkannya belakangan. Isinya: `ocr_jobs/_results`, `structuring_jobs/_results`,
   `scoring_jobs/_results`, `pipeline_outbox` + dead letter, dan — sesuai keputusan R34 — tabel
   `testing_*`. Tujuh revisi nilam tidak disalin; sebagiannya justru membongkar desain lama.
 - R34 memutus pertahankan-atau-buang untuk: jalur callback, `ocr.orchestration_api_events`, tabel
@@ -542,7 +560,7 @@ bisa dirujuk gerbang R6.
 
 ---
 
-- [ ] **Unit 5: Stub structuring dan scoring**
+- [x] **Unit 5: Stub structuring dan scoring** — selesai
 
 **Goal:** Dua tahap terakhir menjawab dalam bentuk kontrak dengan data yang bervariasi, sehingga
 seluruh siklus bisa diuji.
@@ -618,7 +636,7 @@ tersisa di kedua service.
 
 ---
 
-- [ ] **Unit 6: Isolasi paralel**
+- [x] **Unit 6: Isolasi paralel** — selesai
 
 **Goal:** Tiga agen bisa memenuhi definisi selesainya sendiri tanpa menulis berkas milik agen lain.
 
@@ -639,6 +657,10 @@ tersisa di kedua service.
 - Create: `docs/decisions/unfreeze-procedure.md`
 
 **Approach:**
+- *Koreksi saat pelaksanaan:* premis tentang `make lint` tidak berlaku. Dengan worktree per agen
+  (diputuskan di Unit 1), pohon satu agen tidak memuat pekerjaan agen lain yang belum di-commit,
+  jadi lint lintas-repo tidak terganggu. `LINT_PATH` tetap ditambahkan sebagai pemendek putaran,
+  bukan pengganti. Yang tetap nyata adalah lock, di bawah ini.
 - Hari ini `lock-check: lock` meregenerasi kelima lock lalu memeriksa
   `services/*/requirements.lock db/requirements.lock` — sehingga definisi selesai agen A menulis
   lock milik structuring, scoring, dan `db/`. Itu membuat R21 dan R24 saling bertentangan, dan
@@ -666,7 +688,13 @@ tersisa di kedua service.
   karena `test -z` atas stdout kosong.
 - Edge case: `make lint` berlingkup pohon agen A tetap hijau saat pohon agen B memuat galat sintaks.
 
-**Verification:** Ketiga definisi selesai R24 dapat dipenuhi bersamaan di satu host.
+**Verification:** Ketiga definisi selesai R24 dapat dipenuhi bersamaan di satu host. Dibuktikan
+dengan `docker compose config` atas dua proyek: nol `container_name` eksplisit, port host terpisah
+(8040–8044 dan 8140–8144), dan volume terpisah (`nlm-k2-a_postgres-data` vs `nlm-k2-b_…`).
+
+**Ditemukan saat membuktikannya:** `make up` gagal dengan "env file not found" sebelum satu
+container pun dibangun, karena `services/<nama>/.env` di-gitignore dan harus disalin manual dari
+contohnya. Ditambah target `make env`.
 
 ---
 
@@ -675,11 +703,11 @@ tersisa di kedua service.
 
 ### Fase 1 — tiga agen paralel
 
-- [ ] **Unit 7: Orchestrator (agen A, port 8040)**
+- [x] **Unit 7: Orchestrator (agen A, port 8040)**
 
 **Goal:** Pintu masuk pipeline menjawab §3 dan §4 lengkap dengan matriks hasilnya.
 
-**Requirements:** R9, R10, R11, R12, R18a (sisi orchestrator)
+**Requirements:** R9, R10, R11, R12, R18a (sisi orchestrator), plus **rate limit dan CORS**
 
 **Dependencies:** Gerbang R6
 
@@ -698,6 +726,12 @@ tersisa di kedua service.
   `PIPELINE_WAIT_SECONDS > 0` harus eksplisit (202 dengan tahap pertama), karena §3.7 hanya
   mendefinisikan kasus `PIPELINE_WAIT_SECONDS = 0`.
 - Penolakan dibaca dari `reject_reason` di dalam muatan hasil structuring.
+- **Rate limit dan CORS ditulis, bukan diwarisi.** Ditemukan saat Unit 4: keduanya ada di
+  `K2Orchestrator` (`src/middleware/rate_limiter.py` sliding window; `allow_origins` di
+  `src/core/config.py`) tetapi **tidak ada di nilam**, sementara kontrak §12 mendaftarkannya
+  "dipertahankan apa adanya". Orchestrator satu-satunya service yang terekspos ke luar. Elastic APM
+  sengaja tidak ikut — agennya menangkap badan request, yang di sini berarti unggahan kartu terkirim
+  ke kolektor pihak ketiga; lihat `docs/decisions/2026-09-26-keputusan-fase-0.md`.
 
 **Patterns to follow:** `app/api/extract_ocr.py:86` `_CONTRACT_TABLE` untuk menyuntikkan matriks §3.2
 ke OpenAPI; `app/clients/ekstraksi.py` untuk bentuk klien tahap.
@@ -726,7 +760,7 @@ ke OpenAPI; `app/clients/ekstraksi.py` untuk bentuk klien tahap.
 
 ---
 
-- [ ] **Unit 8: Guardrails (agen B, port 8041)**
+- [x] **Unit 8: Guardrails (agen B, port 8041)**
 
 **Goal:** Penilai kualitas dokumen menjawab §5, selalu 200, dengan vonis di `data.passed`.
 
@@ -813,7 +847,7 @@ terpisah bila bobotnya tersedia (R20a — bukan syarat selesai).
 
 ---
 
-- [ ] **Unit 9: Ekstraksi (agen C, port 8042)**
+- [x] **Unit 9: Ekstraksi (agen C, port 8042)**
 
 **Goal:** Tahap OCR menerima job asinkron, menghasilkan `{text, score, poly}`, dan menyerahkannya ke
 structuring lewat outbox.
@@ -879,7 +913,7 @@ structuring lewat outbox.
 
 ### Fase 2 — integrator, serial
 
-- [ ] **Unit 10: Integrasi ujung ke ujung**
+- [x] **Unit 10: Integrasi ujung ke ujung**
 
 **Goal:** Pipeline lima service terbukti bekerja pada jalur yang dijanjikan kontrak.
 

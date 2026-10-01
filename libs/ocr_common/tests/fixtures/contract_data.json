@@ -1,0 +1,73 @@
+{
+  "_source": "Keluaran contract_fields() atas structuring_result.json + scoring_result.json: tiap field {value, confidence 0|1}, seperti nilam. confidence 1 bila probabilitas trust model mencapai ambang field itu -- column_confidence_threshold dari request, lalu ambang milik model di hasil scoring, dan FIELD_CONFIDENCE_THRESHOLD = 0.5 hanya bila hasil tidak membawa ambang sama sekali. Inilah proyeksi §3.3.1, dan inilah yang harus identik antara orchestrator dan tahap scoring.",
+  "no_kk": {
+    "value": "3273012345678901",
+    "confidence": 1
+  },
+  "nama_kepala_keluarga": {
+    "value": "BUDI SANTOSO",
+    "confidence": 1
+  },
+  "anggota_keluarga": [
+    {
+      "nama_lengkap": {
+        "value": "BUDI SANTOSO",
+        "confidence": 1
+      },
+      "nik": {
+        "value": "3273011203850001",
+        "confidence": 1
+      },
+      "pendidikan": {
+        "value": "S1",
+        "confidence": 1
+      },
+      "jenis_pekerjaan": {
+        "value": "KARYAWAN SWASTA",
+        "confidence": 1
+      },
+      "status_hubungan_dalam_rumah_tangga": {
+        "value": "KEPALA KELUARGA",
+        "confidence": 1
+      },
+      "ayah": {
+        "value": "SUTRISNO",
+        "confidence": 1
+      },
+      "ibu": {
+        "value": "SITI AMINAH",
+        "confidence": 1
+      }
+    },
+    {
+      "nama_lengkap": {
+        "value": "SITI NURHALIZA",
+        "confidence": 1
+      },
+      "nik": {
+        "value": "3273015506880002",
+        "confidence": 1
+      },
+      "pendidikan": {
+        "value": "SLTA/SEDERAJAT",
+        "confidence": 1
+      },
+      "jenis_pekerjaan": {
+        "value": "MENGURUS RUMAH TANGGA",
+        "confidence": 0
+      },
+      "status_hubungan_dalam_rumah_tangga": {
+        "value": "ISTRI",
+        "confidence": 1
+      },
+      "ayah": {
+        "value": "AHMAD DAHLAN",
+        "confidence": 1
+      },
+      "ibu": {
+        "value": "RATNA SARI",
+        "confidence": 1
+      }
+    }
+  ]
+}

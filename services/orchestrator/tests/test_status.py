@@ -7,6 +7,7 @@ from ocr_common.errors import ServiceError, UpstreamUnavailable
 from app.clients.stages import StageStatusClient, build_stage_status_clients
 from app.config import get_settings
 from app.services.pipeline_waiter import STATUS_REJECTED, PipelineWaiter, WaitOutcome
+from tests.conftest import EXPECTED_DATA, OCR_RESULT, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_status"
 
@@ -47,15 +48,13 @@ def test_finished_request_is_200_with_its_data_and_no_params(client, auth, stub_
         "status_code": 200,
         "status_desc": "OK",
         "message": "OCR extraction completed successfully",
-        "data": {
-            "nomor_npwp": {"value": "12.345.678.9-012.345", "confidence": 1},
-            "nama": {"value": "BUDI SANTOSO", "confidence": 1},
-        },
+        "data": EXPECTED_DATA,
         "errors": None,
         "request_id": RID,
-        "document_type": "npwp",
+        "document_type": "kk",
         "job_status": "completed",
         "guardrails": 0,
+        "pipeline_last_stage": "scoring",
         "params": None,
     }
     assert stub_waiter.snapshots == [RID]
@@ -84,8 +83,8 @@ def test_failed_stage_is_422(client, auth, stub_waiter):
     )
 
 
-def test_rejection_by_the_structuring_rules_is_400(client, auth, stub_waiter):
-    reason = "Kode provinsi pada NPWP tidak valid, mohon dicek kembali"
+def test_rejection_by_the_kk_validity_gate_is_400(client, auth, stub_waiter):
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
     stub_waiter.snapshot_outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, reason)
 
     body = _get(client, auth).json()
@@ -126,16 +125,16 @@ def test_status_needs_the_api_key(client):
 
 async def test_snapshot_of_a_finished_pipeline_collects_every_result():
     stages = _stages(
-        _job("DONE", {"blocks": []}),
-        _job("DONE", {"fields": {}}),
-        _job("DONE", {"npwp_confidence": 0.7, "name_confidence": 0.9}),
+        _job("DONE", OCR_RESULT),
+        _job("DONE", STRUCTURING_RESULT),
+        _job("DONE", SCORING_RESULT),
     )
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
 
     assert outcome is not None
     assert (outcome.stage, outcome.status) == ("SCORING", "DONE")
-    assert outcome.results["SCORING"] == {"npwp_confidence": 0.7, "name_confidence": 0.9}
+    assert outcome.results["SCORING"] == SCORING_RESULT
     assert [stage.calls for stage in stages] == [1, 1, 1]
 
 
@@ -236,3 +235,90 @@ def test_the_stage_clients_pass_only_404_through():
     for stage in build_stage_status_clients(get_settings()):
         assert stage._client._passthrough_statuses == frozenset({404})
         assert stage._client._passthrough is False
+
+
+async def test_snapshot_stops_at_the_last_stage_of_the_stored_sequence():
+    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["guardrails", "ekstraksi"]}
+    stages = _stages(ocr, _job("DONE", {}), _job("DONE", {}))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None
+    assert (outcome.stage, outcome.status, outcome.results) == ("OCR", "DONE", {"OCR": {"texts": []}})
+    assert [stage.calls for stage in stages] == [1, 0, 0]
+
+
+async def test_snapshot_of_a_job_without_a_valid_sequence_reads_the_whole_pipeline():
+    """Jobs submitted before pipeline_name_sequence existed, or with an unreadable one."""
+    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["ekstraksi", "scoring"]}
+    stages = _stages(ocr, _job("DONE", {}), _job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None
+    assert (outcome.stage, outcome.status) == ("SCORING", "PROCESSING")
+
+
+async def test_wait_stops_at_the_last_stage_it_is_given():
+    stages = _stages(_job("DONE", {"texts": []}), _job("DONE", {}), _job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).wait(RID, 1.0, last_stage="OCR")
+
+    assert (outcome.stage, outcome.status) == ("OCR", "DONE")
+    assert [stage.calls for stage in stages] == [1, 0, 0]
+
+
+def test_a_request_that_ended_before_scoring_is_answered_with_that_result(client, auth, stub_waiter):
+    structuring = {"no_kk": {"value": "9901012609260001"}, "reject_reason": None}
+    stub_waiter.snapshot_outcome = WaitOutcome(
+        "STRUCTURING", "DONE", results={"OCR": {"texts": []}, "STRUCTURING": structuring}
+    )
+
+    response = _get(client, auth)
+
+    assert response.status_code == 200
+    assert (response.json()["job_status"], response.json()["data"]) == ("completed", structuring)
+    assert response.json()["pipeline_last_stage"] == "structuring"
+
+
+async def test_the_snapshot_carries_the_thresholds_stored_with_the_first_job():
+    ocr = {**_job("DONE", {"texts": []}), "column_confidence_threshold": {"no_kk": 0.9}}
+    stages = _stages(ocr, _job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None and outcome.column_thresholds == {"no_kk": 0.9}
+
+
+async def test_a_job_without_thresholds_gives_none():
+    stages = _stages(_job("PROCESSING"))
+
+    outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+
+    assert outcome is not None and outcome.column_thresholds is None
+
+
+def test_an_unreachable_stage_is_named_in_the_error(client, auth, stub_waiter):
+    from app.services.pipeline_waiter import StageError
+
+    stub_waiter.snapshot_error = StageError("structuring", UpstreamUnavailable("structuring service is unavailable"))
+
+    response = _get(client, auth)
+
+    assert response.status_code == 503
+    body = response.json()
+    assert (body["pipeline_last_stage"], body["message"], body["errors"]) == (
+        "structuring",
+        "structuring service is unavailable",
+        "DOWNSTREAM_UNAVAILABLE",
+    )
+
+
+async def test_snapshot_names_the_stage_it_could_not_read():
+    from app.services.pipeline_waiter import StageError
+
+    stages = _stages(_job("DONE", {}), UpstreamUnavailable("structuring service is unavailable"))
+
+    with pytest.raises(StageError) as exc:
+        await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
+    assert (exc.value.service, exc.value.status_code) == ("structuring", 503)

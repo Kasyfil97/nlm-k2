@@ -67,11 +67,13 @@ commonEnv:
 #                dan NetworkPolicy-nya menerima namespace di networkPolicy.clientNamespaces. Hanya
 #                orchestrator; yang lain internal.
 #   pipeline   : tahap async yang butuh DATABASE_URL dan konfigurasi Orkestrasi.
+#   database   : butuh DATABASE_URL tanpa konfigurasi Orkestrasi (orchestrator: tabel guardrails_results).
 #   upstreams  : service lain yang dipanggil; chart mengisi <NAMA>_SERVICE_URL dan NetworkPolicy dari sini.
 # Nama service dipakai sebagai nama port Kubernetes: maksimal 15 karakter, huruf kecil/angka, tanpa `-`.
 services:
   # Pintu masuk tunggal: POST /v1/extract-ocr (cek guardrails, hand-off ke ekstraksi, tunggu pipeline)
-  # dan GET /v1/extract-ocr/{request_id}. Stateless: tanpa DB, tanpa callback.
+  # dan GET /v1/extract-ocr/{request_id}. Tanpa callback; DB hanya untuk mencatat setiap putusan guardrails
+  # (guardrails_results, migrasi 0002), best-effort: DB yang mati tidak menggagalkan request.
   orchestrator:
     enabled: true
     image:
@@ -80,6 +82,7 @@ services:
     port: 8040
     entrypoint: true
     pipeline: false
+    database: true
     upstreams: [guardrails, ekstraksi, structuring, scoring]
     replicaCount: 2
     startupFailureThreshold: 15
@@ -90,10 +93,7 @@ services:
       # Tunggu pipeline sampai selesai (200 + hasil) sebelum menjawab 202; 0 = tidak menunggu.
       PIPELINE_WAIT_SECONDS: "15"
       GUARDRAILS_TIMEOUT_SECONDS: "20"
-      # Boleh tidaknya Orkestrasi pusat melewati model guardrails per request (skip_guardrails=true).
-      # "false" = request seperti itu ditolak 403. Pengecekan file dan aturan structuring tetap jalan.
-      GUARDRAILS_SKIP_ALLOWED: "false"
-    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 2,5 MB) selama menunggu pipeline.
+    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 5 MB) selama menunggu pipeline.
     resources:
       requests:
         cpu: 250m
@@ -153,6 +153,7 @@ services:
       EKSTRAKSI_BACKEND: paddle
       EKSTRAKSI_OCR_URL: ""
       EKSTRAKSI_OCR_TIMEOUT_SECONDS: "60"
+      EKSTRAKSI_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:

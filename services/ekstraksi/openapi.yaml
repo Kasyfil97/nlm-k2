@@ -1,11 +1,15 @@
 openapi: 3.1.0
 info:
-  title: OCR NPWP API
-  description: 'OCR service for Indonesian NPWP (tax ID card) documents; ServiceOCR in the pipeline. **Async
-    pipeline:** the orchestrator NPWP POSTs /v1/ekstraksi/jobs once a document passed the guardrails check
-    and gets 202; this service runs OCR in the background, stores the result, reports to the central orchestrator
-    (callback / its tables), and hands the job to the structuring service. The raw OCR step is also exposed
-    as /v1/ekstraksi/extract. All endpoints except /health require an X-API-Key header.
+  title: OCR Kartu Keluarga Ekstraksi API
+  description: 'Pipeline step 2 for Indonesian Kartu Keluarga: reads the card photo and produces one `{text,
+    score, poly}` box per recognised line, plus the three document aggregates the trust model uses. It
+    does not name fields and it does not judge the document.
+
+
+    The orchestrator POSTs /v1/ekstraksi/jobs once the guardrails model passed the document and gets 202;
+    this service reads the image in the background, stores the result (`ocr_results`) and hands the job
+    to the structuring service in the same transaction. /v1/ekstraksi/extract runs the same OCR synchronously
+    and stores nothing, for debugging. All endpoints except /health require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -23,15 +27,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -42,14 +56,14 @@ info:
     without it the service generates one.
 
 
-    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+    **Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 
     .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
     a
 
     callback to the central orchestrator (see *Webhooks*), and can be read at any time with
 
-    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+    `GET .../jobs/{request_id}`, which the orchestrator''s `GET /v1/extract-ocr/{request_id}` combines
 
     over the three stages. Submitting the same request_id again is idempotent:
 
@@ -159,32 +173,205 @@ paths:
             text/plain:
               schema:
                 type: string
+  /v1/ekstraksi/extract:
+    post:
+      tags:
+      - Ekstraksi
+      summary: OCR of a Kartu Keluarga, synchronous (no job, no callback)
+      description: 'Runs the configured OCR backend on the document and answers the §7.1 payload -- one
+        `{text, score, poly}` box per recognised line plus the three document aggregates -- in the response.
+        Nothing is stored and nothing is handed on.
+
+
+        Send the document as `file` or `file_url`, exactly one. JPEG, PNG or PDF (only the first page
+        of a PDF is read), at most `MAX_UPLOAD_BYTES`. As in the async stage, an image with no readable
+        text is a 200 with an empty `texts`, not an error.'
+      operationId: extractText
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Body_extractText'
+      responses:
+        '200':
+          description: Text lines found in the document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractResponse'
+              examples:
+                kartu_keluarga:
+                  summary: A Kartu Keluarga
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      engine: kk_ocr
+                      model: PP-OCRv5_server_det+PP-OCRv5_server_rec
+                      elapsed_ms: 1842.5
+                      text_regions_count: 3
+                      avg_doc_score: 0.9954
+                      min_doc_score: 0.9873
+                      texts:
+                      - text: KARTU KELUARGA
+                        score: 0.9999
+                        poly:
+                        - - 515.0
+                          - 100.0
+                        - - 984.0
+                          - 108.0
+                        - - 982.0
+                          - 148.0
+                        - - 513.0
+                          - 140.0
+                      - text: '9924187486671285'
+                        score: 0.9991
+                        poly:
+                        - - 520.0
+                          - 210.0
+                        - - 1100.0
+                          - 219.0
+                        - - 1098.0
+                          - 259.0
+                        - - 518.0
+                          - 250.0
+                      - text: BUDI SANTOSO
+                        score: 0.9873
+                        poly:
+                        - - 520.0
+                          - 268.0
+                        - - 889.0
+                          - 274.0
+                        - - 888.0
+                          - 312.0
+                        - - 519.0
+                          - 306.0
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: Bad file (empty, unsupported type) or bad intake
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: Uploaded file is empty
+                errors: BAD_REQUEST
+                pipeline_last_stage: ekstraksi
+        '413':
+          description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 413
+                status_desc: Payload Too Large
+                message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                errors: FILE_TOO_LARGE
+                pipeline_last_stage: ekstraksi
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
+        '500':
+          description: OCR backend failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 500
+                status_desc: Internal Server Error
+                message: 'ekstraksi OCR model error (500): error: OpenCV ...'
+                errors: INTERNAL_SERVER_ERROR
+                pipeline_last_stage: ekstraksi
+        '503':
+          description: OCR model unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 503
+                status_desc: Service Unavailable
+                message: ekstraksi OCR model is unavailable
+                errors: DOWNSTREAM_UNAVAILABLE
+                pipeline_last_stage: ekstraksi
+        '504':
+          description: OCR model did not answer in time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 504
+                status_desc: Gateway Timeout
+                message: ekstraksi OCR model timed out after 30.0s
+                errors: DOWNSTREAM_TIMEOUT
+                pipeline_last_stage: ekstraksi
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.file: Expected UploadFile, received: str'
+                errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
+      security:
+      - APIKeyHeader: []
   /v1/ekstraksi/jobs:
     post:
       tags:
       - Pipeline
-      summary: Start the pipeline for a document (OCR stage)
+      summary: Start the pipeline for a Kartu Keluarga (OCR stage)
       description: '**Step 2 of the pipeline, asynchronous: the start of the OCR -> structuring -> scoring
-        chain.** Called by the orchestrator NPWP from its `POST /v1/extract-ocr` once the guardrails service
+        chain.** Called by the orchestrator from its `POST /v1/extract-ocr` once the guardrails model
         passed the document; the central orchestrator does not call it. Calling it directly skips the
         guardrails check.
 
 
         Records the job (`ocr_jobs`, idempotent per request_id), answers **202 immediately**, then in
-        the background: reads the document (`file`, or downloads `file_url`), runs OCR, stores the result
-        (`ocr_results`), POSTs the `OCR` callback, and hands the job to the structuring service, which
-        hands it to scoring. The caller does nothing more: it receives one callback per stage, and the
-        final result in the `SCORING` callback (see *Webhooks*).
+        the background: reads the document (`file`, or downloads `file_url`), runs detection + recognition,
+        stores `{text, score, poly}` per line (`ocr_results`), and hands the job to the structuring service
+        -- result, hand-off and the orchestrator''s outcome row in one transaction.
 
 
-        **Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG, PNG or PDF, at most `MAX_UPLOAD_BYTES`
-        (2.5 MB). `file_url` is downloaded in the background, so make a presigned URL live longer than
-        the worst queueing time; an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.
+        **This stage never rejects a document.** An image with no readable text is a successful job whose
+        `texts` is empty; it is the structuring rules that reject it, so every content-based rejection
+        has one place and one channel. A document that cannot be read at all (unopenable image, model
+        unreachable, unsupported `document_type`) becomes a `FAILED` job, which the caller sees as a 422
+        -- not a 4xx here.
+
+
+        **Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG, PNG or PDF (only its first
+        page is read), at most `MAX_UPLOAD_BYTES` (5 MB). `file_url` is downloaded in the background from
+        a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than `PIPELINE_JOB_LEASE_SECONDS`;
+        an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.
 
 
         **Idempotency.** The same request_id again answers `202` with `duplicate: true` and does not run
         OCR twice, unless the earlier attempt `FAILED` or has been `PROCESSING` for longer than the job
-        lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again.'
+        lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again.
+
+
+        **Where the chain stops.** `pipeline_name_sequence` decides: when `ekstraksi` is its last service,
+        the job ends here, nothing is handed on, and the OCR result is the request''s answer, as it is
+        (the `OCR` callback then carries `final: true`).'
       operationId: submitOcrJob
       requestBody:
         content:
@@ -226,7 +413,8 @@ paths:
                       duplicate: true
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
-          description: Neither or both of file / file_url, or `guardrails` is not a JSON object
+          description: Neither or both of file / file_url, `guardrails` is not a JSON object, `pipeline_name_sequence`
+            is not a valid sequence that includes `ekstraksi`, or `column_confidence_threshold` is invalid
           content:
             application/json:
               schema:
@@ -235,7 +423,8 @@ paths:
                 status_code: 400
                 status_desc: Bad Request
                 message: Send exactly one of file or file_url
-                errors: Send exactly one of file or file_url
+                errors: BAD_REQUEST
+                pipeline_last_stage: ekstraksi
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -246,7 +435,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
         '422':
           description: Validation Error
           content:
@@ -258,6 +448,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'body.request_id: Field required'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/ekstraksi/jobs/{request_id}:
@@ -265,10 +456,15 @@ paths:
       tags:
       - Pipeline
       summary: Status and result of the OCR stage
-      description: 'Status of this stage only, and its raw OCR result once `DONE`. Internal: the orchestrator
-        NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and it helps to
-        debug. The later stages have the same endpoint on their own service (`/v1/structuring/jobs/{request_id}`,
-        `/v1/scoring/jobs/{request_id}`).'
+      description: 'Status of this stage only, and its `{text, score, poly}` lines once `DONE`. Internal:
+        the orchestrator reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and
+        it helps to debug. The later stages have the same endpoint on their own service (`/v1/structuring/jobs/{request_id}`,
+        `/v1/scoring/jobs/{request_id}`).
+
+
+        The example below is shortened: one Kartu Keluarga typically yields well over a hundred boxes,
+        which is why `PIPELINE_HANDOFF_BY_REFERENCE` is recommended -- the hand-off then names this result
+        instead of carrying it.'
       operationId: getOcrJob
       security:
       - APIKeyHeader: []
@@ -312,39 +508,66 @@ paths:
                       created_at: '2026-09-18T04:00:00+00:00'
                       status: DONE
                       result:
-                        engine: paddle
-                        model: PP-OCRv6_medium_det+PP-OCRv6_medium_rec
-                        elapsed_ms: 412.5
-                        full_text: 'DIREKTORAT JENDERAL PAJAK
-
-                          NPWP : 12.345.678.9-012.345
-
-                          BUDI SANTOSO'
-                        blocks:
-                        - text: DIREKTORAT JENDERAL PAJAK
-                          confidence: 0.9985
-                          bbox:
-                            x1: 175
-                            y1: 247
-                            x2: 887
-                            y2: 308
-                          page: 0
-                        - text: 'NPWP : 12.345.678.9-012.345'
-                          confidence: 0.9992
-                          bbox:
-                            x1: 35
-                            y1: 389
-                            x2: 637
-                            y2: 437
-                          page: 0
+                        engine: kk_ocr
+                        model: PP-OCRv5_server_det+PP-OCRv5_server_rec
+                        elapsed_ms: 1842.5
+                        text_regions_count: 3
+                        avg_doc_score: 0.9954
+                        min_doc_score: 0.9873
+                        texts:
+                        - text: KARTU KELUARGA
+                          score: 0.9999
+                          poly:
+                          - - 515.0
+                            - 100.0
+                          - - 984.0
+                            - 108.0
+                          - - 982.0
+                            - 148.0
+                          - - 513.0
+                            - 140.0
+                        - text: '9924187486671285'
+                          score: 0.9991
+                          poly:
+                          - - 520.0
+                            - 210.0
+                          - - 1100.0
+                            - 219.0
+                          - - 1098.0
+                            - 259.0
+                          - - 518.0
+                            - 250.0
                         - text: BUDI SANTOSO
-                          confidence: 0.9773
-                          bbox:
-                            x1: 33
-                            y1: 480
-                            x2: 483
-                            y2: 523
-                          page: 0
+                          score: 0.9873
+                          poly:
+                          - - 520.0
+                            - 268.0
+                          - - 889.0
+                            - 274.0
+                          - - 888.0
+                            - 312.0
+                          - - 519.0
+                            - 306.0
+                      updated_at: '2026-09-18T04:00:01+00:00'
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                no_text:
+                  summary: 'Finished, but the image had no readable text: a DONE job with an empty `texts`
+                    and both aggregates null. The rejection happens at structuring, not here'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                      stage: OCR
+                      created_at: '2026-09-18T04:00:00+00:00'
+                      status: DONE
+                      result:
+                        engine: kk_ocr
+                        model: PP-OCRv5_server_det+PP-OCRv5_server_rec
+                        elapsed_ms: 631.2
+                        text_regions_count: 0
+                        texts: []
                       updated_at: '2026-09-18T04:00:01+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
                 failed:
@@ -359,7 +582,7 @@ paths:
                       stage: OCR
                       created_at: '2026-09-18T04:00:00+00:00'
                       status: FAILED
-                      error_message: ekstraksi OCR model is unavailable
+                      error_message: the uploaded document could not be decoded as an image
                       updated_at: '2026-09-18T04:00:03+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '401':
@@ -370,7 +593,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
@@ -381,8 +605,9 @@ paths:
                 status_code: 404
                 status_desc: Not Found
                 message: 'No OCR job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
-                errors: 'No OCR job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                errors: REQUEST_ID_NOT_FOUND
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -395,6 +620,7 @@ paths:
                 message: 'path.request_id: Field required'
                 errors: VALIDATION_ERROR
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/ekstraksi/outbox:
@@ -466,7 +692,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
       security:
       - APIKeyHeader: []
   /v1/ekstraksi/outbox/release:
@@ -528,7 +755,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
@@ -539,7 +767,8 @@ paths:
                 status_code: 409
                 status_desc: Conflict
                 message: 'PIPELINE_OUTBOX is off: there is no outbox to release'
-                errors: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+                errors: CONFLICT
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -551,149 +780,9 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'query.request_id: Input should be a valid string'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: ekstraksi
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /v1/ekstraksi/extract:
-    post:
-      tags:
-      - Ekstraksi
-      summary: Raw OCR of a document, synchronous (no job, no callback)
-      description: Runs the OCR engine and returns raw text blocks with confidence and bounding boxes.
-        Send the image as `file` or `file_url`; exactly one of the two.
-      operationId: extractText
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/Body_extractText'
-      responses:
-        '200':
-          description: Text lines found in the document
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExtractResponse'
-              examples:
-                npwp_card:
-                  summary: An NPWP card
-                  value:
-                    status_code: 200
-                    status_desc: OK
-                    message: Success
-                    data:
-                      engine: paddle
-                      model: PP-OCRv6_medium_det+PP-OCRv6_medium_rec
-                      elapsed_ms: 412.5
-                      full_text: 'DIREKTORAT JENDERAL PAJAK
-
-                        NPWP : 12.345.678.9-012.345
-
-                        BUDI SANTOSO'
-                      blocks:
-                      - text: DIREKTORAT JENDERAL PAJAK
-                        confidence: 0.9985
-                        bbox:
-                          x1: 175
-                          y1: 247
-                          x2: 887
-                          y2: 308
-                        page: 0
-                      - text: 'NPWP : 12.345.678.9-012.345'
-                        confidence: 0.9992
-                        bbox:
-                          x1: 35
-                          y1: 389
-                          x2: 637
-                          y2: 437
-                        page: 0
-                      - text: BUDI SANTOSO
-                        confidence: 0.9773
-                        bbox:
-                          x1: 33
-                          y1: 480
-                          x2: 483
-                          y2: 523
-                        page: 0
-                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-        '400':
-          description: Bad file (empty, unsupported type) or bad intake
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 400
-                status_desc: Bad Request
-                message: Uploaded file is empty
-                errors: Uploaded file is empty
-        '413':
-          description: The document exceeds `MAX_UPLOAD_BYTES` (2.5 MB by default)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 413
-                status_desc: Payload Too Large
-                message: Ukuran dokumen melebihi batas 2,5 MB, pastikan hanya mengunggah dokumen NPWP
-                errors: Ukuran dokumen melebihi batas 2,5 MB, pastikan hanya mengunggah dokumen NPWP
-        '401':
-          description: Missing or invalid X-API-Key
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 401
-                status_desc: Unauthorized
-                message: Invalid or missing API key
-                errors: Invalid or missing API key
-        '500':
-          description: OCR engine failed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 500
-                status_desc: Internal Server Error
-                message: 'ekstraksi OCR model error (500): error: OpenCV ...'
-                errors: 'ekstraksi OCR model error (500): error: OpenCV ...'
-        '503':
-          description: OCR model unreachable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 503
-                status_desc: Service Unavailable
-                message: ekstraksi OCR model is unavailable
-                errors: ekstraksi OCR model is unavailable
-        '504':
-          description: OCR model did not answer in time
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 504
-                status_desc: Gateway Timeout
-                message: ekstraksi OCR model timed out after 30.0s
-                errors: ekstraksi OCR model timed out after 30.0s
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 422
-                status_desc: Unprocessable Entity
-                message: 'body.file: Expected UploadFile, received: str'
-                errors: VALIDATION_ERROR
-      security:
-      - APIKeyHeader: []
 webhooks:
   stageCallback:
     post:
@@ -710,7 +799,8 @@ webhooks:
 
         **When.** Once per job of `POST /v1/ekstraksi/jobs`: `stage: OCR` with `status: DONE` once the
         OCR result is stored, or `status: FAILED` with `error_message` when the document could not be
-        read (the chain stops there). Additionally `stage: STRUCTURING`, `status: FAILED` when OCR succeeded
+        read (the chain stops there). An image with no readable text is `DONE`, not `FAILED`: it is rejected
+        by the structuring rules. Additionally `stage: STRUCTURING`, `status: FAILED` when OCR succeeded
         but the structuring service could not be reached after retries. Without `PIPELINE_OUTBOX` the
         `OCR` callback is sent before the hand-off to structuring; with it the hand-off goes first, so
         the `STRUCTURING` callback may arrive before this one.
@@ -719,9 +809,9 @@ webhooks:
         **Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are
         retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A callback
         that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the orchestrator
-        can reconcile with the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` and should time
-        a request out on its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction
-        as the result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
+        can reconcile with its own `GET /v1/extract-ocr/{request_id}` and should time a request out on
+        its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the
+        result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
         (24 h by default); a `4xx`, or that age, makes it a dead letter that stays in the table and is
         counted by `GET .../outbox`.
 
@@ -761,19 +851,21 @@ components:
         file:
           anyOf:
           - type: string
-            format: binary
+            contentMediaType: application/octet-stream
           - type: string
           - type: 'null'
           title: File
-          description: Document image (JPEG/PNG/PDF). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
           - type: 'null'
           title: File Url
-          description: URL this service fetches the document image from (e.g. a presigned MinIO GET).
-            Omit when uploading file. The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`,
-            or resolve to a public address when that is empty; redirects are not followed.
+          description: 'URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when
+            uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
+            list denies every URL rather than allowing public ones. https only, redirects are not followed,
+            and a host that resolves to a private or loopback address is refused even when it is listed.'
       type: object
       title: Body_extractText
     Body_submitOcrJob:
@@ -787,76 +879,71 @@ components:
         document_type:
           type: string
           title: Document Type
-          description: Document type chosen by the client. Only `npwp` is supported
-          default: npwp
+          description: Document type chosen by the client. Only `kk` is supported
+          default: kk
           examples:
-          - npwp
+          - kk
         guardrails:
           anyOf:
           - type: string
           - type: 'null'
           title: Guardrails
           description: 'The guardrails report (`data` of the guardrails service''s `POST /v1/guardrails/check`),
-            serialised as a JSON string; the orchestrator NPWP fills it in. Forwarded down the chain:
-            scoring uses `document.confidence`, and the final result returns it unchanged. Optional, but
-            without it the scoring model works with one input missing'
+            serialised as a JSON string; the orchestrator fills it in and it is left out entirely when
+            the `pipeline_name_sequence` has no `guardrails`. Forwarded down the chain unchanged: scoring
+            uses `document.probability_bad` as a trust-model feature, and the final result returns the
+            report as it arrived'
           examples:
           - '{"passed": true, "reason": null, "document": {"verdict": "accepted", "confidence": 0.9821,
-            "n_pages": 1, "n_approve": 1, "n_reject": 0}, "pages": [{"page_index": 0, "proba_approve":
-            0.9821, "proba_reject": 0.0179, "verdict": "accepted"}]}'
+            "probability_bad": 0.0179, "threshold_used": 0.5}}'
+        pipeline_name_sequence:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, in order, from the central orchestrator (forwarded
+            by the orchestrator and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`,
+            guardrails optional at the front and the end cut off, never one skipped in the middle. The
+            last one ends the request: its result is the answer, as it is, and nothing is handed on. Omitted:
+            the full pipeline. Serialised as a JSON array string'
+          examples:
+          - '["guardrails", "ekstraksi", "structuring", "scoring"]'
+        column_confidence_threshold:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
+            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`. A JSON object string; kept with the job and handed on'
+          examples:
+          - '{"no_kk": 0.9, "nik": 0.8}'
         file:
           anyOf:
           - type: string
-            format: binary
+            contentMediaType: application/octet-stream
           - type: string
           - type: 'null'
           title: File
-          description: Document image (JPEG/PNG/PDF). Omit when sending file_url.
+          description: Kartu Keluarga photo (JPEG, PNG or PDF; of a PDF only page 1 is read). Omit when
+            sending file_url.
         file_url:
           anyOf:
           - type: string
           - type: 'null'
           title: File Url
-          description: URL this service fetches the document image from (e.g. a presigned MinIO GET).
-            Omit when uploading file. The host must be listed in the service's `FILE_URL_ALLOWED_HOSTS`,
-            or resolve to a public address when that is empty; redirects are not followed.
+          description: 'URL this service fetches the photo from (e.g. a presigned MinIO GET). Omit when
+            uploading file. The host must be listed in the service''s `FILE_URL_ALLOWED_HOSTS`: an EMPTY
+            list denies every URL rather than allowing public ones. https only, redirects are not followed,
+            and a host that resolves to a private or loopback address is refused even when it is listed.'
       type: object
       required:
       - request_id
       title: Body_submitOcrJob
-    BoundingBox:
-      properties:
-        x1:
-          type: integer
-          title: X1
-          description: Left
-          examples:
-          - 190
-        y1:
-          type: integer
-          title: Y1
-          description: Top
-          examples:
-          - 320
-        x2:
-          type: integer
-          title: X2
-          description: Right
-          examples:
-          - 760
-        y2:
-          type: integer
-          title: Y2
-          description: Bottom
-          examples:
-          - 366
-      type: object
-      required:
-      - x1
-      - y1
-      - x2
-      - y2
-      title: BoundingBox
     ErrorResponse:
       properties:
         status_code:
@@ -884,10 +971,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -896,6 +983,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code
@@ -941,11 +1037,12 @@ components:
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
         data:
-          $ref: '#/components/schemas/OcrResult'
+          $ref: '#/components/schemas/OcrPayload'
       type: object
       required:
       - data
       title: ExtractResponse
+      description: '`POST /v1/ekstraksi/extract`: the same §7.1 payload a job stores, answered directly.'
     HealthResponse:
       properties:
         status:
@@ -1072,6 +1169,53 @@ components:
       - data
       title: JobAcceptedResponse
       description: Envelope of `POST /v1/<stage>/jobs`.
+    OcrBoxPayload:
+      properties:
+        text:
+          type: string
+          title: Text
+          description: The recognised text
+          examples:
+          - '9924187486671285'
+        score:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+          description: Recognition score of this line
+          examples:
+          - 0.9991
+        poly:
+          items:
+            items:
+              type: number
+            type: array
+            maxItems: 2
+            minItems: 2
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Poly
+          description: 'Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright
+            box: the detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle
+            would lose information. Structuring depends on this geometry to assign cells to columns'
+          examples:
+          - - - 291.0
+              - 7.0
+            - - 306.0
+              - 6.0
+            - - 309.0
+              - 26.0
+            - - 294.0
+              - 28.0
+      additionalProperties: true
+      type: object
+      required:
+      - text
+      - score
+      - poly
+      title: OcrBoxPayload
+      description: One recognised text line.
     OcrJobStatus:
       properties:
         request_id:
@@ -1120,11 +1264,39 @@ components:
           description: Last status change (ISO 8601, UTC)
           examples:
           - '2026-09-18T04:00:01+00:00'
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, as the job was submitted with them; the last one
+            ends the request. Null for a job submitted without it: the full pipeline'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'The central orchestrator''s per-field thresholds, as the job was submitted with
+            them; null: the trust model''s own thresholds for every field'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
         result:
           anyOf:
-          - $ref: '#/components/schemas/OcrResult'
+          - $ref: '#/components/schemas/OcrPayload'
           - type: 'null'
-          description: Raw OCR result once `status` is `DONE`; null otherwise
+          description: 'The OCR result once `status` is `DONE`; null otherwise. Its `texts` may be EMPTY:
+            an image with no readable text is a successful OCR job (§6.3) and is rejected by the structuring
+            rules one stage later, not here'
       type: object
       required:
       - request_id
@@ -1174,52 +1346,72 @@ components:
       required:
       - data
       title: OcrJobStatusResponse
-    OcrResult:
+    OcrPayload:
       properties:
         engine:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Engine
-          description: OCR backend that read the document (`EKSTRAKSI_BACKEND`)
+          description: OCR backend that produced the boxes
           examples:
-          - paddle
+          - kk_ocr
         model:
           anyOf:
           - type: string
           - type: 'null'
           title: Model
-          description: Model identity reported by the OCR model service; null when it does not report
-            one
+          description: Model identity reported by the OCR backend
           examples:
-          - PP-OCRv6_medium_det+PP-OCRv6_medium_rec
+          - PP-OCRv5_server_det+PP-OCRv5_server_rec
         elapsed_ms:
-          type: number
+          anyOf:
+          - type: number
+          - type: 'null'
           title: Elapsed Ms
-          description: Time spent in the OCR model, milliseconds
+          description: Time spent in the OCR model
           examples:
-          - 412.5
-        full_text:
-          type: string
-          title: Full Text
-          description: All blocks joined by newline, in reading order
+          - 4182.7
+        text_regions_count:
+          type: integer
+          minimum: 0.0
+          title: Text Regions Count
+          description: Number of text boxes; may be 0
+          default: 0
           examples:
-          - 'DIREKTORAT JENDERAL PAJAK
-
-            NPWP : 12.345.678.9-012.345
-
-            BUDI SANTOSO'
-        blocks:
+          - 177
+        avg_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Avg Doc Score
+          description: Mean of `texts[].score`; null when `texts` is empty rather than 0
+          examples:
+          - 0.814
+        min_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Min Doc Score
+          description: Lowest of `texts[].score`; null when `texts` is empty
+          examples:
+          - 0.2822
+        texts:
           items:
-            $ref: '#/components/schemas/TextBlock'
+            $ref: '#/components/schemas/OcrBoxPayload'
           type: array
-          title: Blocks
-          description: Text lines in reading order (top to bottom)
+          title: Texts
+          description: 'Text boxes. May be EMPTY: an image with no readable text must reach the structuring
+            rules to be rejected there, so neither this model nor the structuring job endpoint may require
+            at least one'
+      additionalProperties: true
       type: object
-      required:
-      - engine
-      - elapsed_ms
-      - full_text
-      - blocks
-      title: OcrResult
+      title: OcrPayload
+      description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
     OutboxRelease:
       properties:
         stage:
@@ -1466,9 +1658,8 @@ components:
           - type: string
           - type: 'null'
           title: Error Code
-          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the stage rejected the
-            document (a rejecting check of the structuring rules; `error_message` is the Indonesian reason).
-            Absent when a stage broke'
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected
+            the document (`error_message` is the Indonesian reason). Absent when a stage broke'
           examples:
           - null
       type: object
@@ -1478,42 +1669,6 @@ components:
       - status
       title: StageCallback
       description: Body of the callback a stage POSTs to the orchestrator when it finishes.
-    TextBlock:
-      properties:
-        text:
-          type: string
-          title: Text
-          description: One OCR text line, as read
-          examples:
-          - 'NPWP : 12.345.678.9-012.345'
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: Recognition score of this line
-          examples:
-          - 0.9992
-        bbox:
-          anyOf:
-          - $ref: '#/components/schemas/BoundingBox'
-          - type: 'null'
-          description: Upright box around the line, in pixels of the ORIENTATION-CORRECTED image the OCR
-            model worked on. The model straightens and unwarps the card first, so these are NOT coordinates
-            in the uploaded photo
-        page:
-          type: integer
-          minimum: 0.0
-          title: Page
-          description: 0-based page number (multi-page PDF)
-          default: 0
-          examples:
-          - 0
-      type: object
-      required:
-      - text
-      - confidence
-      title: TextBlock
   securitySchemes:
     APIKeyHeader:
       type: apiKey
@@ -1521,11 +1676,11 @@ components:
       in: header
       name: X-API-Key
 tags:
+- name: Ekstraksi
+  description: 'Synchronous OCR: the §7.1 payload in the response, nothing stored'
 - name: Pipeline
   description: 'Asynchronous pipeline stage: 202, background work, callback, hand-off'
 - name: Callbacks
   description: Requests this service SENDS to the orchestrator (see Webhooks)
-- name: Ekstraksi
-  description: Raw OCR text, synchronous
 - name: Health
   description: Liveness and readiness probes; no API key

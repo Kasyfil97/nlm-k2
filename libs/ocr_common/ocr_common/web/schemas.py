@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ocr_common.errors import error_code
 from ocr_common.web.envelope import envelope
 
 REQUEST_ID_EXAMPLE = "REQ_9cb01af2-493d-446d-b191-af120333f6d0"
@@ -39,13 +40,21 @@ class ErrorResponse(BaseModel):
     errors: str = Field(
         ...,
         description=(
-            "Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message names a different "
-            "field every time); for every other status it repeats `message`"
+            "Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`): branch on "
+            "this, never on the wording of `message`"
         ),
-        examples=["Uploaded file is empty"],
+        examples=["EMPTY_FILE"],
     )
     request_id: str | None = Field(
         None, description="Present when the error is tied to a known request_id", examples=[REQUEST_ID_EXAMPLE]
+    )
+    pipeline_last_stage: str | None = Field(
+        None,
+        description=(
+            "The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`, `structuring`, "
+            "`scoring`), or the pipeline service it called when that one failed"
+        ),
+        examples=["orchestrator"],
     )
 
 
@@ -102,6 +111,30 @@ class JobStatusBase(BaseModel):
     updated_at: str = Field(
         ..., description="Last status change (ISO 8601, UTC)", examples=["2026-09-18T04:00:01+00:00"]
     )
+    pipeline_name_sequence: list[str] | None = Field(
+        None,
+        description=(
+            "The services this request runs, as the job was submitted with them; the last one ends the request. "
+            "Null for a job submitted without it: the full pipeline"
+        ),
+        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+    )
+    column_confidence_threshold: dict[str, float] | None = Field(
+        None,
+        description=(
+            "The central orchestrator's per-field thresholds, as the job was submitted with them; null: the trust "
+            "model's own thresholds for every field"
+        ),
+        examples=[{"no_kk": 0.9, "nik": 0.8}],
+    )
+
+
+PIPELINE_SEQUENCE_DESCRIPTION = (
+    "The services this request runs, in order, from the central orchestrator (forwarded by the orchestrator "
+    "and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`, guardrails optional at the front "
+    "and the end cut off, never one skipped in the middle. The last one ends the request: its result is the "
+    "answer, as it is, and nothing is handed on. Omitted: the full pipeline"
+)
 
 
 class HealthResponse(BaseModel):
@@ -144,7 +177,7 @@ def error(
         "description": description,
         "content": {
             "application/json": {
-                "example": envelope(status_code, message, None, request_id, errors=errors or message),
+                "example": envelope(status_code, message, None, request_id, errors=error_code(status_code, errors)),
             }
         },
     }

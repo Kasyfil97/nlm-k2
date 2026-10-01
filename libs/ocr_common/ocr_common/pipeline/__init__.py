@@ -3,6 +3,7 @@ store the result, notify the orchestrator, hand the job to the next stage.
 
 Modules:
   stage           StagePipeline, the per-service orchestration of one job
+  sequence        pipeline_name_sequence: which services a request runs, and in which order
   repository      job status storage: Protocol, in-memory, and (repository_sql) PostgreSQL
   callbacks       HTTP callback to the orchestrator and hand-off to the next stage, with retries
   runner          background tasks and graceful drain on shutdown
@@ -15,7 +16,7 @@ Modules:
   factory         build_* helpers that wire all of the above from settings
   tables/database SQLAlchemy tables and engine (need the `db` extra)
 
-Nothing imported here may import SQLAlchemy at module level: the orchestrator uses this package without the
+Nothing imported here may import SQLAlchemy at module level: guardrails uses this package without the
 `db` extra. The SQL implementations (*_sql modules, database, tables) are imported lazily by the
 factory; tests/test_imports.py enforces it.
 """
@@ -49,6 +50,22 @@ from ocr_common.pipeline.repository import (
 )
 from ocr_common.pipeline.results import StageResults, load_upstream
 from ocr_common.pipeline.runner import CANCEL_GRACE_SECONDS, BackgroundRunner
+from ocr_common.pipeline.sequence import (
+    DEFAULT_SEQUENCE,
+    EKSTRAKSI,
+    GUARDRAILS,
+    PIPELINE_NAMES,
+    SCORING,
+    SERVICE_OF_STAGE,
+    STAGE_OF,
+    STRUCTURING,
+    InvalidSequence,
+    chain,
+    checked_sequence,
+    next_service,
+    stored,
+    validate_sequence,
+)
 from ocr_common.pipeline.stage import (
     STAGE_OCR,
     STAGE_SCORING,
@@ -62,16 +79,25 @@ from ocr_common.pipeline.stage import (
 
 __all__ = [
     "CANCEL_GRACE_SECONDS",
+    "DEFAULT_SEQUENCE",
+    "EKSTRAKSI",
+    "GUARDRAILS",
+    "PIPELINE_NAMES",
+    "SCORING",
+    "SERVICE_OF_STAGE",
     "STAGE_OCR",
+    "STAGE_OF",
     "STAGE_SCORING",
     "STAGE_STRUCTURING",
     "STATUS_DONE",
     "STATUS_FAILED",
     "STATUS_PROCESSING",
+    "STRUCTURING",
     "BackgroundRunner",
     "CallbackResult",
     "HandoffPayload",
     "InMemoryJobRepository",
+    "InvalidSequence",
     "JobRecord",
     "JobRepository",
     "NextStage",
@@ -93,8 +119,13 @@ __all__ = [
     "build_stage_results",
     "build_stale_job_reaper",
     "callback_message",
+    "chain",
+    "checked_sequence",
     "handoff_message",
     "load_upstream",
+    "next_service",
     "stage_client",
+    "stored",
+    "validate_sequence",
     "with_retry",
 ]

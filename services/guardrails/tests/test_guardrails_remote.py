@@ -1,3 +1,5 @@
+"""The `remote` backend: the ML team's quality service, judging under its own threshold."""
+
 from typing import Any
 
 import httpx
@@ -7,31 +9,27 @@ from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import ServiceError
 from ocr_common.testing import image_upload
 
+from app.clients.reject_threshold import Threshold
 from app.config import Settings
-from app.dependencies import CLASSIFIER_BACKENDS
+from app.dependencies import QUALITY_BACKENDS
 from app.ml.remote import RemoteGuardrailsModel
-from app.services.guardrails_service import GuardrailsService
-
-JPEG = b"\xff\xd8fake-jpeg-bytes"
+from app.services.guardrails_service import REASON_REJECT, REASON_UNASSESSABLE, GuardrailsService
+from tests.conftest import JPEG
 
 ACCEPTED: dict[str, Any] = {
     "status_code": 200,
     "message": "OK",
-    "data": {
-        "document": {"verdict": "accepted", "confidence": 0.9821, "n_pages": 2, "n_approve": 2, "n_reject": 0},
-        "pages": [
-            {"page_index": 0, "proba_approve": 0.9821, "proba_reject": 0.0179, "verdict": "accepted"},
-            {"page_index": 1, "proba_approve": 0.9950, "proba_reject": 0.0050, "verdict": "accepted"},
-        ],
-    },
+    "data": {"document": {"verdict": "accepted", "probability_bad": 0.0287, "threshold_used": 0.62}},
 }
 REJECTED: dict[str, Any] = {
     "status_code": 200,
     "message": "OK",
-    "data": {
-        "document": {"verdict": "reject", "confidence": 0.8821, "n_pages": 1, "n_approve": 0, "n_reject": 1},
-        "pages": [{"page_index": 0, "proba_approve": 0.1179, "proba_reject": 0.8821, "verdict": "reject"}],
-    },
+    "data": {"document": {"verdict": "reject", "probability_bad": 0.8821, "threshold_used": 0.62}},
+}
+UNASSESSABLE: dict[str, Any] = {
+    "status_code": 200,
+    "message": "OK",
+    "data": {"document": {"verdict": "unassessable", "probability_bad": None, "threshold_used": None}},
 }
 
 
@@ -68,63 +66,92 @@ async def test_request_follows_the_model_contract():
         )
         return httpx.Response(200, json=ACCEPTED)
 
-    await _model(handler).check_document("sample_npwp.jpg", JPEG, "image/jpeg")
+    await _model(handler).check_document("kk.jpg", JPEG, "image/jpeg")
 
     assert (seen["method"], seen["path"]) == ("POST", "/v1/predict/json")
     assert seen["api_key"] == "dummy-key"
     assert seen["content_type"].startswith("multipart/form-data")
-    assert b'name="file"; filename="sample_npwp.jpg"' in seen["body"]
+    assert b'name="file"; filename="kk.jpg"' in seen["body"]
     assert b"Content-Type: image/jpeg" in seen["body"]
     assert JPEG in seen["body"]
     assert b"request_id" not in seen["body"]
 
 
-async def test_accepted_report_passes_through_with_passed_true():
-    report = await GuardrailsService(_model(_reply(ACCEPTED)), _settings()).check("a.pdf", "application/pdf", b"%PDF")
-    assert report == {"passed": True, "reason": None, **ACCEPTED["data"]}
+async def test_an_accepted_document_passes_with_the_complement_as_confidence():
+    report = await GuardrailsService(_model(_reply(ACCEPTED)), _settings()).check("kk.jpg", "image/jpeg", JPEG)
+    assert report == {
+        "passed": True,
+        "reason": None,
+        "document": {
+            "verdict": "accepted",
+            "confidence": 0.9713,
+            "probability_bad": 0.0287,
+            "threshold_used": 0.62,
+        },
+    }
 
 
-async def test_rejected_report_gets_reason_for_the_orchestrator():
-    report = await GuardrailsService(_model(_reply(REJECTED)), _settings()).check("a.jpg", "image/jpeg", JPEG)
+async def test_a_rejected_document_gets_the_reason_the_orchestrator_relays():
+    report = await GuardrailsService(_model(_reply(REJECTED)), _settings()).check("kk.jpg", "image/jpeg", JPEG)
     assert report["passed"] is False
-    assert report["reason"] == "Document rejected by guardrails: 1/1 page(s) rejected (confidence 0.88)"
-    assert report["document"] == REJECTED["data"]["document"]
+    assert report["reason"] == REASON_REJECT
+    assert report["document"]["confidence"] == 0.8821
 
 
-async def test_model_verdict_is_not_overridden_by_local_settings():
-    settings = _settings(guardrails_reject_threshold=0.001, guardrails_document_policy="majority")
-    report = await GuardrailsService(_model(_reply(ACCEPTED)), settings).check("a.jpg", "image/jpeg", JPEG)
+async def test_the_remote_service_may_also_answer_unassessable():
+    report = await GuardrailsService(_model(_reply(UNASSESSABLE)), _settings()).check("kk.jpg", "image/jpeg", JPEG)
+    assert report["passed"] is False
+    assert report["reason"] == REASON_UNASSESSABLE
+    assert report["document"] == {
+        "verdict": "unassessable",
+        "confidence": None,
+        "probability_bad": None,
+        "threshold_used": None,
+    }
+
+
+async def test_local_threshold_settings_do_not_override_the_remote_verdict():
+    """The remote service already judged. Re-deciding here would report a threshold that decided
+    nothing and could disagree with the probability next to it."""
+    settings = _settings(guardrails_threshold=0.001)
+    report = await GuardrailsService(_model(_reply(ACCEPTED)), settings).check("kk.jpg", "image/jpeg", JPEG)
     assert report["document"]["verdict"] == "accepted"
-    assert [p["verdict"] for p in report["pages"]] == ["accepted", "accepted"]
+    assert report["document"]["threshold_used"] == 0.62
+
+
+async def test_a_per_request_override_is_ignored_by_the_remote_backend():
+    service = GuardrailsService(_model(_reply(ACCEPTED)), _settings())
+    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=Threshold(0.001, "reject"))
+    assert report["document"] == ACCEPTED["data"]["document"] | {"confidence": 0.9713}
 
 
 async def test_extra_fields_from_the_model_are_dropped():
+    """The block travels unchanged to scoring, so an unknown key here would outlive whoever knew
+    what it meant."""
     body = {
         "status_code": 200,
         "message": "OK",
-        "data": {
-            "document": {**REJECTED["data"]["document"], "model_version": "v7"},
-            "pages": [{**REJECTED["data"]["pages"][0], "heatmap": "..."}],
-            "debug": True,
-        },
+        "data": {"document": {**REJECTED["data"]["document"], "model_version": "v7", "heatmap": "..."}},
     }
-    report = await _model(_reply(body)).check_document("a.jpg", JPEG, "image/jpeg")
-    assert report == REJECTED["data"]
+    document = await _model(_reply(body)).check_document("kk.jpg", JPEG, "image/jpeg")
+    assert set(document) == {"verdict", "confidence", "probability_bad", "threshold_used"}
 
 
 @pytest.mark.parametrize(
     "body",
     [
         {"status_code": 200, "message": "OK"},
-        {"data": {"document": {"verdict": "accepted"}, "pages": []}},
-        {"data": {"document": {**ACCEPTED["data"]["document"], "verdict": "maybe"}, "pages": []}},
-        {"data": {"document": ACCEPTED["data"]["document"], "pages": [{"page_index": 0}]}},
+        {"data": {}},
+        {"data": {"document": {"verdict": "maybe", "probability_bad": 0.5}}},
+        {"data": {"document": {"verdict": "reject"}}},
+        {"data": {"document": {"verdict": "reject", "probability_bad": 1.4}}},
+        {"data": {"document": {"verdict": "accepted", "probability_bad": 0.1, "threshold_used": 0}}},
         ["not", "an", "object"],
     ],
 )
 async def test_unexpected_response_shape_is_500_not_a_guess(body):
     with pytest.raises(ServiceError) as exc:
-        await _model(_reply(body)).check_document("a.jpg", JPEG, "image/jpeg")
+        await _model(_reply(body)).check_document("kk.jpg", JPEG, "image/jpeg")
     assert exc.value.status_code == 500
     assert exc.value.message == "guardrails model returned an unexpected response"
 
@@ -132,7 +159,7 @@ async def test_unexpected_response_shape_is_500_not_a_guess(body):
 async def test_model_error_status_becomes_500_with_detail():
     model = _model(_reply({"status_code": 401, "message": "Invalid API key"}, status_code=401))
     with pytest.raises(ServiceError) as exc:
-        await model.check_document("a.jpg", JPEG, "image/jpeg")
+        await model.check_document("kk.jpg", JPEG, "image/jpeg")
     assert exc.value.status_code == 500
     assert exc.value.message == "guardrails model error (401): Invalid API key"
 
@@ -145,21 +172,21 @@ async def test_unreachable_model_is_503_and_slow_model_is_504():
         raise httpx.ReadTimeout("slow")
 
     with pytest.raises(ServiceError) as exc:
-        await _model(refuse).check_document("a.jpg", JPEG, "image/jpeg")
+        await _model(refuse).check_document("kk.jpg", JPEG, "image/jpeg")
     assert (exc.value.status_code, exc.value.message) == (503, "guardrails model is unavailable")
 
     with pytest.raises(ServiceError) as exc:
-        await _model(stall).check_document("a.jpg", JPEG, "image/jpeg")
+        await _model(stall).check_document("kk.jpg", JPEG, "image/jpeg")
     assert (exc.value.status_code, exc.value.message) == (504, "guardrails model timed out after 5.0s")
 
 
 def test_remote_backend_requires_model_url():
     with pytest.raises(RuntimeError, match="GUARDRAILS_MODEL_URL is required"):
-        CLASSIFIER_BACKENDS["remote"](_settings(guardrails_backend="remote"))
+        QUALITY_BACKENDS["remote"](_settings(guardrails_backend="remote"))
 
 
 async def test_remote_backend_is_built_from_settings():
-    model = CLASSIFIER_BACKENDS["remote"](
+    model = QUALITY_BACKENDS["remote"](
         _settings(
             guardrails_backend="remote",
             guardrails_model_url="http://localhost:8081/",
@@ -174,26 +201,25 @@ async def test_remote_backend_is_built_from_settings():
         await model.aclose()
 
 
-def test_http_check_with_remote_backend(client, auth, use_classifier):
-    use_classifier(_model(_reply(REJECTED)))
+def test_http_check_with_remote_backend(client, auth, use_model):
+    use_model(_model(_reply(REJECTED)))
     response = client.post(
-        "/v1/guardrails/check", data={"request_id": "OCR_R1"}, files=image_upload("npwp.jpg", JPEG), headers=auth
+        "/v1/guardrails/check", data={"request_id": "OCR_R1"}, files=image_upload("kk.jpg", JPEG), headers=auth
     )
     assert response.status_code == 200
     body = response.json()
     assert body["request_id"] == "OCR_R1"
     assert body["data"]["passed"] is False
-    # The remote model applies its own threshold, so the report does not state one.
-    assert body["data"]["document"] == {**REJECTED["data"]["document"], "reject_threshold": None}
+    assert body["data"]["document"]["threshold_used"] == 0.62
 
 
-def test_http_model_unreachable_returns_503_envelope(client, auth, use_classifier):
+def test_http_model_unreachable_returns_503_envelope(client, auth, use_model):
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused")
 
-    use_classifier(_model(refuse))
+    use_model(_model(refuse))
     response = client.post(
-        "/v1/guardrails/check", data={"request_id": "OCR_R2"}, files=image_upload("npwp.jpg", JPEG), headers=auth
+        "/v1/guardrails/check", data={"request_id": "OCR_R2"}, files=image_upload("kk.jpg", JPEG), headers=auth
     )
     assert response.status_code == 503
     assert response.json()["message"] == "guardrails model is unavailable"

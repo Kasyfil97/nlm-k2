@@ -24,7 +24,7 @@ MODULES = [
     "ocr_common.web.app",
     "ocr_common.web.intake",
     "ocr_common.clients.remote",
-    "ocr_common.npwp",
+    "ocr_common.kk",
     "ocr_common.types",
     "ocr_common.simulation",
     "ocr_common.testing_endpoints",

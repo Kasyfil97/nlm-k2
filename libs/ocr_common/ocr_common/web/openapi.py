@@ -18,7 +18,10 @@ def main(module: str = "app.main", target: str = "openapi.yaml") -> None:
     sys.path.insert(0, str(Path.cwd()))
     app = importlib.import_module(module).app
     path = Path.cwd() / target
-    path.write_text(spec_text(app), encoding="utf-8")
+    # `newline` eksplisit: di Windows `write_text` menerjemahkan LF jadi CRLF, dan berkas ini ikut ke
+    # build context Docker. `.gitattributes` menormalkan yang MASUK git, bukan yang ada di pohon kerja,
+    # jadi tanpa ini setiap regenerasi menulis CRLF ke pohon kerja kelima service.
+    path.write_text(spec_text(app), encoding="utf-8", newline="\n")
     print(f"ditulis: {path}")
 
 

@@ -23,7 +23,7 @@ untyped-import = false
 # str()/int() around data from JSON or FastAPI (Any at runtime) are deliberate.
 unnecessary-type-conversion = false
 
-# app/vendor: the ML team's rules copied as delivered (see app/vendor/npwp_rules/README.md); not edited here.
+# app/vendor: the ML team's rules copied as delivered (see app/vendor/mock/README.md); not edited here.
 [[tool.pyrefly.sub-config]]
 matches = "app/vendor/**"
 

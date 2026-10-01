@@ -7,16 +7,16 @@ from ocr_common.config import PipelineSettings
 from ocr_common.pipeline import STAGE_OCR, STAGE_STRUCTURING, build_stage_pipeline, build_stage_results, database
 from ocr_common.pipeline.outbox_sql import SqlOutbox
 from ocr_common.pipeline.tables import outbox_table, pipeline_tables, repo_metadata
-from ocr_common.testing import make_client
+from ocr_common.testing import TEST_API_KEY, make_client
 from ocr_common.web.app import create_app
 from ocr_common.web.security import verify_api_key
 from ocr_common.web.testing_routes import build_testing_router
 
-KEY = {"X-API-Key": "k"}
+KEY = {"X-API-Key": TEST_API_KEY}
 
 
 def _settings(**values) -> PipelineSettings:
-    return PipelineSettings(api_key="k", environment="local", _env_file=None, **values)
+    return PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None, **values)
 
 
 def _live_router() -> APIRouter:
@@ -101,7 +101,7 @@ async def test_testing_pipeline_writes_only_the_testing_tables_and_sends_no_call
     assert isinstance(pipeline.outbox, SqlOutbox) and pipeline.outbox.table.name == "testing_pipeline_outbox"
 
     async def work():
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     await pipeline.submit(
         "REQ_T1",

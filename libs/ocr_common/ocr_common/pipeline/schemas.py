@@ -1,33 +1,45 @@
 """Pydantic models of the payloads passed between stages and to the orchestrator, used by the routes
 for validation and by the OpenAPI documents.
+
+These are the twins of the TypedDicts in `ocr_common.types`: those annotate what moves in memory,
+these validate what arrives over HTTP. Every model allows extra keys, so adding a field upstream
+never breaks a downstream service.
 """
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ocr_common.web.schemas import REQUEST_ID_EXAMPLE, Stage
 
-Verdict = Literal["accepted", "reject"]
+Verdict = Literal["accepted", "reject", "unassessable"]
+"""`unassessable` is the answer for an image the model could not judge at all -- undecodable, or
+dimensions outside the range the checkpoint was trained on. It is deliberately a verdict rather than
+an error: §5.2 requires guardrails to answer 200 with the verdict in `data.passed`, and the model
+core raises on this path in a dozen places. Keeping it distinct from `reject` matters operationally
+-- "we judged this bad" and "we could not judge" need different alerts and different fixes."""
 
 
 class _Forwarded(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
-class GuardrailsPage(_Forwarded):
-    """One page of the guardrails report."""
+Coordinate = Annotated[list[float], Field(min_length=2, max_length=2)]
+"""One point of a `poly`: exactly two numbers.
 
-    page_index: int | None = Field(None, ge=0, description="0-based page number", examples=[0])
-    proba_approve: float | None = Field(
-        None, ge=0, le=1, description="Probability that this page is an acceptable document", examples=[0.9821]
-    )
-    proba_reject: float | None = Field(None, ge=0, le=1, description="1 - `proba_approve`", examples=[0.0179])
-    verdict: Verdict | None = Field(None, description="Verdict for this page alone", examples=["accepted"])
+The field said "four points of two coordinates" and only checked the four. A point could carry ten
+thousand numbers and pass -- which matters because these polygons are the one part of the payload
+whose size nothing else bounds, and structuring walks every one of them. Enforcing the second half
+of the sentence is a bug fix, not a new limit: a three-coordinate point was never a valid §7.1 box.
+"""
+
+
+# --- guardrails (§5.2) ---------------------------------------------------------------------
 
 
 class GuardrailsDocument(_Forwarded):
-    """The guardrails verdict for the whole document."""
+    """The guardrails verdict. A Kartu Keluarga is always a single image, so there is no page
+    concept here and no aggregation across pages."""
 
     verdict: Verdict | None = Field(None, description="Document verdict", examples=["accepted"])
     confidence: float | None = Field(
@@ -35,14 +47,36 @@ class GuardrailsDocument(_Forwarded):
         ge=0,
         le=1,
         description=(
-            "Confidence in the verdict: accepted -> lowest `proba_approve` over the pages. "
-            "Sent to the scoring model as `guardrail_probability`"
+            "Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad` when accepted. "
+            "Null when the image could not be assessed"
         ),
-        examples=[0.9821],
+        examples=[0.9713],
     )
-    n_pages: int | None = Field(None, ge=0, description="Pages that were checked", examples=[1])
-    n_approve: int | None = Field(None, ge=0, description="Pages with verdict `accepted`", examples=[1])
-    n_reject: int | None = Field(None, ge=0, description="Pages with verdict `rejected`", examples=[0])
+    probability_bad: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Raw model output. Travels unchanged to scoring as the `guardrail_probability` feature. "
+            "Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number"
+        ),
+        examples=[0.0287],
+    )
+    threshold_used: float | None = Field(
+        None,
+        gt=0,
+        lt=1,
+        description=(
+            "The threshold in force at the moment of the judgement. Echoed because it can be changed at the "
+            "central orchestrator without a deploy here, so the verdict records the one it actually used"
+        ),
+        examples=[0.5],
+    )
+    threshold_target: Literal["accept", "reject"] | None = Field(
+        None,
+        description="The side `threshold_used` applied to: `reject` (the default) or `accept` (on 1 - probability_bad)",
+        examples=["reject"],
+    )
 
 
 class GuardrailsResult(_Forwarded):
@@ -58,33 +92,31 @@ class GuardrailsResult(_Forwarded):
     )
 
     passed: bool | None = Field(None, description="true: the document may proceed to OCR", examples=[True])
-    reason: str | None = Field(None, description="Why it was rejected; null when passed", examples=[None])
-    document: GuardrailsDocument | None = Field(None, description="Verdict for the document as a whole")
-    pages: list[GuardrailsPage] = Field(default_factory=list, description="One entry per page, in page order")
-
-
-class BoundingBoxPayload(_Forwarded):
-    """Upright box around a text line."""
-
-    x1: float = Field(..., description="Left edge, pixels", examples=[271])
-    y1: float = Field(..., description="Top edge, pixels", examples=[358])
-    x2: float = Field(..., description="Right edge, pixels", examples=[1347])
-    y2: float = Field(..., description="Bottom edge, pixels", examples=[511])
-
-
-class OcrBlockPayload(_Forwarded):
-    """One OCR text line."""
-
-    text: str = Field(..., description="One OCR text line", examples=["12.345.678.9-012.345"])
-    confidence: float = Field(1.0, ge=0, le=1, description="Recognition score of this line", examples=[0.9999])
-    bbox: BoundingBoxPayload | None = Field(
-        None,
-        description=(
-            "Upright box around the line, in pixels of the ORIENTATION-CORRECTED image the OCR model worked on "
-            "(not of the uploaded photo). Structuring finds the name by its distance to the NPWP number"
-        ),
+    reason: str | None = Field(
+        None, description="Why it was rejected, in Indonesian; null when passed", examples=[None]
     )
-    page: int = Field(0, ge=0, description="0-based page number", examples=[0])
+    document: GuardrailsDocument | None = Field(None, description="The verdict and its numbers")
+
+
+# --- OCR (§6.1 / §7.1 / §10) ---------------------------------------------------------------
+
+
+class OcrBoxPayload(_Forwarded):
+    """One recognised text line."""
+
+    text: str = Field(..., description="The recognised text", examples=["9924187486671285"])
+    score: float = Field(..., ge=0, le=1, description="Recognition score of this line", examples=[0.9991])
+    poly: list[Coordinate] = Field(
+        ...,
+        min_length=4,
+        max_length=4,
+        description=(
+            "Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright box: the "
+            "detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle would lose "
+            "information. Structuring depends on this geometry to assign cells to columns"
+        ),
+        examples=[[[291.0, 7.0], [306.0, 6.0], [309.0, 26.0], [294.0, 28.0]]],
+    )
 
 
 class OcrPayload(_Forwarded):
@@ -96,44 +128,104 @@ class OcrPayload(_Forwarded):
         }
     )
 
-    engine: str | None = Field(None, description="OCR backend that produced the blocks", examples=["paddle"])
+    engine: str | None = Field(None, description="OCR backend that produced the boxes", examples=["kk_ocr"])
     model: str | None = Field(
         None,
-        description="Model identity reported by the OCR model service",
-        examples=["PP-OCRv6_medium_det+PP-OCRv6_medium_rec"],
+        description="Model identity reported by the OCR backend",
+        examples=["PP-OCRv5_server_det+PP-OCRv5_server_rec"],
     )
-    elapsed_ms: float | None = Field(None, description="Time spent in the OCR model", examples=[412.5])
-    full_text: str | None = Field(None, description="All blocks joined by newline")
-    blocks: list[OcrBlockPayload] = Field(..., description="Text lines in reading order (top to bottom)")
+    elapsed_ms: float | None = Field(None, description="Time spent in the OCR model", examples=[4182.7])
+    text_regions_count: int = Field(0, ge=0, description="Number of text boxes; may be 0", examples=[177])
+    avg_doc_score: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Mean of `texts[].score`; null when `texts` is empty rather than 0",
+        examples=[0.814],
+    )
+    min_doc_score: float | None = Field(
+        None, ge=0, le=1, description="Lowest of `texts[].score`; null when `texts` is empty", examples=[0.2822]
+    )
+    texts: list[OcrBoxPayload] = Field(
+        default_factory=list,
+        description=(
+            "Text boxes. May be EMPTY: an image with no readable text must reach the structuring rules to be "
+            "rejected there, so neither this model nor the structuring job endpoint may require at least one"
+        ),
+    )
+
+
+# --- structuring (§7.3) --------------------------------------------------------------------
 
 
 class StructuredFieldPayload(_Forwarded):
-    """One named field read by structuring."""
+    """One named field read by structuring, carrying two scores that are deliberately not fused."""
 
-    value: str | None = Field(None, description="null when the field was not found", examples=["3201234567890001"])
-    confidence: float = Field(
-        1.0, ge=0, le=1, description="OCR score of the line the value came from", examples=[0.9762]
+    value: str = Field(
+        "",
+        description='The value; `""` when not found -- never null',
+        examples=["3273012345678901"],
     )
-    source: str | None = Field(
-        None, description="Raw OCR line the value came from", examples=["NPWP16:3201 2345 6789 0001"]
+    ocr_conf: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description="Lowest recognition score among the OCR boxes that formed this value; null when not found",
+        examples=[0.9991],
     )
-    signals: dict[str, Any] | None = Field(
+    crf_conf: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Forward-backward marginal of the column placement. ALWAYS null for document fields, which are found "
+            "by regex or position and never pass through Viterbi, and null for member cells Viterbi did not place"
+        ),
+        examples=[None],
+    )
+    features: dict[str, float] | None = Field(
         None,
         description=(
-            "Inputs for the scoring model and review signals of the ML team's rules. nomor_npwp: "
-            "`candidate_count` (NPWP-shaped numbers found in the document), `has_homoglyph` (OCR read a letter "
-            "where a digit belongs), `invalid_province_prefix` / `invalid_kecamatan_prefix` / `invalid_birthdate` "
-            "(16-digit NIK-based number fails the Kode Wilayah / birthdate check), `invalid_kpp_prefix` (15-digit "
-            "number's KPP office code is unknown). nama / nama_badan: `name_base` (the read before any "
-            "normalisation; the trust model measures the name on this), `corrected` (the returned name differs "
-            "from `name_base`)"
+            "The trust model's input vector for this field, present only for the NINE scored contract fields "
+            "and null everywhere else. It exists because the two scores above do not separate a correct value "
+            "from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a "
+            "coin, while the parser internals that do carry the signal are computed and then discarded. "
+            "Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES` "
+            "(document fields); scoring assembles them and never recomputes one, because the same feature "
+            "computed in two places is how a model ends up good in training and bad in production"
         ),
-        examples=[{"has_homoglyph": False, "candidate_count": 2}],
+        examples=[{"marg_min": 0.9967, "margin_min": 0.9934, "emis_assigned_min": 0.0, "lebar_rel": 0.87}],
     )
+
+
+class StructuredMemberPayload(_Forwarded):
+    """One row of `anggota_keluarga`. All fifteen keys are always present, even when empty."""
+
+    nama_lengkap: StructuredFieldPayload
+    nik: StructuredFieldPayload
+    jenis_kelamin: StructuredFieldPayload
+    tempat_lahir: StructuredFieldPayload
+    tanggal_lahir: StructuredFieldPayload
+    agama: StructuredFieldPayload
+    pendidikan: StructuredFieldPayload
+    jenis_pekerjaan: StructuredFieldPayload
+    golongan_darah: StructuredFieldPayload
+    status_perkawinan: StructuredFieldPayload
+    tanggal_perkawinan: StructuredFieldPayload
+    status_hubungan_dalam_keluarga: StructuredFieldPayload
+    kewarganegaraan: StructuredFieldPayload
+    ayah: StructuredFieldPayload
+    ibu: StructuredFieldPayload
 
 
 class StructuringPayload(_Forwarded):
-    """The structuring stage result as scoring receives it."""
+    """The structuring stage result as scoring receives it: the flat K2Regex-v2 shape.
+
+    The eleven document fields are top-level keys -- there is no `fields` wrapper -- and there is no
+    `document_type`, `flag` or `flag_reason`. The keys are spelled out rather than left as a mapping
+    because this is the shape the freeze pins down, and a renamed key is exactly what the model
+    should catch.
+    """
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -141,106 +233,129 @@ class StructuringPayload(_Forwarded):
         }
     )
 
-    document_type: str | None = Field(None, description="Document type the fields were read as", examples=["npwp"])
-    fields: dict[str, StructuredFieldPayload] = Field(
-        ...,
-        description="Always `nomor_npwp`, `nama`, `nama_badan`. A person's card fills `nama`, a company's `nama_badan`",
+    nomor_kk: StructuredFieldPayload = Field(
+        ..., description="The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator"
     )
-    flag: bool = Field(
-        False,
-        description=(
-            "Flag of the ML team's rules, a feature of the trust model: another document bundled in, CAPTCHA or "
-            "lookup screenshot, number or name not found, single-word name, letter in the number, invalid Kode "
-            "Wilayah / birthdate / KPP code, more than 2 pages"
-        ),
-        examples=[False],
+    nama_kepala_keluarga: StructuredFieldPayload
+    alamat: StructuredFieldPayload
+    desa_kelurahan: StructuredFieldPayload
+    rt: StructuredFieldPayload = Field(
+        ..., description="Shares one `ocr_conf` with `rw`: both are cut from the same OCR box"
     )
-    flag_reason: str | None = Field(
-        None,
-        description="Why `flag` is true, in Indonesian; null when not flagged",
-        examples=[None],
+    rw: StructuredFieldPayload
+    kecamatan: StructuredFieldPayload
+    kabupaten_kota: StructuredFieldPayload
+    provinsi: StructuredFieldPayload
+    kode_pos: StructuredFieldPayload
+    tanggal_dikeluarkan: StructuredFieldPayload
+    anggota_keluarga: list[StructuredMemberPayload] = Field(
+        default_factory=list,
+        description="One entry per row on the card, in card order. May be empty, which the validity gate rejects",
     )
     reject_reason: str | None = Field(
         None,
         description=(
-            "Set when a check that rejects the document fired (all but a single-word name and a letter in the "
-            "number). A rejected document is never handed to scoring; the client gets a 400 with this message"
+            "The first rejecting rule of the KK validity gate, in Indonesian; null when accepted. It lives in "
+            "this payload rather than only in the outcome row because the orchestrator is stateless and reads "
+            "stages through their API -- a reason kept elsewhere could never become the client's 400"
         ),
         examples=[None],
     )
 
 
-class FinalField(BaseModel):
-    """A field of the final result."""
-
-    value: str | None = Field(None, description="null when the field was not found", examples=["3201234567890001"])
-    confidence: float = Field(
-        ..., ge=0, le=1, description="OCR score of the line the value came from", examples=[0.9762]
-    )
+# --- scoring (§8.3) ------------------------------------------------------------------------
 
 
-class FieldConfidences(BaseModel):
-    """The trust model's per-field confidences."""
+class ScoringPayload(_Forwarded):
+    """The trust model's per-field confidences.
+
+    Scores only the nine contract fields, under their INTERNAL names; the rename to the outgoing
+    contract happens in the orchestrator. `anggota_keluarga` is positionally aligned with the
+    structuring result's list and must be the same length.
+    """
 
     model_config = ConfigDict(
         json_schema_extra={
-            "description": "Output of the ML team's trust model: probability that each extracted field is correct."
+            "description": "Trust model output: P(each extracted field is correct), fused and calibrated."
         }
     )
 
-    npwp_confidence: float | None = Field(
-        ..., ge=0, le=1, description="P(the NPWP number is correct); null when no number was found", examples=[0.7296]
+    document_type: str | None = Field(None, description="Document type the fields were read as", examples=["kk"])
+    fields: dict[str, float | None] = Field(
+        default_factory=dict,
+        description="`nomor_kk` and `nama_kepala_keluarga`. Null for a field whose value is empty",
+        examples=[{"nomor_kk": 0.9412, "nama_kepala_keluarga": 0.8871}],
     )
-    name_confidence: float | None = Field(
-        ..., ge=0, le=1, description="P(the name is correct); null when no name was found", examples=[0.9471]
+    anggota_keluarga: list[dict[str, float | None]] = Field(
+        default_factory=list,
+        description=(
+            "Seven scores per member, positionally aligned with the structuring result. A length mismatch is a "
+            "defect in this pipeline, not a property of the document, and is rejected rather than truncated"
+        ),
     )
+    model: str | None = Field(None, description="Identity of the trust model", examples=["kk-trust-isotonic-v1"])
+    payload: dict[str, Any] | None = Field(
+        None, description="Exactly what was scored, as an audit trail, so the numbers can be reproduced"
+    )
+    thresholds: dict[str, float] | None = Field(
+        None,
+        description=(
+            "The confidence above which a field of that name was correct on every held-out sample -- one per "
+            "scored field, keyed by INTERNAL name. They travel in the result rather than in configuration "
+            "because they are a property of the trained model, not of the deployment, and because this is what "
+            "makes the orchestrator's `confidence` and the outcome row's identical by construction instead of "
+            "by keeping two env vars in step. A field absent here had no such point and is 0 unless the request's "
+            "`column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result "
+            "that carries no thresholds at all (the `mock` backend)"
+        ),
+        examples=[{"nik": 0.9637, "ayah": 0.9353, "pendidikan": 0.9929}],
+    )
+    bin_edges: dict[str, list[float]] | None = Field(
+        None,
+        description=(
+            "Bin boundaries low to high, under `fields` and `anggota_keluarga` -- the two model families have "
+            "their own. Deliberately NOT equal width: the top bin is cut exactly where held-out precision "
+            "reached 100%, which no fixed grid lands on. Kept for audit; the contract no longer carries a bin"
+        ),
+        examples=[{"anggota_keluarga": [0.0, 0.631, 0.776, 0.839, 0.899, 0.925, 0.943, 0.965, 0.979, 0.9874, 1.0]}],
+    )
+    decisions: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "The 0/1 decision per CONTRACT field, with the threshold that decided it: "
+            "`{no_kk: {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`. "
+            "The outcome row and the `extract-ocr` answer are projected from it, so both say the same for one "
+            "request. `threshold` null: no threshold applied, so `confidence` is 0"
+        ),
+    )
+
+
+# --- final result and callbacks ------------------------------------------------------------
 
 
 class FinalResult(BaseModel):
     """What the SCORING callback carries when the request completed."""
 
     model_config = ConfigDict(
+        extra="allow",
         json_schema_extra={
             "description": "What the pipeline produced for one request_id. Carried by the SCORING / DONE callback."
-        }
+        },
     )
 
-    document_type: str = Field(..., description="Document type the fields were read as", examples=["npwp"])
-    fields: dict[str, FinalField] = Field(
-        ...,
-        description=(
-            "`nomor_npwp`, `nama`, `nama_badan`. A 15-digit number is formatted `XX.XXX.XXX.X-XXX.XXX`; a 16-digit "
-            "(NIK-based) number is 16 plain digits. A card printing both reports the 16-digit one"
-        ),
-        examples=[
-            {
-                "nomor_npwp": {"value": "3201234567890001", "confidence": 0.9762},
-                "nama": {"value": "BUDI SANTOSO", "confidence": 0.9931},
-                "nama_badan": {"value": None, "confidence": 0.0},
-            }
-        ],
+    document_type: str = Field(..., description="Document type the fields were read as", examples=["kk"])
+    structuring: StructuringPayload = Field(
+        ..., description="The structuring result whole: all 11 document fields and 15 per member"
     )
-    scoring: FieldConfidences = Field(
+    scoring: ScoringPayload = Field(
         ...,
         description=(
-            "Per-field trust. There is NO document-level score and NO approve / reject decision: "
-            "thresholds belong to the caller"
+            "Per-field trust for the nine contract fields. There is NO document-level score and NO "
+            "approve / reject decision: thresholds belong to the caller"
         ),
     )
     guardrails: GuardrailsResult | None = Field(
         None, description="The guardrails result that was submitted with the job, returned unchanged"
-    )
-    flag: bool = Field(
-        False,
-        description=(
-            "Flag of the structuring rules (see the structuring result), an input of the trust model. Only a "
-            "tolerated flag (single-word name, letter in the number) reaches this result: any other rejects the "
-            "document at structuring"
-        ),
-        examples=[False],
-    )
-    flag_reason: str | None = Field(
-        None, description="Why `flag` is true, in Indonesian; null when not flagged", examples=[None]
     )
 
 
@@ -273,8 +388,8 @@ class StageCallback(BaseModel):
     error_code: str | None = Field(
         None,
         description=(
-            "Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the stage rejected the document (a rejecting "
-            "check of the structuring rules; `error_message` is the Indonesian reason). Absent when a stage broke"
+            "Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected the document "
+            "(`error_message` is the Indonesian reason). Absent when a stage broke"
         ),
         examples=[None],
     )

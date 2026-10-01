@@ -1,8 +1,8 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from ocr_common.pipeline.database import dispose_engines
 from ocr_common.web.app import create_app
 
 from app.api import extract_ocr, testing
@@ -14,17 +14,13 @@ from app.dependencies import (
     get_testing_ekstraksi_client,
     get_testing_stage_status_clients,
 )
+from app.middleware import add_edge_middleware
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.guardrails_skip_allowed:
-        logging.getLogger(__name__).warning(
-            "GUARDRAILS_SKIP_ALLOWED=true: a request with skip_guardrails=true enters the pipeline without the "
-            "guardrails model"
-        )
     yield
     # The clients are built on the first request that needs them; close only those that exist.
     for get_client in (get_guardrails_client, get_ekstraksi_client, get_testing_ekstraksi_client):
@@ -36,20 +32,22 @@ async def lifespan(app: FastAPI):
             for stage in get_stages():
                 await stage.aclose()
             get_stages.cache_clear()
+    await dispose_engines()  # the guardrails log's connection pool, when DATABASE_URL is set
 
 
 app = create_app(
     settings=settings,
-    title="OCR NPWP Orchestrator API",
+    title="OCR Kartu Keluarga Orchestrator API",
     service_name="orchestrator",
     description=(
-        "Entry point of the OCR NPWP pipeline, and the only service the central orchestrator / gateway calls. "
+        "Entry point of the OCR Kartu Keluarga pipeline, and the only service the central orchestrator calls. "
         "`POST /v1/extract-ocr` checks the file, has the guardrails service judge it, hands a document that "
         "passes to the OCR stage (ekstraksi, which chains to structuring and scoring), and waits up to "
         "`PIPELINE_WAIT_SECONDS` for the pipeline: 200 with the final result, or 202 while it is still running. "
         "`GET /v1/extract-ocr/{request_id}` answers the same contract for a request at any later time. This "
         "service stores nothing: the stages keep the jobs, and they send the result callback. All endpoints "
-        "except /health, /ready and /metrics require an X-API-Key header."
+        "except /health, /ready and /metrics require an X-API-Key header, and are rate limited per caller "
+        "(`RATE_LIMIT_REQUESTS` per `RATE_LIMIT_WINDOW_SECONDS`, 429 with `Retry-After` beyond that)."
     ),
     tags=[
         {"name": "Extract OCR", "description": "Start the pipeline for a document, and read where a request is"},
@@ -59,3 +57,6 @@ app = create_app(
     lifespan=lifespan,
     entrypoint=True,
 )
+
+# Setelah create_app, jadi keduanya berjalan di luar middleware bawaan; lihat app/middleware.py.
+add_edge_middleware(app, settings)

@@ -95,10 +95,15 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
   - **Kesesuaian bentuk**: fixture emas untuk §5.2, §7.3, §8.3, dan proyeksi §3.3.1 divalidasi
     oleh tipe dan skema Pydantic yang baru — termasuk **model respons milik service** structuring
     dan scoring, bukan hanya `ocr_common`, karena model service-lah yang otoritatif di batas HTTP.
-  - **Periksa semantik**, bukan hanya `grep -ri npwp` bersih: `application/pdf` tidak ada di
-    `allowed_content_types` bawaan sehingga PDF dijawab 400 sesuai §3.5, `max_upload_bytes`
-    disetel ke 5 MB sesuai §13.1 (nilam memakai 2,5 MB untuk dokumen NPWP), dan jalur
-    multi-halaman mati kecuali env R34a dinyalakan.
+  - **Periksa semantik** lewat `make check-npwp` (`scripts/check_no_npwp.py`), yang **berlingkup**.
+    Gerbang ini memisahkan fase 0 dari fase 1, jadi ia hanya menuntut kebersihan atas apa yang fase 0
+    miliki: lapis akar, `libs/`, `db/`, `deploy/`, `.github/`, `api/`, dan kedua service stub. Ketiga
+    service agen dibersihkan agennya masing-masing di fase 1 dan diperiksa definisi selesai R24;
+    `smoke_e2e.py` dan pembangun gateway milik Unit 10. *Versi pertama requirement ini menuntut
+    bersih repo-wide sebelum fase 1 — syarat yang tidak mungkin dipenuhi, karena justru fase 1 yang
+    membersihkan ketiga service itu.* Ditambah pemeriksaan nilai: `application/pdf` tidak ada di
+    `allowed_content_types` bawaan sehingga PDF dijawab 400 sesuai §3.5, `max_upload_bytes` 5 MB
+    sesuai §13.1, dan jalur multi-halaman mati kecuali env R34a dinyalakan.
   - **Keputusan tercatat** di `db/README.md` atau ADR di `docs/`: pertahankan-atau-buang R34,
     bentuk tabel audit R27, matriks peran dan retensi R28. Gerbang tidak hijau kalau salah
     satunya masih terbuka, karena R5 dan R22 membekukan hasilnya.

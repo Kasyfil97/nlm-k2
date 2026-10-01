@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 
 COPY services/scoring/app ./app
 COPY services/scoring/weights ./weights
-RUN test -f weights/trust_model.joblib || (echo "services/scoring/weights/trust_model.joblib tidak ada di build context" && exit 1)
+RUN test -f weights/kk_trust_model.joblib || (echo "services/scoring/weights/kk_trust_model.joblib tidak ada di build context" && exit 1)
 
 RUN useradd --create-home --shell /bin/bash appuser
 USER appuser

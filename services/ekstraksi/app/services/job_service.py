@@ -1,11 +1,11 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ocr_common.clients.fetch_url import STRICT_URL_POLICY, FetchUrlError, UrlPolicy, fetch
-from ocr_common.errors import BadRequest
-from ocr_common.npwp import DOCUMENT_TYPE
-from ocr_common.pipeline import STAGE_STRUCTURING, HandoffPayload, StagePipeline, Work
+from ocr_common.errors import FILE_URL_REJECTED, BadRequest
+from ocr_common.kk import DOCUMENT_TYPE
+from ocr_common.pipeline import EKSTRAKSI, HandoffPayload, StagePipeline, Work, chain, stored
 from ocr_common.simulation import simulated_delay_seconds
 from ocr_common.types import OcrResult
 
@@ -40,18 +40,27 @@ class EkstraksiJobService:
         self._handoff_by_reference = handoff_by_reference
 
     async def submit(
-        self, request_id: str, document_type: str, guardrails: dict[str, Any] | None, source: Source
+        self,
+        request_id: str,
+        document_type: str,
+        guardrails: dict[str, Any] | None,
+        source: Source,
+        sequence: Sequence[str] | None = None,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> dict[str, Any]:
-        work, handoff = self._spec(request_id, document_type, guardrails, source)
+        """`sequence` (pipeline_name_sequence, None = the full pipeline) decides whether the job is handed to
+        structuring or ends here with the OCR result as the answer."""
+        work, handoff = self._spec(request_id, document_type, guardrails, source, sequence, column_thresholds)
         return await self._pipeline.submit(
             request_id,
             work,
-            handoff_payload=handoff,
-            next_stage=STAGE_STRUCTURING,
+            **chain(sequence, EKSTRAKSI, handoff),
             input={
                 "document_type": document_type,
                 "guardrails": guardrails,
                 "file_url": source if isinstance(source, str) else None,
+                "pipeline_name_sequence": stored(sequence),
+                "column_confidence_threshold": dict(column_thresholds) if column_thresholds else None,
             },
         )
 
@@ -67,26 +76,50 @@ class EkstraksiJobService:
 
             await self._pipeline.resume(request_id, gone)
             return
+        sequence = input.get("pipeline_name_sequence")
         work, handoff = self._spec(
-            request_id, input.get("document_type") or DOCUMENT_TYPE, input.get("guardrails"), file_url
+            request_id,
+            input.get("document_type") or DOCUMENT_TYPE,
+            input.get("guardrails"),
+            file_url,
+            sequence,
+            input.get("column_confidence_threshold"),
         )
-        await self._pipeline.resume(request_id, work, handoff_payload=handoff, next_stage=STAGE_STRUCTURING)
+        await self._pipeline.resume(request_id, work, **chain(sequence, EKSTRAKSI, handoff))
 
     async def get(self, request_id: str) -> dict[str, Any]:
         return await self._pipeline.get(request_id)
 
     def _spec(
-        self, request_id: str, document_type: str, guardrails: dict[str, Any] | None, source: Source
+        self,
+        request_id: str,
+        document_type: str,
+        guardrails: dict[str, Any] | None,
+        source: Source,
+        sequence: Sequence[str] | None = None,
+        column_thresholds: Mapping[str, float] | None = None,
     ) -> tuple[Work, Handoff]:
         async def work() -> OcrResult:
             content, filename, content_type = await self._load(source)
+            # `delay20s-kk.jpg` makes this job outlive PIPELINE_WAIT_SECONDS so the orchestrator's
+            # 202 path can be walked without a slow model. It lives here rather than in the mock
+            # backend because it is a property of the job, not of the model, and `simulate_delay`
+            # is `settings.simulation_hooks_enabled` -- the file name is caller-controlled input,
+            # so the hook is gated at the config layer and exists only with ENVIRONMENT=local.
             delay = simulated_delay_seconds(filename, enabled=self._simulate_delay)
             if delay:
                 await asyncio.sleep(delay)
+            # `extract` puts an in-process model in the threadpool: this coroutine runs on the
+            # event loop, and the Unit 3 heartbeat that keeps this job's lease warm only beats
+            # while the loop is free.
             return await self._ekstraksi.extract(filename, content_type, content)
 
         def handoff(ocr: Mapping[str, Any]) -> dict[str, Any]:
             body: dict[str, Any] = {"request_id": request_id, "document_type": document_type, "guardrails": guardrails}
+            if sequence:
+                body["pipeline_name_sequence"] = stored(sequence)
+            if column_thresholds:
+                body["column_confidence_threshold"] = dict(column_thresholds)
             if not self._handoff_by_reference:
                 body["ocr"] = dict(ocr)
             return body
@@ -99,4 +132,4 @@ class EkstraksiJobService:
         try:
             return await fetch(source, limit=self._max_upload_bytes, policy=self._url_policy)
         except FetchUrlError as exc:
-            raise BadRequest(str(exc)) from exc
+            raise BadRequest(str(exc), FILE_URL_REJECTED) from exc

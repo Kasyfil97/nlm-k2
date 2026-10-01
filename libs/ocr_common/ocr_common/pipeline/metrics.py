@@ -15,6 +15,14 @@ OUTCOME_CRASHED = "crashed"
 OUTCOME_INTERRUPTED = "interrupted"
 
 JOBS = Counter("pipeline_jobs_total", "Jobs finished, by stage and outcome", ["stage", "outcome"])
+# A write to the orchestrator's outcome row that the monotonicity guard refused, because the row
+# already read `completed`. Never expected to move; if it does, a late failure is racing a
+# finished request and the number is how you find out how often.
+OUTCOME_WRITES_SUPPRESSED = Counter(
+    "pipeline_outcome_writes_suppressed_total",
+    "Outcome-row writes refused because the row was already completed",
+    ["stage", "incoming_status"],
+)
 JOB_DURATION = Histogram(
     "pipeline_job_duration_seconds",
     "Time from starting a job's work to storing its result",

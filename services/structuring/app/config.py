@@ -9,20 +9,9 @@ from ocr_common.config import PipelineSettings
 class Settings(PipelineSettings):
     port: int = 8043
 
-    structuring_backend: str = "npwp_rules"
-
-    # Reference data of the ML team's rules (backend `npwp_rules`). Each is optional: a missing file
-    # turns the check it feeds into "no signal" instead of failing the request. The defaults are the
-    # same file names under app/vendor/npwp_rules/data/.
-    #   kode_wilayah.json  -> invalid_kecamatan_prefix (16-digit NIK-based numbers)
-    #   kpp_codes.json     -> invalid_kpp_prefix (15-digit numbers)
-    #   name_lnmast.xlsx   -> "recognised name" tie-break between name candidates (internal data)
-    #   list_name_npwp.xlsx-> per-document name correction; unused here (no file_id: the orchestrator
-    #                         does the fuzzy name match), kept so the vendored code has its path
-    wilayah_codes_path: str | None = None
-    kpp_codes_path: str | None = None
-    name_master_path: str | None = None
-    npwp_name_list_path: str | None = None
+    # `mock` (fields invented) or `kk_regex` (the vendored K2Regex-v2 layout parser). Only
+    # `kk_regex` derives anything from the submitted image, so `mock` is refused outside `local`.
+    structuring_backend: str = "mock"
 
     scoring_service_url: str = "http://127.0.0.1:8044"
     scoring_api_key: str | None = None
@@ -31,6 +20,7 @@ class Settings(PipelineSettings):
     @model_validator(mode="after")
     def _guard_structuring(self) -> Self:
         self.reject_localhost_outside_local(scoring_service_url=self.scoring_service_url)
+        self.reject_mock_backend_outside_local(structuring_backend=self.structuring_backend)
         return self
 
 

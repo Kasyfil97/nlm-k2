@@ -1,4 +1,5 @@
 import json
+from typing import cast
 
 import httpx
 import pytest
@@ -6,7 +7,7 @@ from pydantic import ValidationError
 
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.config import PipelineSettings
-from ocr_common.npwp import final_result
+from ocr_common.kk import final_result
 from ocr_common.pipeline.callbacks import (
     OrchestrationCallback,
     ResultCallback,
@@ -14,58 +15,111 @@ from ocr_common.pipeline.callbacks import (
     stage_callback_body,
 )
 from ocr_common.pipeline.factory import build_callback
+from ocr_common.testing import TEST_API_KEY
+from ocr_common.types import ScoringResult, StructuringResult
 
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
 GUARDRAILS = {"passed": True, "reason": None, "document": {"verdict": "accepted", "confidence": 0.98}}
 PATH = "/v1/ocr-callback"
 
 
-def _final(nama=None, nama_badan=None, npwp="09.254.294.3-407.000", npwp_confidence=0.98291, name_confidence=0.9512):
-    structuring = {
-        "fields": {
-            "nomor_npwp": {"value": npwp, "confidence": 0.99},
-            "nama": {"value": nama, "confidence": 0.97},
-            "nama_badan": {"value": nama_badan, "confidence": 0.0},
-        },
-        "flag": False,
-        "flag_reason": None,
+def _f(value, ocr_conf=0.99):
+    return {"value": value, "ocr_conf": ocr_conf, "crf_conf": None}
+
+
+def _member(nama="BUDI SANTOSO", nik="3273011203850001"):
+    return {
+        "nama_lengkap": _f(nama),
+        "nik": _f(nik),
+        "pendidikan": _f("S1"),
+        "jenis_pekerjaan": _f("KARYAWAN SWASTA"),
+        "status_hubungan_dalam_keluarga": _f("KEPALA KELUARGA"),
+        "ayah": _f("SUTRISNO"),
+        "ibu": _f("SITI AMINAH"),
     }
-    scoring = {"npwp_confidence": npwp_confidence, "name_confidence": name_confidence}
-    return dict(final_result("npwp", GUARDRAILS, structuring, scoring))
+
+
+def _member_scores(**overrides):
+    scores = {
+        "nama_lengkap": 0.9702,
+        "nik": 0.9655,
+        "pendidikan": 0.8410,
+        "jenis_pekerjaan": 0.7733,
+        "status_hubungan_dalam_keluarga": 0.9218,
+        "ayah": 0.8064,
+        "ibu": 0.7951,
+    }
+    return {**scores, **overrides}
+
+
+def _final(nomor_kk="3273012345678901", kk_confidence=0.98291, members=None, member_scores=None):
+    structuring = {
+        "nomor_kk": _f(nomor_kk),
+        "nama_kepala_keluarga": _f("BUDI SANTOSO"),
+        "anggota_keluarga": [_member()] if members is None else members,
+        "reject_reason": None,
+    }
+    scoring = {
+        "fields": {"nomor_kk": kk_confidence, "nama_kepala_keluarga": 0.9512},
+        "anggota_keluarga": [_member_scores()] if member_scores is None else member_scores,
+    }
+    return dict(final_result("kk", GUARDRAILS, cast(StructuringResult, structuring), cast(ScoringResult, scoring)))
 
 
 def test_scoring_done_becomes_the_completed_result_callback():
-    body = result_callback_body(stage_callback_body(RID, "SCORING", "DONE", result=_final(nama="BUDI SANTOSO")))
+    body = result_callback_body(stage_callback_body(RID, "SCORING", "DONE", result=_final()))
 
     assert body == {
         "request_id": RID,
         "status": "completed",
         "result": {
-            "nomor_npwp": {"value": "09.254.294.3-407.000", "confidence": 0.9829},
-            "nama": {"value": "BUDI SANTOSO", "confidence": 0.9512},
-            "nama_badan": {"value": "", "confidence": 0.0},
+            "no_kk": {"value": "3273012345678901", "confidence": 0.9829},
+            "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 0.9512},
+            "anggota_keluarga": [
+                {
+                    "nama_lengkap": {"value": "BUDI SANTOSO", "confidence": 0.9702},
+                    "nik": {"value": "3273011203850001", "confidence": 0.9655},
+                    "pendidikan": {"value": "S1", "confidence": 0.841},
+                    "jenis_pekerjaan": {"value": "KARYAWAN SWASTA", "confidence": 0.7733},
+                    "status_hubungan_dalam_rumah_tangga": {"value": "KEPALA KELUARGA", "confidence": 0.9218},
+                    "ayah": {"value": "SUTRISNO", "confidence": 0.8064},
+                    "ibu": {"value": "SITI AMINAH", "confidence": 0.7951},
+                }
+            ],
         },
         "guardrails": GUARDRAILS,
     }
 
 
-def test_on_a_company_card_the_name_probability_goes_to_nama_badan():
+def test_the_callback_keeps_the_raw_probability_not_the_zero_one_flag():
+    """`data` of extract-ocr carries 0/1; this callback carries the number, because the threshold
+    belongs to the caller."""
+    body = result_callback_body(stage_callback_body(RID, "SCORING", "DONE", result=_final()))
+
+    assert body is not None
+    assert body["result"]["anggota_keluarga"][0]["ibu"]["confidence"] == 0.7951
+
+
+def test_member_scores_stay_with_their_own_member():
+    two = [_member(nama="BUDI SANTOSO"), _member(nama="SITI NURHALIZA", nik="3273015506880002")]
+    scores = [_member_scores(), _member_scores(nama_lengkap=0.1234)]
     body = result_callback_body(
-        stage_callback_body(RID, "SCORING", "DONE", result=_final(nama_badan="PT CONTOH INDONESIA"))
+        stage_callback_body(RID, "SCORING", "DONE", result=_final(members=two, member_scores=scores))
     )
 
     assert body is not None
-    assert body["result"]["nama"] == {"value": "", "confidence": 0.0}
-    assert body["result"]["nama_badan"] == {"value": "PT CONTOH INDONESIA", "confidence": 0.9512}
+    first, second = body["result"]["anggota_keluarga"]
+    assert first["nama_lengkap"] == {"value": "BUDI SANTOSO", "confidence": 0.9702}
+    assert second["nama_lengkap"] == {"value": "SITI NURHALIZA", "confidence": 0.1234}
 
 
 def test_a_field_that_was_not_found_is_empty_with_confidence_0():
     body = result_callback_body(
-        stage_callback_body(RID, "SCORING", "DONE", result=_final(nama="BUDI", npwp=None, npwp_confidence=None))
+        stage_callback_body(RID, "SCORING", "DONE", result=_final(nomor_kk="", kk_confidence=None))
     )
 
     assert body is not None
-    assert body["result"]["nomor_npwp"] == {"value": "", "confidence": 0.0}
+    assert body["result"]["no_kk"] == {"value": "", "confidence": 0.0}
 
 
 @pytest.mark.parametrize(
@@ -75,7 +129,7 @@ def test_a_field_that_was_not_found_is_empty_with_confidence_0():
         ("SCORING", "Internal error in SCORING stage", None, "SCORING_FAILED"),
         (
             "STRUCTURING",
-            "Kode provinsi pada NPWP tidak valid, mohon dicek kembali",
+            "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap",
             "DOWNSTREAM_VALIDATION_ERROR",
             "DOWNSTREAM_VALIDATION_ERROR",
         ),
@@ -98,7 +152,7 @@ def test_a_failed_stage_becomes_the_failed_result_callback(stage, error_message,
 
 @pytest.mark.parametrize("stage", ["OCR", "STRUCTURING"])
 def test_a_stage_that_does_not_end_the_request_sends_nothing(stage):
-    assert result_callback_body(stage_callback_body(RID, stage, "DONE", result={"blocks": []})) is None
+    assert result_callback_body(stage_callback_body(RID, stage, "DONE", result={"texts": []})) is None
 
 
 def _recording_client(seen: list[httpx.Request], status: int = 200) -> RemoteModelClient:
@@ -120,8 +174,8 @@ async def test_notify_posts_the_result_with_the_callback_key_once_the_request_en
     seen: list[httpx.Request] = []
     callback = ResultCallback(_recording_client(seen), PATH, attempts=1, delay=0)
 
-    assert await callback.notify(RID, "OCR", "DONE", result={"blocks": []}) is False
-    assert await callback.notify(RID, "SCORING", "DONE", result=_final(nama="BUDI SANTOSO")) is True
+    assert await callback.notify(RID, "OCR", "DONE", result={"texts": []}) is False
+    assert await callback.notify(RID, "SCORING", "DONE", result=_final()) is True
 
     [request] = seen
     assert request.url.path == PATH
@@ -133,7 +187,7 @@ async def test_outbox_send_turns_the_stored_stage_body_into_the_result():
     seen: list[httpx.Request] = []
     callback = ResultCallback(_recording_client(seen), PATH)
 
-    await callback.send(stage_callback_body(RID, "STRUCTURING", "DONE", result={"fields": {}}))
+    await callback.send(stage_callback_body(RID, "STRUCTURING", "DONE", result={"anggota_keluarga": []}))
     await callback.send(
         stage_callback_body(RID, "STRUCTURING", "FAILED", error_message="dokumen blur / blank", error_code="X")
     )
@@ -150,7 +204,7 @@ async def test_outbox_send_turns_the_stored_stage_body_into_the_result():
 
 
 def _settings(**overrides) -> PipelineSettings:
-    return PipelineSettings(api_key="k", environment="local", _env_file=None, **overrides)
+    return PipelineSettings(api_key=TEST_API_KEY, environment="local", _env_file=None, **overrides)
 
 
 def test_the_callback_format_picks_the_callback_class():
@@ -165,7 +219,7 @@ def test_the_callback_format_picks_the_callback_class():
 
 def _production(callback_key: str | None) -> PipelineSettings:
     return PipelineSettings(
-        api_key="k",
+        api_key=TEST_API_KEY,
         environment="production",
         database_url="postgresql+asyncpg://u:p@db/x",
         orchestration_url="http://ocr-orchestration.ocr-dev.svc.cluster.local",

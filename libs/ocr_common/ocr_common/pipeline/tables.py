@@ -5,8 +5,10 @@ orchestrator owns.
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -89,6 +91,40 @@ def outbox_table(metadata: MetaData, table_prefix: str = "") -> Table:
     )
 
 
+def guardrails_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
+    """`guardrails_results`: one row per guardrails verdict, written by the orchestrator, the rejected
+    documents included (they never reach a stage table). Append-only: the same request_id sent again is
+    judged again. Ported from nilam.
+
+    `threshold` is the report's `threshold_used`; `threshold_target` stays null (the KK report has no
+    per-request target) and `threshold_source` is `service` -- the guardrails service's own threshold --
+    until a per-request threshold exists here. `n_pages` is the page count the orchestrator counted (1 for
+    an image; only page 1 of a PDF is judged). `pipeline_name_sequence` is the request's (null: the full
+    pipeline), so the orchestrator's GET can answer a request that never reached a stage: guardrails only,
+    or rejected here. `report` keeps the whole report, `probability_bad` included."""
+    name = f"{table_prefix}guardrails_results"
+    return Table(
+        name,
+        metadata,
+        Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
+        Column("request_id", Text, nullable=False),
+        Column("passed", Boolean, nullable=False),
+        Column("verdict", Text, nullable=True),
+        Column("confidence", Float, nullable=True),
+        Column("threshold", Float, nullable=True),
+        Column("threshold_target", Text, nullable=True),
+        Column("threshold_source", Text, nullable=False),
+        Column("n_pages", Integer, nullable=True),
+        Column("reason", Text, nullable=True),
+        Column("pipeline_name_sequence", JSON_TYPE, nullable=True),
+        Column("report", JSON_TYPE, nullable=False),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("ds", Text, nullable=False),
+        Index(f"idx_{name}_request_id", "request_id"),
+        Index(f"idx_{name}_ds", "ds"),
+    )
+
+
 def orchestration_outcome_table(name: str) -> Table:
     """The orchestrator's outcome table (`ORCHESTRATION_OUTCOME_TABLE`) as this code needs it; owned by them."""
     return Table(
@@ -143,11 +179,12 @@ def orchestration_api_events_table(name: str) -> Table:
 
 
 def repo_metadata() -> MetaData:
-    """Every table this repository migrates, for Alembic's autogenerate and `alembic check`: the stage tables
-    and the outbox, again with the `testing_` prefix for the testing endpoints."""
+    """Every table this repository migrates, for Alembic's autogenerate and `alembic check`: the stage tables,
+    the outbox and the guardrails verdicts, again with the `testing_` prefix for the testing endpoints."""
     metadata = MetaData()
     for lane_prefix in ("", TESTING_TABLE_PREFIX):
         for table_prefix in PIPELINE_TABLE_PREFIXES:
             pipeline_tables(f"{lane_prefix}{table_prefix}", metadata)
         outbox_table(metadata, lane_prefix)
+        guardrails_results_table(metadata, lane_prefix)
     return metadata

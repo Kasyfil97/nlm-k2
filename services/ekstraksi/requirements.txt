@@ -6,3 +6,5 @@ httpx==0.27.2
 sqlalchemy==2.0.52
 greenlet==3.2.4
 asyncpg==0.31.0
+# A PDF is read by its page 1, rendered before detection (`kk_ocr`; `paddle`/`remote` leave it to the server).
+PyMuPDF==1.28.2

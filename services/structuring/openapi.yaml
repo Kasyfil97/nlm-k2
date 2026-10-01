@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: OCR NPWP Structuring API
-  description: 'Pipeline step 3 for Indonesian NPWP documents: turns raw OCR text lines into named fields
-    (nomor_npwp, nama, nama_badan) with per-field confidence. **Async pipeline:** the OCR service POSTs
+  title: OCR Kartu Keluarga Structuring API
+  description: 'Pipeline step 3 for Indonesian Kartu Keluarga: turns raw OCR text lines into named fields
+    (nomor_kk, nama, nama_badan) with per-field confidence. **Async pipeline:** the OCR service POSTs
     /v1/structuring/jobs and gets 202; this service structures in the background, stores the result, POSTs
     a stage callback to the orchestrator, and hands the job to the scoring service. /v1/structuring/structure
     is the same work, synchronous. All endpoints except /health require an X-API-Key header.
@@ -23,15 +23,25 @@ info:
     status. On success `errors` is null; on error `data` is null.
 
 
-    **Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
+    **Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
 
-    `message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
+    The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
 
-    `404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
+    `INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the
+    status:
 
-    field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
+    `UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path
+    that does
 
-    dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+    not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+
+    `INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless
+    an endpoint
+
+    documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+
+    `400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to
+    retry.
 
 
     **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint
@@ -42,14 +52,14 @@ info:
     without it the service generates one.
 
 
-    **Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+    **Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 
     .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by
     a
 
     callback to the central orchestrator (see *Webhooks*), and can be read at any time with
 
-    `GET .../jobs/{request_id}`, which the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` combines
+    `GET .../jobs/{request_id}`, which the orchestrator''s `GET /v1/extract-ocr/{request_id}` combines
 
     over the three stages. Submitting the same request_id again is idempotent:
 
@@ -103,7 +113,7 @@ paths:
                     version: 1.0.0
                     device: cpu
                     backends:
-                      structuring: npwp_rules
+                      structuring: mock
                       storage: postgres
   /ready:
     get:
@@ -173,8 +183,8 @@ paths:
         the scoring service.
 
 
-        A document that is not a lone NPWP card fails the job with a reason: an upload that also contains
-        a KTP / KK / marriage certificate, a CAPTCHA page, a screenshot of the DJP NPWP lookup, more than
+        A document that is not a lone KK card fails the job with a reason: an upload that also contains
+        a KTP / KK / marriage certificate, a CAPTCHA page, a screenshot of the DJP KK lookup, more than
         2 pages, or no text at all.'
       operationId: submitStructuringJob
       requestBody:
@@ -225,7 +235,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
         '422':
           description: Validation Error
           content:
@@ -237,6 +248,7 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'body.request_id: Field required'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: structuring
       security:
       - APIKeyHeader: []
   /v1/structuring/jobs/{request_id}:
@@ -245,7 +257,7 @@ paths:
       - Pipeline
       summary: Status and result of the structuring stage
       description: 'Status of this stage only, and its structured fields once `DONE`. Internal: the orchestrator
-        NPWP reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and it helps to
+        KK reads it (while it waits, and for its `GET /v1/extract-ocr/{request_id}`), and it helps to
         debug.'
       operationId: getStructuringJob
       security:
@@ -277,33 +289,104 @@ paths:
                       created_at: '2026-09-18T04:00:01+00:00'
                       status: DONE
                       result:
-                        document_type: npwp
-                        fields:
-                          nomor_npwp:
-                            value: 12.345.678.9-012.345
-                            confidence: 0.9992
-                            source: 'NPWP : 12.345.678.9-012.345'
-                            signals:
-                              candidate_count: 1
-                              has_homoglyph: false
-                              invalid_province_prefix: false
-                              invalid_kecamatan_prefix: false
-                              invalid_birthdate: false
-                              invalid_kpp_prefix: false
-                          nama:
+                        nomor_kk:
+                          value: '9924187486671285'
+                          ocr_conf: 0.9991
+                        nama_kepala_keluarga:
+                          value: BUDI SANTOSO
+                          ocr_conf: 0.9873
+                        alamat:
+                          value: JL. MERDEKA NO. 12
+                          ocr_conf: 0.9642
+                        desa_kelurahan:
+                          value: CIHAPIT
+                          ocr_conf: 0.981
+                        rt:
+                          value: '003'
+                          ocr_conf: 0.9755
+                        rw:
+                          value: '007'
+                          ocr_conf: 0.9755
+                        kecamatan:
+                          value: BANDUNG WETAN
+                          ocr_conf: 0.9888
+                        kabupaten_kota:
+                          value: KOTA BANDUNG
+                          ocr_conf: 0.9901
+                        provinsi:
+                          value: JAWA BARAT
+                          ocr_conf: 0.9934
+                        kode_pos:
+                          value: '40114'
+                          ocr_conf: 0.9702
+                        tanggal_dikeluarkan:
+                          value: 12-03-2019
+                          ocr_conf: 0.9219
+                        anggota_keluarga:
+                        - nama_lengkap:
                             value: BUDI SANTOSO
-                            confidence: 0.9773
-                            source: BUDI SANTOSO
-                            signals:
-                              name_base: BUDI SANTOSO
-                              corrected: false
-                          nama_badan:
-                            confidence: 0.0
-                        flag: false
+                            ocr_conf: 0.9954
+                            crf_conf: 0.9931
+                          nik:
+                            value: '9908680101601956'
+                            ocr_conf: 0.9975
+                            crf_conf: 0.9887
+                          jenis_kelamin:
+                            value: LAKI-LAKI
+                            ocr_conf: 0.9968
+                            crf_conf: 0.9954
+                          tempat_lahir:
+                            value: BANDUNG
+                            ocr_conf: 0.9891
+                            crf_conf: 0.9803
+                          tanggal_lahir:
+                            value: 01-01-1960
+                            ocr_conf: 0.9903
+                            crf_conf: 0.9877
+                          agama:
+                            value: ISLAM
+                            ocr_conf: 0.9944
+                            crf_conf: 0.9912
+                          pendidikan:
+                            value: SD/SEDERAJAT
+                            ocr_conf: 0.984
+                            crf_conf: 0.9102
+                          jenis_pekerjaan:
+                            value: KARYAWAN SWASTA
+                            ocr_conf: 0.9611
+                            crf_conf: 0.8774
+                          golongan_darah:
+                            value: '-'
+                            ocr_conf: 0.712
+                            crf_conf: 0.4415
+                          status_perkawinan:
+                            value: KAWIN
+                            ocr_conf: 0.9821
+                            crf_conf: 0.9688
+                          tanggal_perkawinan:
+                            value: 08-08-2010
+                            ocr_conf: 0.956
+                            crf_conf: 0.9341
+                          status_hubungan_dalam_keluarga:
+                            value: KEPALA KELUARGA
+                            ocr_conf: 0.9788
+                            crf_conf: 0.944
+                          kewarganegaraan:
+                            value: WNI
+                            ocr_conf: 0.9972
+                            crf_conf: 0.9955
+                          ayah:
+                            value: RIZKY SANTOSO
+                            ocr_conf: 0.9705
+                            crf_conf: 0.8312
+                          ibu:
+                            value: NURUL NURHALIZA
+                            ocr_conf: 0.9682
+                            crf_conf: 0.819
                       updated_at: '2026-09-18T04:00:01+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
                 failed:
-                  summary: 'Failed: the upload was not a lone NPWP card'
+                  summary: 'Failed: the upload was not a lone KK card'
                   value:
                     status_code: 200
                     status_desc: OK
@@ -314,7 +397,7 @@ paths:
                       created_at: '2026-09-18T04:00:01+00:00'
                       status: FAILED
                       error_message: Upload contains another document (KARTU TANDA PENDUDUK); send the
-                        NPWP card only
+                        KK card only
                       updated_at: '2026-09-18T04:00:01+00:00'
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '401':
@@ -325,7 +408,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
@@ -336,8 +420,9 @@ paths:
                 status_code: 404
                 status_desc: Not Found
                 message: 'No STRUCTURING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
-                errors: 'No STRUCTURING job found for request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0'
+                errors: REQUEST_ID_NOT_FOUND
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -350,6 +435,7 @@ paths:
                 message: 'path.request_id: Field required'
                 errors: VALIDATION_ERROR
                 request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
   /v1/structuring/outbox:
@@ -421,7 +507,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
       security:
       - APIKeyHeader: []
   /v1/structuring/outbox/release:
@@ -483,7 +570,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
@@ -494,7 +582,8 @@ paths:
                 status_code: 409
                 status_desc: Conflict
                 message: 'PIPELINE_OUTBOX is off: there is no outbox to release'
-                errors: 'PIPELINE_OUTBOX is off: there is no outbox to release'
+                errors: CONFLICT
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
         '422':
@@ -506,19 +595,22 @@ paths:
                 status_desc: Unprocessable Entity
                 message: 'query.request_id: Input should be a valid string'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /v1/structuring/structure:
+  /v1/ocr_postprocess:
     post:
       tags:
       - Structuring
-      summary: Turn OCR lines into named fields, synchronous (no job, no callback)
-      description: 'Maps raw text lines (e.g. from the ekstraksi service) to named document fields with
-        per-field confidence, using the ML team''s rules (`npwp_rules`). Nothing is rejected on content:
-        a bundled second document, a CAPTCHA or lookup screenshot, a missing or single-word name, a letter
-        in the number, an invalid Kode Wilayah / birthdate / KPP code or more than 2 pages set `flag`
-        and `flag_reason` for the reviewer and lower the trust model''s confidence.'
-      operationId: structureLines
+      summary: Turn OCR boxes into named fields, synchronous (no job, no callback)
+      description: "Maps raw OCR boxes to the Kartu Keluarga fields: eleven document fields and fifteen\
+        \ per household member, each with two scores that are deliberately not fused (`ocr_conf` is how\
+        \ sure the recogniser was of the glyphs, `crf_conf` how sure the parser is that the text belongs\
+        \ in that column). \n\nThis is the existing `K2Regex-v2` endpoint, kept as it is for the ML team's\
+        \ own calls, which is why `texts` still requires at least one box here. The asynchronous job endpoint\
+        \ deliberately does not: an image with no readable text has to reach the validity gate to be rejected\
+        \ there."
+      operationId: structureTexts
       requestBody:
         content:
           application/json:
@@ -527,86 +619,146 @@ paths:
         required: true
       responses:
         '200':
-          description: The fields found in the lines
+          description: The fields found in the boxes
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/StructureResponse'
               examples:
-                person:
-                  summary: A person's card
+                accepted:
+                  summary: A readable card
                   value:
                     status_code: 200
                     status_desc: OK
                     message: Success
                     data:
-                      document_type: npwp
-                      fields:
-                        nomor_npwp:
-                          value: 12.345.678.9-012.345
-                          confidence: 0.9992
-                          source: 'NPWP : 12.345.678.9-012.345'
-                          signals:
-                            candidate_count: 1
-                            has_homoglyph: false
-                            invalid_province_prefix: false
-                            invalid_kecamatan_prefix: false
-                            invalid_birthdate: false
-                            invalid_kpp_prefix: false
-                        nama:
+                      nomor_kk:
+                        value: '9924187486671285'
+                        ocr_conf: 0.9991
+                      nama_kepala_keluarga:
+                        value: BUDI SANTOSO
+                        ocr_conf: 0.9873
+                      alamat:
+                        value: JL. MERDEKA NO. 12
+                        ocr_conf: 0.9642
+                      desa_kelurahan:
+                        value: CIHAPIT
+                        ocr_conf: 0.981
+                      rt:
+                        value: '003'
+                        ocr_conf: 0.9755
+                      rw:
+                        value: '007'
+                        ocr_conf: 0.9755
+                      kecamatan:
+                        value: BANDUNG WETAN
+                        ocr_conf: 0.9888
+                      kabupaten_kota:
+                        value: KOTA BANDUNG
+                        ocr_conf: 0.9901
+                      provinsi:
+                        value: JAWA BARAT
+                        ocr_conf: 0.9934
+                      kode_pos:
+                        value: '40114'
+                        ocr_conf: 0.9702
+                      tanggal_dikeluarkan:
+                        value: 12-03-2019
+                        ocr_conf: 0.9219
+                      anggota_keluarga:
+                      - nama_lengkap:
                           value: BUDI SANTOSO
-                          confidence: 0.9773
-                          source: BUDI SANTOSO
-                          signals:
-                            name_base: BUDI SANTOSO
-                            corrected: false
-                        nama_badan:
-                          confidence: 0.0
-                      flag: false
+                          ocr_conf: 0.9954
+                          crf_conf: 0.9931
+                        nik:
+                          value: '9908680101601956'
+                          ocr_conf: 0.9975
+                          crf_conf: 0.9887
+                        jenis_kelamin:
+                          value: LAKI-LAKI
+                          ocr_conf: 0.9968
+                          crf_conf: 0.9954
+                        tempat_lahir:
+                          value: BANDUNG
+                          ocr_conf: 0.9891
+                          crf_conf: 0.9803
+                        tanggal_lahir:
+                          value: 01-01-1960
+                          ocr_conf: 0.9903
+                          crf_conf: 0.9877
+                        agama:
+                          value: ISLAM
+                          ocr_conf: 0.9944
+                          crf_conf: 0.9912
+                        pendidikan:
+                          value: SD/SEDERAJAT
+                          ocr_conf: 0.984
+                          crf_conf: 0.9102
+                        jenis_pekerjaan:
+                          value: KARYAWAN SWASTA
+                          ocr_conf: 0.9611
+                          crf_conf: 0.8774
+                        golongan_darah:
+                          value: '-'
+                          ocr_conf: 0.712
+                          crf_conf: 0.4415
+                        status_perkawinan:
+                          value: KAWIN
+                          ocr_conf: 0.9821
+                          crf_conf: 0.9688
+                        tanggal_perkawinan:
+                          value: 08-08-2010
+                          ocr_conf: 0.956
+                          crf_conf: 0.9341
+                        status_hubungan_dalam_keluarga:
+                          value: KEPALA KELUARGA
+                          ocr_conf: 0.9788
+                          crf_conf: 0.944
+                        kewarganegaraan:
+                          value: WNI
+                          ocr_conf: 0.9972
+                          crf_conf: 0.9955
+                        ayah:
+                          value: RIZKY SANTOSO
+                          ocr_conf: 0.9705
+                          crf_conf: 0.8312
+                        ibu:
+                          value: NURUL NURHALIZA
+                          ocr_conf: 0.9682
+                          crf_conf: 0.819
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-                flagged:
-                  summary: 'A single-word name: returned, but flagged for review'
+                rejected:
+                  summary: 'Nothing readable: a complete object with empty values and a reason'
                   value:
                     status_code: 200
                     status_desc: OK
                     message: Success
                     data:
-                      document_type: npwp
-                      fields:
-                        nomor_npwp:
-                          value: 12.345.678.9-012.345
-                          confidence: 0.9992
-                          source: 'NPWP : 12.345.678.9-012.345'
-                          signals:
-                            candidate_count: 1
-                            has_homoglyph: false
-                            invalid_province_prefix: false
-                            invalid_kecamatan_prefix: false
-                            invalid_birthdate: false
-                            invalid_kpp_prefix: false
-                        nama:
-                          value: SUKIRMAN
-                          confidence: 0.9611
-                          source: SUKIRMAN
-                          signals:
-                            name_base: SUKIRMAN
-                            corrected: false
-                        nama_badan:
-                          confidence: 0.0
-                      flag: true
-                      flag_reason: Nama hanya terdiri dari 1 kata, mohon dicek kembali
+                      nomor_kk:
+                        value: ''
+                      nama_kepala_keluarga:
+                        value: ''
+                      alamat:
+                        value: ''
+                      desa_kelurahan:
+                        value: ''
+                      rt:
+                        value: ''
+                      rw:
+                        value: ''
+                      kecamatan:
+                        value: ''
+                      kabupaten_kota:
+                        value: ''
+                      provinsi:
+                        value: ''
+                      kode_pos:
+                        value: ''
+                      tanggal_dikeluarkan:
+                        value: ''
+                      anggota_keluarga: []
+                      reject_reason: Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
-        '400':
-          description: No usable text in `lines`
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                status_code: 400
-                status_desc: Bad Request
-                message: No text lines to structure
-                errors: No text lines to structure
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -617,7 +769,8 @@ paths:
                 status_code: 401
                 status_desc: Unauthorized
                 message: Invalid or missing API key
-                errors: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
         '422':
           description: Validation Error
           content:
@@ -627,8 +780,9 @@ paths:
               example:
                 status_code: 422
                 status_desc: Unprocessable Entity
-                message: 'body.lines: Field required'
+                message: 'body.texts: Field required'
                 errors: VALIDATION_ERROR
+                pipeline_last_stage: structuring
       security:
       - APIKeyHeader: []
 webhooks:
@@ -647,18 +801,18 @@ webhooks:
 
         **When.** Once per job of `POST /v1/structuring/jobs`: `stage: STRUCTURING` with `status: DONE`
         once the fields are stored, or `status: FAILED` with `error_message` when the upload is not a
-        lone NPWP card or has no text (the chain stops there). Additionally `stage: SCORING`, `status:
-        FAILED` when structuring succeeded but the scoring service could not be reached after retries.
-        Without `PIPELINE_OUTBOX` the `STRUCTURING` callback is sent before the hand-off to scoring; with
-        it the hand-off goes first, so the `SCORING` callback may arrive before this one.
+        lone KK card or has no text (the chain stops there). Additionally `stage: SCORING`, `status: FAILED`
+        when structuring succeeded but the scoring service could not be reached after retries. Without
+        `PIPELINE_OUTBOX` the `STRUCTURING` callback is sent before the hand-off to scoring; with it the
+        hand-off goes first, so the `SCORING` callback may arrive before this one.
 
 
         **Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are
         retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A callback
         that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the orchestrator
-        can reconcile with the orchestrator NPWP''s `GET /v1/extract-ocr/{request_id}` and should time
-        a request out on its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction
-        as the result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
+        can reconcile with its own `GET /v1/extract-ocr/{request_id}` and should time a request out on
+        its own. With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the
+        result and retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS`
         (24 h by default); a `4xx`, or that age, makes it a dead letter that stays in the table and is
         counted by `GET .../outbox`.
 
@@ -693,74 +847,59 @@ webhooks:
               schema: {}
 components:
   schemas:
-    BoundingBox:
+    BoundedOcrBoxPayload:
       properties:
-        x1:
+        text:
+          type: string
+          maxLength: 2048
+          title: Text
+          description: The recognised text
+        score:
           type: number
-          title: X1
-          description: Left
+          maximum: 1.0
+          minimum: 0.0
+          title: Score
+          description: Recognition score of this line
           examples:
-          - 35
-        y1:
-          type: number
-          title: Y1
-          description: Top
+          - 0.9991
+        poly:
+          items:
+            items:
+              type: number
+            type: array
+            maxItems: 2
+            minItems: 2
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Poly
+          description: 'Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright
+            box: the detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle
+            would lose information. Structuring depends on this geometry to assign cells to columns'
           examples:
-          - 389
-        x2:
-          type: number
-          title: X2
-          description: Right
-          examples:
-          - 637
-        y2:
-          type: number
-          title: Y2
-          description: Bottom
-          examples:
-          - 437
-      type: object
-      required:
-      - x1
-      - y1
-      - x2
-      - y2
-      title: BoundingBox
-    BoundingBoxPayload:
-      properties:
-        x1:
-          type: number
-          title: X1
-          description: Left edge, pixels
-          examples:
-          - 271
-        y1:
-          type: number
-          title: Y1
-          description: Top edge, pixels
-          examples:
-          - 358
-        x2:
-          type: number
-          title: X2
-          description: Right edge, pixels
-          examples:
-          - 1347
-        y2:
-          type: number
-          title: Y2
-          description: Bottom edge, pixels
-          examples:
-          - 511
+          - - - 291.0
+              - 7.0
+            - - 306.0
+              - 6.0
+            - - 309.0
+              - 26.0
+            - - 294.0
+              - 28.0
       additionalProperties: true
       type: object
       required:
-      - x1
-      - y1
-      - x2
-      - y2
-      title: BoundingBoxPayload
-      description: Upright box around a text line.
+      - text
+      - score
+      - poly
+      title: BoundedOcrBoxPayload
+      description: '`OcrBoxPayload` with the per-item text bound of this endpoint.
+
+
+        Subclassed rather than tightened in `ocr_common`, because the cap belongs to this door: the
+
+        stage-to-stage payload carries whatever our own OCR produced, and refusing it there would turn
+
+        an odd recognition into a pipeline failure instead of an odd field.'
     ErrorResponse:
       properties:
         status_code:
@@ -788,10 +927,10 @@ components:
         errors:
           type: string
           title: Errors
-          description: Machine-readable cause. `VALIDATION_ERROR` for 422 (branch on this, the message
-            names a different field every time); for every other status it repeats `message`
+          description: 'Stable, machine-readable cause (e.g. `EMPTY_FILE`, `UNAUTHORIZED`, `VALIDATION_ERROR`):
+            branch on this, never on the wording of `message`'
           examples:
-          - Uploaded file is empty
+          - EMPTY_FILE
         request_id:
           anyOf:
           - type: string
@@ -800,6 +939,15 @@ components:
           description: Present when the error is tied to a known request_id
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        pipeline_last_stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pipeline Last Stage
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+            `structuring`, `scoring`), or the pipeline service it called when that one failed'
+          examples:
+          - orchestrator
       type: object
       required:
       - status_code
@@ -816,6 +964,7 @@ components:
             enum:
             - accepted
             - reject
+            - unassessable
           - type: 'null'
           title: Verdict
           description: Document verdict
@@ -828,87 +977,52 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Confidence
-          description: 'Confidence in the verdict: accepted -> lowest `proba_approve` over the pages.
-            Sent to the scoring model as `guardrail_probability`'
+          description: 'Confidence in the verdict: `probability_bad` when rejected, `1 - probability_bad`
+            when accepted. Null when the image could not be assessed'
           examples:
-          - 0.9821
-        n_pages:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Pages
-          description: Pages that were checked
-          examples:
-          - 1
-        n_approve:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Approve
-          description: Pages with verdict `accepted`
-          examples:
-          - 1
-        n_reject:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: N Reject
-          description: Pages with verdict `rejected`
-          examples:
-          - 0
-      additionalProperties: true
-      type: object
-      title: GuardrailsDocument
-      description: The guardrails verdict for the whole document.
-    GuardrailsPage:
-      properties:
-        page_index:
-          anyOf:
-          - type: integer
-            minimum: 0.0
-          - type: 'null'
-          title: Page Index
-          description: 0-based page number
-          examples:
-          - 0
-        proba_approve:
+          - 0.9713
+        probability_bad:
           anyOf:
           - type: number
             maximum: 1.0
             minimum: 0.0
           - type: 'null'
-          title: Proba Approve
-          description: Probability that this page is an acceptable document
+          title: Probability Bad
+          description: Raw model output. Travels unchanged to scoring as the `guardrail_probability` feature.
+            Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number
           examples:
-          - 0.9821
-        proba_reject:
+          - 0.0287
+        threshold_used:
           anyOf:
           - type: number
-            maximum: 1.0
-            minimum: 0.0
+            exclusiveMaximum: 1.0
+            exclusiveMinimum: 0.0
           - type: 'null'
-          title: Proba Reject
-          description: 1 - `proba_approve`
+          title: Threshold Used
+          description: The threshold in force at the moment of the judgement. Echoed because it can be
+            changed at the central orchestrator without a deploy here, so the verdict records the one
+            it actually used
           examples:
-          - 0.0179
-        verdict:
+          - 0.5
+        threshold_target:
           anyOf:
           - type: string
             enum:
-            - accepted
+            - accept
             - reject
           - type: 'null'
-          title: Verdict
-          description: Verdict for this page alone
+          title: Threshold Target
+          description: 'The side `threshold_used` applied to: `reject` (the default) or `accept` (on 1
+            - probability_bad)'
           examples:
-          - accepted
+          - reject
       additionalProperties: true
       type: object
-      title: GuardrailsPage
-      description: One page of the guardrails report.
+      title: GuardrailsDocument
+      description: 'The guardrails verdict. A Kartu Keluarga is always a single image, so there is no
+        page
+
+        concept here and no aggregation across pages.'
     GuardrailsResult:
       properties:
         passed:
@@ -924,20 +1038,14 @@ components:
           - type: string
           - type: 'null'
           title: Reason
-          description: Why it was rejected; null when passed
+          description: Why it was rejected, in Indonesian; null when passed
           examples:
           - null
         document:
           anyOf:
           - $ref: '#/components/schemas/GuardrailsDocument'
           - type: 'null'
-          description: Verdict for the document as a whole
-        pages:
-          items:
-            $ref: '#/components/schemas/GuardrailsPage'
-          type: array
-          title: Pages
-          description: One entry per page, in page order
+          description: The verdict and its numbers
       additionalProperties: true
       type: object
       title: GuardrailsResult
@@ -1069,44 +1177,53 @@ components:
       - data
       title: JobAcceptedResponse
       description: Envelope of `POST /v1/<stage>/jobs`.
-    OcrBlockPayload:
+    OcrBoxPayload:
       properties:
         text:
           type: string
           title: Text
-          description: One OCR text line
+          description: The recognised text
           examples:
-          - 12.345.678.9-012.345
-        confidence:
+          - '9924187486671285'
+        score:
           type: number
           maximum: 1.0
           minimum: 0.0
-          title: Confidence
+          title: Score
           description: Recognition score of this line
-          default: 1.0
           examples:
-          - 0.9999
-        bbox:
-          anyOf:
-          - $ref: '#/components/schemas/BoundingBoxPayload'
-          - type: 'null'
-          description: Upright box around the line, in pixels of the ORIENTATION-CORRECTED image the OCR
-            model worked on (not of the uploaded photo). Structuring finds the name by its distance to
-            the NPWP number
-        page:
-          type: integer
-          minimum: 0.0
-          title: Page
-          description: 0-based page number
-          default: 0
+          - 0.9991
+        poly:
+          items:
+            items:
+              type: number
+            type: array
+            maxItems: 2
+            minItems: 2
+          type: array
+          maxItems: 4
+          minItems: 4
+          title: Poly
+          description: 'Four points of two coordinates, in pixels. A genuine quadrilateral, not an upright
+            box: the detector returns visibly tilted quads on real cards, so an x1/y1/x2/y2 rectangle
+            would lose information. Structuring depends on this geometry to assign cells to columns'
           examples:
-          - 0
+          - - - 291.0
+              - 7.0
+            - - 306.0
+              - 6.0
+            - - 309.0
+              - 26.0
+            - - 294.0
+              - 28.0
       additionalProperties: true
       type: object
       required:
       - text
-      title: OcrBlockPayload
-      description: One OCR text line.
+      - score
+      - poly
+      title: OcrBoxPayload
+      description: One recognised text line.
     OcrPayload:
       properties:
         engine:
@@ -1114,17 +1231,17 @@ components:
           - type: string
           - type: 'null'
           title: Engine
-          description: OCR backend that produced the blocks
+          description: OCR backend that produced the boxes
           examples:
-          - paddle
+          - kk_ocr
         model:
           anyOf:
           - type: string
           - type: 'null'
           title: Model
-          description: Model identity reported by the OCR model service
+          description: Model identity reported by the OCR backend
           examples:
-          - PP-OCRv6_medium_det+PP-OCRv6_medium_rec
+          - PP-OCRv5_server_det+PP-OCRv5_server_rec
         elapsed_ms:
           anyOf:
           - type: number
@@ -1132,23 +1249,45 @@ components:
           title: Elapsed Ms
           description: Time spent in the OCR model
           examples:
-          - 412.5
-        full_text:
+          - 4182.7
+        text_regions_count:
+          type: integer
+          minimum: 0.0
+          title: Text Regions Count
+          description: Number of text boxes; may be 0
+          default: 0
+          examples:
+          - 177
+        avg_doc_score:
           anyOf:
-          - type: string
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
           - type: 'null'
-          title: Full Text
-          description: All blocks joined by newline
-        blocks:
+          title: Avg Doc Score
+          description: Mean of `texts[].score`; null when `texts` is empty rather than 0
+          examples:
+          - 0.814
+        min_doc_score:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Min Doc Score
+          description: Lowest of `texts[].score`; null when `texts` is empty
+          examples:
+          - 0.2822
+        texts:
           items:
-            $ref: '#/components/schemas/OcrBlockPayload'
+            $ref: '#/components/schemas/OcrBoxPayload'
           type: array
-          title: Blocks
-          description: Text lines in reading order (top to bottom)
+          title: Texts
+          description: 'Text boxes. May be EMPTY: an image with no readable text must reach the structuring
+            rules to be rejected there, so neither this model nor the structuring job endpoint may require
+            at least one'
       additionalProperties: true
       type: object
-      required:
-      - blocks
       title: OcrPayload
       description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
     OutboxRelease:
@@ -1397,9 +1536,8 @@ components:
           - type: string
           - type: 'null'
           title: Error Code
-          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the stage rejected the
-            document (a rejecting check of the structuring rules; `error_message` is the Indonesian reason).
-            Absent when a stage broke'
+          description: 'Only on a rejection: `DOWNSTREAM_VALIDATION_ERROR` when the KK validity gate rejected
+            the document (`error_message` is the Indonesian reason). Absent when a stage broke'
           examples:
           - null
       type: object
@@ -1411,17 +1549,26 @@ components:
       description: Body of the callback a stage POSTs to the orchestrator when it finishes.
     StructureRequest:
       properties:
-        lines:
+        texts:
           items:
-            $ref: '#/components/schemas/TextLine'
+            $ref: '#/components/schemas/BoundedOcrBoxPayload'
           type: array
+          maxItems: 5000
           minItems: 1
-          title: Lines
-          description: OCR text lines in reading order (top to bottom)
+          title: Texts
+          description: OCR text boxes in reading order (top to bottom)
       type: object
       required:
-      - lines
+      - texts
       title: StructureRequest
+      description: 'Body of the legacy synchronous `POST /v1/ocr_postprocess`.
+
+
+        `texts` keeps `min_length=1` here **on purpose**, and only here: §11 lists this endpoint as kept
+
+        as it is, and the ML team calls it directly with text it already has. The asynchronous job
+
+        endpoint must not inherit the constraint -- see `StructuringJobRequest`.'
     StructureResponse:
       properties:
         status_code:
@@ -1459,126 +1606,119 @@ components:
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
         data:
-          $ref: '#/components/schemas/StructuredDocument'
+          $ref: '#/components/schemas/StructuringPayload'
       type: object
       required:
       - data
       title: StructureResponse
-    StructuredDocument:
-      properties:
-        document_type:
-          type: string
-          title: Document Type
-          description: Document type the fields were read as
-          examples:
-          - npwp
-        fields:
-          additionalProperties:
-            $ref: '#/components/schemas/StructuredField'
-          type: object
-          title: Fields
-          description: 'Always `nomor_npwp`, `nama`, `nama_badan`; a field that was not found has `value:
-            null`. A person''s card fills `nama`, a company''s (PT, CV, ...) fills `nama_badan`. A 15-digit
-            number is formatted `XX.XXX.XXX.X-XXX.XXX`; a 16-digit NIK-based number is 16 plain digits,
-            and wins when a card prints both'
-          examples:
-          - nama:
-              confidence: 0.9773
-              signals:
-                corrected: false
-                name_base: BUDI SANTOSO
-              source: BUDI SANTOSO
-              value: BUDI SANTOSO
-            nama_badan:
-              confidence: 0.0
-            nomor_npwp:
-              confidence: 0.9992
-              signals:
-                candidate_count: 1
-                has_homoglyph: false
-              source: 'NPWP : 12.345.678.9-012.345'
-              value: 12.345.678.9-012.345
-        flag:
-          type: boolean
-          title: Flag
-          description: 'Flag of the ML team''s rules, a feature of the trust model. True when: another
-            document is bundled in (KTP, KK, Akta), the page is a CAPTCHA or a screenshot of the DJP lookup,
-            the number or the name was not found, the name is a single word, the number contains a letter,
-            its province / kecamatan / birthdate / KPP code is invalid, or the upload has more than 2
-            pages'
-          examples:
-          - false
-        flag_reason:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Flag Reason
-          description: The first reason `flag` is true, in Indonesian; null when not flagged
-          examples:
-          - null
-        reject_reason:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Reject Reason
-          description: The first reason that rejects the document, in Indonesian; null when the document
-            is accepted. Every check rejects except a single-word name and a letter in the number, which
-            only raise `flag`. In the pipeline a rejected document stops here (no scoring) and the client
-            gets a 400 with this message
-          examples:
-          - null
-      type: object
-      required:
-      - document_type
-      - fields
-      - flag
-      title: StructuredDocument
-    StructuredField:
+    StructuredFieldPayload:
       properties:
         value:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
           title: Value
-          description: null when the field was not found
+          description: The value; `""` when not found -- never null
+          default: ''
           examples:
-          - 12.345.678.9-012.345
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: OCR score of the line the value came from; 0 when not found
-          examples:
-          - 0.9992
-        source:
+          - '3273012345678901'
+        ocr_conf:
           anyOf:
-          - type: string
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
           - type: 'null'
-          title: Source
-          description: Raw OCR line the value came from
+          title: Ocr Conf
+          description: Lowest recognition score among the OCR boxes that formed this value; null when
+            not found
           examples:
-          - 'NPWP : 12.345.678.9-012.345'
-        signals:
+          - 0.9991
+        crf_conf:
           anyOf:
-          - additionalProperties: true
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Crf Conf
+          description: Forward-backward marginal of the column placement. ALWAYS null for document fields,
+            which are found by regex or position and never pass through Viterbi, and null for member cells
+            Viterbi did not place
+          examples:
+          - null
+        features:
+          anyOf:
+          - additionalProperties:
+              type: number
             type: object
           - type: 'null'
-          title: Signals
-          description: 'Inputs for the scoring model and review signals (backend `npwp_rules` only; null
-            otherwise). nomor_npwp: `candidate_count` (NPWP-shaped numbers found in the document), `has_homoglyph`
-            (OCR read a letter where a digit belongs; the letter is dropped, not corrected), `invalid_province_prefix`
-            / `invalid_kecamatan_prefix` / `invalid_birthdate` (a 16-digit NIK-based number fails the
-            Kode Wilayah or birthdate check), `invalid_kpp_prefix` (a 15-digit number''s KPP office code
-            is unknown). nama / nama_badan: `name_base` (the read before any normalisation; the trust
-            model measures the name on this), `corrected` (`value` differs from `name_base`)'
+          title: Features
+          description: 'The trust model''s input vector for this field, present only for the NINE scored
+            contract fields and null everywhere else. It exists because the two scores above do not separate
+            a correct value from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502,
+            no better than a coin, while the parser internals that do carry the signal are computed and
+            then discarded. Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES`
+            (document fields); scoring assembles them and never recomputes one, because the same feature
+            computed in two places is how a model ends up good in training and bad in production'
           examples:
-          - candidate_count: 1
-            has_homoglyph: false
+          - emis_assigned_min: 0.0
+            lebar_rel: 0.87
+            marg_min: 0.9967
+            margin_min: 0.9934
+      additionalProperties: true
+      type: object
+      title: StructuredFieldPayload
+      description: One named field read by structuring, carrying two scores that are deliberately not
+        fused.
+    StructuredMemberPayload:
+      properties:
+        nama_lengkap:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        nik:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_kelamin:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tempat_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_lahir:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        agama:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        pendidikan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        jenis_pekerjaan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        golongan_darah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_perkawinan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        status_hubungan_dalam_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kewarganegaraan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ayah:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        ibu:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+      additionalProperties: true
       type: object
       required:
-      - confidence
-      title: StructuredField
+      - nama_lengkap
+      - nik
+      - jenis_kelamin
+      - tempat_lahir
+      - tanggal_lahir
+      - agama
+      - pendidikan
+      - jenis_pekerjaan
+      - golongan_darah
+      - status_perkawinan
+      - tanggal_perkawinan
+      - status_hubungan_dalam_keluarga
+      - kewarganegaraan
+      - ayah
+      - ibu
+      title: StructuredMemberPayload
+      description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
     StructuringJobRequest:
       properties:
         request_id:
@@ -1591,10 +1731,10 @@ components:
         document_type:
           type: string
           title: Document Type
-          description: Only `npwp` is supported
-          default: npwp
+          description: Only `kk` is supported
+          default: kk
           examples:
-          - npwp
+          - kk
         guardrails:
           anyOf:
           - $ref: '#/components/schemas/GuardrailsResult'
@@ -1605,11 +1745,48 @@ components:
           - $ref: '#/components/schemas/OcrPayload'
           - type: 'null'
           description: 'Result of the OCR stage. Left out when the OCR service hands off by reference
-            (`PIPELINE_HANDOFF_BY_REFERENCE`): this service then reads `ocr_results` of the shared database'
+            (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `ocr_results`
+            of the shared database. Its `texts` MAY be empty -- an image with no readable text has to
+            reach the validity gate to be rejected there, so this endpoint does not require at least one'
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, in order, from the central orchestrator (forwarded
+            by the orchestrator and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`,
+            guardrails optional at the front and the end cut off, never one skipped in the middle. The
+            last one ends the request: its result is the answer, as it is, and nothing is handed on. Omitted:
+            the full pipeline'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
+            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
       type: object
       required:
       - request_id
       title: StructuringJobRequest
+      description: Body of `POST /v1/structuring/jobs` (§7.1).
     StructuringJobStatus:
       properties:
         request_id:
@@ -1658,11 +1835,39 @@ components:
           description: Last status change (ISO 8601, UTC)
           examples:
           - '2026-09-18T04:00:01+00:00'
+        pipeline_name_sequence:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Pipeline Name Sequence
+          description: 'The services this request runs, as the job was submitted with them; the last one
+            ends the request. Null for a job submitted without it: the full pipeline'
+          examples:
+          - - guardrails
+            - ekstraksi
+            - structuring
+            - scoring
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'The central orchestrator''s per-field thresholds, as the job was submitted with
+            them; null: the trust model''s own thresholds for every field'
+          examples:
+          - nik: 0.8
+            no_kk: 0.9
         result:
           anyOf:
-          - $ref: '#/components/schemas/StructuredDocument'
+          - $ref: '#/components/schemas/StructuringPayload'
           - type: 'null'
-          description: Structured fields once `status` is `DONE`; null otherwise
+          description: The structured document once `status` is `DONE`; null otherwise. A **rejected**
+            document is also `DONE` and also has a result -- what it carries is `reject_reason`. The orchestrator
+            reads that key here and turns it into the client's 400
       type: object
       required:
       - request_id
@@ -1712,42 +1917,66 @@ components:
       required:
       - data
       title: StructuringJobStatusResponse
-    TextLine:
+    StructuringPayload:
       properties:
-        text:
-          type: string
-          title: Text
-          description: One OCR text line
-          examples:
-          - 'NPWP : 12.345.678.9-012.345'
-        confidence:
-          type: number
-          maximum: 1.0
-          minimum: 0.0
-          title: Confidence
-          description: Recognition score of this line
-          default: 1.0
-          examples:
-          - 0.9992
-        bbox:
+        nomor_kk:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator'
+        nama_kepala_keluarga:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        alamat:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        desa_kelurahan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        rt:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+          description: 'Shares one `ocr_conf` with `rw`: both are cut from the same OCR box'
+        rw:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kecamatan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kabupaten_kota:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        provinsi:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        kode_pos:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        tanggal_dikeluarkan:
+          $ref: '#/components/schemas/StructuredFieldPayload'
+        anggota_keluarga:
+          items:
+            $ref: '#/components/schemas/StructuredMemberPayload'
+          type: array
+          title: Anggota Keluarga
+          description: One entry per row on the card, in card order. May be empty, which the validity
+            gate rejects
+        reject_reason:
           anyOf:
-          - $ref: '#/components/schemas/BoundingBox'
+          - type: string
           - type: 'null'
-          description: Position of the line (`blocks[].bbox` of the OCR result). The `npwp_rules` backend
-            finds the name by its distance to the NPWP number, because real cards print the name without
-            a label. Without `bbox` the position is derived from the order of the lines
-        page:
-          type: integer
-          minimum: 0.0
-          title: Page
-          description: 0-based page number
-          default: 0
+          title: Reject Reason
+          description: The first rejecting rule of the KK validity gate, in Indonesian; null when accepted.
+            It lives in this payload rather than only in the outcome row because the orchestrator is stateless
+            and reads stages through their API -- a reason kept elsewhere could never become the client's
+            400
           examples:
-          - 0
+          - null
+      additionalProperties: true
       type: object
       required:
-      - text
-      title: TextLine
+      - nomor_kk
+      - nama_kepala_keluarga
+      - alamat
+      - desa_kelurahan
+      - rt
+      - rw
+      - kecamatan
+      - kabupaten_kota
+      - provinsi
+      - kode_pos
+      - tanggal_dikeluarkan
+      title: StructuringPayload
+      description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
   securitySchemes:
     APIKeyHeader:
       type: apiKey

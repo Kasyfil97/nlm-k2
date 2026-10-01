@@ -87,6 +87,8 @@ def build_stage_pipeline(
         outbox=outbox,
         callbacks=False if testing else settings.callbacks_enabled,
         metrics_stage=testing_metrics_stage(stage) if testing else None,
+        heartbeat_seconds=settings.pipeline_heartbeat_seconds,
+        max_runtime_seconds=settings.pipeline_job_max_runtime_seconds,
     )
 
 

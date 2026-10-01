@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "reason": null,
+  "document": {
+    "verdict": "accepted",
+    "confidence": 0.9713,
+    "probability_bad": 0.0287,
+    "threshold_used": 0.5
+  }
+}

@@ -16,7 +16,15 @@ from ocr_common.clients.fetch_url import UrlPolicy
 Environment = Literal["local", "dev", "staging", "production"]
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 DEFAULT_JOB_LEASE_SECONDS = 300.0
-DEFAULT_MAX_UPLOAD_BYTES = int(2.5 * 1024 * 1024)
+DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+# Two rules, because "placeholder" has two shapes. A name blocklist catches the values that travel
+# in `.env.example` and in copied deployment manifests; a minimum length catches everything else,
+# including the one-character keys that are obviously stand-ins but belong to no list. The length
+# rule is the load-bearing one -- a blocklist can always be sidestepped by one more typo.
+MIN_API_KEY_LENGTH = 16
+PLACEHOLDER_API_KEYS = frozenset(
+    {"changeme", "change-me", "changemechangeme", "your-api-key", "your_api_key", "replace-me", "todo", "example"}
+)
 
 
 class BaseServiceSettings(BaseSettings):
@@ -35,9 +43,12 @@ class BaseServiceSettings(BaseSettings):
     service_base_url: str | None = None
     port: int = 8000
 
-    # 2,5 MB: an NPWP document is 1-2 MB, a few reach 2.1 MB (ML team, 23 Sep 2026); larger uploads are
-    # refused with 413 before any model runs.
+    # 5 MB (§13.1): a Kartu Keluarga photo is larger than a tax card. Anything above is refused
+    # with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
+    # §13.1, as in nilam: JPEG, PNG or PDF. Of a PDF only the first page is read -- guardrails
+    # judges it and ekstraksi reads it -- because a Kartu Keluarga is one sheet and the layout
+    # parser reads one page frame; the orchestrator refuses more than `MAX_DOCUMENT_PAGES`.
     allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
     file_url_allowed_hosts: str = ""
     field_confidence_threshold: float = Field(0.5, ge=0, le=1)
@@ -66,11 +77,32 @@ class BaseServiceSettings(BaseSettings):
 
     @property
     def file_url_policy(self) -> UrlPolicy:
-        """The `UrlPolicy` for `file_url` downloads built from `FILE_URL_ALLOWED_HOSTS` and the environment."""
+        """The `UrlPolicy` for `file_url` downloads, from `FILE_URL_ALLOWED_HOSTS` and the environment.
+
+        Outside local this fails closed three ways at once: an empty allow-list denies every URL,
+        plain `http` is refused, and a resolved private or loopback address is refused even when the
+        hostname is listed.
+        """
         hosts = tuple(
             host.strip().lower().rstrip(".") for host in self.file_url_allowed_hosts.split(",") if host.strip()
         )
-        return UrlPolicy(allowed_hosts=hosts, allow_private=self.is_local)
+        return UrlPolicy(
+            allowed_hosts=hosts,
+            allow_private=self.is_local,
+            allow_http=self.is_local,
+            allow_any_host=self.is_local,
+        )
+
+    def require_file_url_allowlist(self) -> None:
+        """Raises outside local when `FILE_URL_ALLOWED_HOSTS` is empty. Called by the services that
+        download: orchestrator and ekstraksi always, guardrails when `GUARDRAILS_FETCH_URL`."""
+        if self.is_local or self.file_url_allowed_hosts.strip():
+            return
+        raise ValueError(
+            "FILE_URL_ALLOWED_HOSTS must list the hosts this service may download from when "
+            f"ENVIRONMENT={self.environment}: an empty list denies every file_url, so starting without "
+            "one would leave the download path dead (set ENVIRONMENT=local for local development)"
+        )
 
     def require_outside_local(self, **values: object) -> None:
         """Raises unless every given value is set, when not local; used by the subclasses' validators."""
@@ -105,6 +137,13 @@ class BaseServiceSettings(BaseSettings):
                 f"set a real backend when ENVIRONMENT={self.environment}"
             )
 
+    @property
+    def simulation_hooks_enabled(self) -> bool:
+        """Whether the filename hooks of `ocr_common.simulation` may fire. Local only, always: the
+        filename crosses the trust boundary in the multipart request, so a caller could otherwise
+        steer the pipeline by naming a file."""
+        return self.is_local
+
     @model_validator(mode="after")
     def _guard_auth(self) -> Self:
         if self.auth_disabled and not self.is_local:
@@ -112,7 +151,35 @@ class BaseServiceSettings(BaseSettings):
                 f"AUTH_DISABLED=true is only allowed with ENVIRONMENT=local (got ENVIRONMENT={self.environment}): "
                 "it turns off the X-API-Key check on every endpoint"
             )
+        if not self.is_local:
+            weak = sorted(
+                {
+                    key
+                    for key in self.accepted_api_keys
+                    if key.strip().lower() in PLACEHOLDER_API_KEYS or len(key.strip()) < MIN_API_KEY_LENGTH
+                }
+            )
+            if weak:
+                shown = ", ".join(repr(key) for key in weak)
+                raise ValueError(
+                    f"API_KEY / API_KEYS holds a placeholder or a key shorter than {MIN_API_KEY_LENGTH} "
+                    f"characters ({shown}), which is how a shared example secret reaches a deployed "
+                    f"environment. Set a real key when ENVIRONMENT={self.environment}"
+                )
         return self
+
+    @model_validator(mode="after")
+    def _guard_dev_affordances(self) -> Self:
+        """Laptop-only affordances are gated here, at the config layer, rather than where they are
+        used: a filename is caller-controlled input, so a hook that reads one must not be reachable
+        by a request that merely names a file a certain way."""
+        if self.is_local or not self.testing_endpoints:
+            return self
+        raise ValueError(
+            "TESTING_ENDPOINTS=true is only allowed with ENVIRONMENT=local (got "
+            f"ENVIRONMENT={self.environment}): it exposes a parallel pipeline on the testing_* tables "
+            "that skips the outcome table"
+        )
 
 
 class PipelineSettings(BaseServiceSettings):
@@ -146,6 +213,19 @@ class PipelineSettings(BaseServiceSettings):
     pipeline_outbox_max_age_seconds: float = Field(24 * 3600.0, gt=0)
     pipeline_outbox_stale_after_seconds: float = Field(300.0, gt=0)
     pipeline_handoff_by_reference: bool = False
+    # §8.5: flipped only by the batch that actually writes the encrypted, blind-indexed audit.
+    # `require_pii_audit()` below explains why this exists rather than a check on PII_ENCRYPTION_KEY.
+    pii_audit_implemented: bool = False
+    # Detak: sementara job berjalan ia memperbarui `updated_at`, supaya job yang sah-berjalan-lama
+    # tidak terlihat basi bagi reaper. `0` = mati, dan itulah bawaannya untuk batch ini: mekanismenya
+    # dipasang sekarang karena `repository.py`, `stage.py` dan `factory.py` beku setelah gerbang R6,
+    # tetapi intervalnya tidak dikarang -- ia disetel oleh batch yang menjalankan model sungguhan,
+    # ketika durasi job pertama kali bisa diukur.
+    pipeline_heartbeat_seconds: float = Field(0.0, ge=0)
+    # Batas atas umur job, TERLEPAS dari `updated_at`. Detak menghapus satu-satunya batas atas yang
+    # dulu ada (lease), jadi tanpa ini job yang macet tetapi prosesnya hidup akan berdetak selamanya,
+    # tidak pernah dipanen, dan tidak pernah menulis keadaan akhir. `0` = mati.
+    pipeline_job_max_runtime_seconds: float = Field(0.0, ge=0)
     pipeline_stale_jobs: bool = True
     pipeline_stale_job_interval_seconds: float = Field(30.0, gt=0)
     pipeline_stale_job_batch: int = Field(10, gt=0)
@@ -180,9 +260,40 @@ class PipelineSettings(BaseServiceSettings):
                 "ORCHESTRATION_CALLBACK_KEY must be set with ORCHESTRATION_CALLBACK_FORMAT=result: the orchestrator's "
                 "result callback is authenticated with X-Callback-Key"
             )
+        if self.pipeline_heartbeat_seconds and not self.pipeline_job_max_runtime_seconds:
+            raise ValueError(
+                "PIPELINE_HEARTBEAT_SECONDS needs PIPELINE_JOB_MAX_RUNTIME_SECONDS: a beating job is never "
+                "reclaimed by the reaper, so without a ceiling a wedged job would beat forever and never "
+                "reach a terminal state"
+            )
+        if self.pipeline_heartbeat_seconds >= self.pipeline_job_lease_seconds:
+            if self.pipeline_heartbeat_seconds:
+                raise ValueError(
+                    "PIPELINE_HEARTBEAT_SECONDS must be well below PIPELINE_JOB_LEASE_SECONDS, otherwise the "
+                    "lease expires between beats and the reaper reclaims a job that is still running"
+                )
         if self.pipeline_handoff_by_reference and not self.database_url:
             raise ValueError(
                 "PIPELINE_HANDOFF_BY_REFERENCE=true needs DATABASE_URL: the next stage reads this stage's "
                 "result from the shared database instead of the hand-off body"
             )
         return self
+
+    # Hidup di sini, bukan di BaseServiceSettings: ia membaca `pii_audit_implemented`, dan sebuah
+    # guard di kelas yang tidak punya fieldnya akan melempar AttributeError alih-alih ValueError
+    # yang dijanjikannya, pada service pertama di luar scoring yang memanggilnya.
+    def require_pii_audit(self) -> None:
+        """Raises outside local while the §8.5 audit is not implemented.
+
+        The check is on `PII_AUDIT_IMPLEMENTED`, not on whether `PII_ENCRYPTION_KEY` is set: any
+        Fernet-shaped string would satisfy the latter while nothing is encrypted and no audit row is
+        written, which is exactly the state the guard exists to block. Only the batch that actually
+        writes the encrypted, blind-indexed audit may flip this flag.
+        """
+        if self.is_local or self.pii_audit_implemented:
+            return
+        raise ValueError(
+            "PII_AUDIT_IMPLEMENTED=false: the encrypted audit with a blind index over nomor_kk is not "
+            f"implemented yet, so this service refuses to start with ENVIRONMENT={self.environment}. "
+            "It handles NIK and names; set ENVIRONMENT=local for development"
+        )

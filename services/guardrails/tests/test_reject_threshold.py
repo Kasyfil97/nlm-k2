@@ -1,13 +1,14 @@
-import io
+"""R15: the five rungs of the threshold chain, and what happens when one of them is broken."""
 
 import pytest
-from PIL import Image
 
 from ocr_common.errors import UpstreamUnavailable
 
-from app.clients.reject_threshold import RejectThreshold, default_threshold, parse_threshold
+from app.clients.reject_threshold import RejectThreshold, Threshold, default_threshold, parse_threshold
 from app.config import Settings
+from app.ml.mock import MockQualityModel
 from app.services.guardrails_service import GuardrailsService
+from tests.conftest import JPEG, StubModel
 
 
 class StubOrchestrator:
@@ -44,22 +45,24 @@ def _threshold(stub, clock=None, cache_seconds=60.0, default=0.5) -> RejectThres
     )
 
 
-class StubClassifier:
-    reject_threshold = 0.5
-
-    def classify(self, filename, pages):
-        return [(0.35, 0.65) for _ in pages]
+# --- rungs 3 to 5 ------------------------------------------------------------------------------
 
 
-def _jpeg() -> bytes:
-    buffer = io.BytesIO()
-    Image.new("RGB", (200, 100), "white").save(buffer, format="JPEG")
-    return buffer.getvalue()
+def test_the_environment_wins_over_the_stored_value():
+    assert default_threshold(0.3, StubModel(reject_threshold=0.8)) == 0.3
 
 
-def test_default_is_the_configured_threshold_else_the_checkpoints():
-    assert default_threshold(0.3, StubClassifier()) == 0.3
-    assert default_threshold(None, StubClassifier()) == 0.5
+def test_the_stored_value_wins_over_the_floor():
+    assert default_threshold(None, StubModel(reject_threshold=0.62)) == 0.62
+
+
+def test_a_backend_with_no_stored_value_falls_to_the_floor():
+    """`None`, not `0.5`, is what a backend without a stored threshold reports -- otherwise rung 4
+    and rung 5 are the same number and a chain that stopped working looks exactly like one that
+    did not. Today every shipped backend is in this position: K2Quality keeps its operating point
+    in config.yaml, not in the six artifacts."""
+    assert MockQualityModel().reject_threshold is None
+    assert default_threshold(None, MockQualityModel()) == 0.5
     assert default_threshold(None, object()) == 0.5
 
 
@@ -80,6 +83,9 @@ def test_default_is_the_configured_threshold_else_the_checkpoints():
 def test_parse_refuses_anything_but_a_threshold_between_0_and_1(body):
     with pytest.raises(ValueError):
         parse_threshold(body)
+
+
+# --- rung 2: the central orchestrator ------------------------------------------------------------
 
 
 async def test_without_url_the_default_is_used_and_nothing_is_called():
@@ -132,22 +138,25 @@ async def test_aclose_closes_the_client():
     assert stub.closed
 
 
-async def test_service_judges_with_the_orchestrators_threshold_and_reports_it():
+# --- the whole chain, through the service --------------------------------------------------------
+
+
+async def test_the_service_judges_with_the_orchestrators_threshold_and_reports_it():
     settings = Settings(api_key="x", _env_file=None)
+    model = StubModel(0.65)
+
     lenient = _threshold(StubOrchestrator({"reject_threshold": 0.7}))
-    report = await GuardrailsService(StubClassifier(), settings, lenient).check("a.jpg", "image/jpeg", _jpeg())
-    assert (report["passed"], report["document"]["reject_threshold"]) == (True, 0.7)
+    report = await GuardrailsService(model, settings, lenient).check("kk.jpg", "image/jpeg", JPEG)
+    assert (report["passed"], report["document"]["threshold_used"]) == (True, 0.7)
 
-    default = await GuardrailsService(StubClassifier(), settings).check("a.jpg", "image/jpeg", _jpeg())
-    assert (default["passed"], default["document"]["reject_threshold"]) == (False, 0.5)
+    fallback = await GuardrailsService(model, settings).check("kk.jpg", "image/jpeg", JPEG)
+    assert (fallback["passed"], fallback["document"]["threshold_used"]) == (False, 0.5)
 
 
-def test_threshold_url_on_localhost_is_refused_outside_local():
-    with pytest.raises(ValueError, match="GUARDRAILS_THRESHOLD_URL"):
-        Settings(
-            api_key="x",
-            _env_file=None,
-            environment="production",
-            guardrails_backend="efficientnet",
-            guardrails_threshold_url="http://localhost:8090",
-        )
+async def test_the_per_request_override_outranks_the_orchestrator():
+    """Rung 1. It also means the orchestrator's endpoint is not even consulted for that request."""
+    stub = StubOrchestrator({"reject_threshold": 0.7})
+    service = GuardrailsService(StubModel(0.65), Settings(api_key="x", _env_file=None), _threshold(stub))
+    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=Threshold(0.6, "reject"))
+    assert (report["document"]["verdict"], report["document"]["threshold_used"]) == ("reject", 0.6)
+    assert stub.paths == [], "the remote source was not consulted for an overridden request"

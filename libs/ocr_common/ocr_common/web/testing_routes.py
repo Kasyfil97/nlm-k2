@@ -40,7 +40,9 @@ def build_testing_router(
         router.add_api_route(
             testing_path,
             _with_dependencies(route.endpoint, dependencies),
-            methods=sorted(route.methods),
+            # `or ()`: Starlette menyatakan `methods` boleh None. Rute yang disalin di sini selalu
+            # punya metode, tetapi rute tanpa metode akan meledak di sini alih-alih didaftarkan.
+            methods=sorted(route.methods or ()),
             status_code=route.status_code,
             response_model=route.response_model,
             responses=route.responses,

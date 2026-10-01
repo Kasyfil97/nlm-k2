@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from ocr_common.pipeline.tables import repo_metadata
 
-VERSION_TABLE = "ocr_npwp_alembic_version"
+VERSION_TABLE = "ocr_kk_alembic_version"
 
 config = context.config
 if config.config_file_name is not None:

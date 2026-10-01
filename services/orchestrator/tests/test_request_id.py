@@ -28,7 +28,7 @@ def test_calls_carry_the_request_id_of_the_form_not_of_the_header(client, auth):
         response = client.post(
             "/v1/extract-ocr",
             data={"request_id": RID},
-            files={"file": ("npwp.jpg", JPEG, "image/jpeg")},
+            files={"file": ("kk.jpg", JPEG, "image/jpeg")},
             headers={**auth, REQUEST_ID_HEADER: "REQ_gateway_hop"},
         )
     finally:
@@ -46,7 +46,7 @@ def test_an_error_raised_in_the_handler_answers_with_the_callers_request_id(clie
         response = client.post(
             "/v1/extract-ocr",
             data={"request_id": RID},
-            files={"file": ("npwp.jpg", JPEG, "image/jpeg")},
+            files={"file": ("kk.jpg", JPEG, "image/jpeg")},
             headers={**auth, REQUEST_ID_HEADER: "REQ_gateway_hop"},
         )
     finally:

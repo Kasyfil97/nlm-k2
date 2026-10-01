@@ -10,11 +10,12 @@ from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header, Request
-from fastapi.exceptions import HTTPException, RequestValidationError
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.exceptions import HTTPException
 
 from ocr_common.config import BaseServiceSettings
-from ocr_common.errors import ServiceError
+from ocr_common.errors import ServiceError, error_code
 from ocr_common.web.envelope import envelope
 from ocr_common.web.logging import configure_logging
 from ocr_common.web.metrics import MetricsMiddleware, metrics_response
@@ -51,20 +52,23 @@ A missing or wrong key answers `401`. The services are reachable only from insid
 `{status_code, status_desc, message, data, errors, request_id}`. `status_code` always equals the HTTP
 status. On success `errors` is null; on error `data` is null.
 
-**Errors.** `errors` is machine-readable: `VALIDATION_ERROR` for `422`, otherwise the same text as
-`message`. `400` = the request or the document is unusable (do not retry unchanged). `401` = API key.
-`404` = unknown request_id. `409` = request_id already processed (legacy contract only). `422` = a
-field is missing or has the wrong type. `500` = this service or its model failed. `503` = a
-dependency is unreachable, `504` = it did not answer in time (both are safe to retry).
+**Errors.** `errors` is a stable, machine-readable code; branch on it, not on the wording of `message`.
+The document checks: `EMPTY_FILE`, `UNSUPPORTED_FILE_TYPE`, `UNREADABLE_FILE`, `TOO_MANY_PAGES`,
+`INVALID_FILE_SOURCE`, `FILE_URL_REJECTED` (400), `FILE_TOO_LARGE` (413). Otherwise the code of the status:
+`UNAUTHORIZED` (401), `REQUEST_ID_NOT_FOUND` (404, an unknown request_id), `NOT_FOUND` (404, a path that does
+not exist), `METHOD_NOT_ALLOWED` (405), `VALIDATION_ERROR` (422), `TOO_MANY_REQUESTS` (429),
+`INTERNAL_SERVER_ERROR` (500), `DOWNSTREAM_UNAVAILABLE` (503), `DOWNSTREAM_TIMEOUT` (504), unless an endpoint
+documents a more precise one. Every error also names the service it comes from in `pipeline_last_stage`.
+`400` = the request or the document is unusable (do not retry unchanged). `503` / `504` are safe to retry.
 
 **request_id.** Minted by the central orchestrator and carried through every stage. Where an endpoint has
 no request_id of its own, the `X-Request-ID` request header is used (and echoed in the response header);
 without it the service generates one.
 
-**Asynchronous stages** (internal: only the orchestrator NPWP and the previous stage call them). `POST
+**Asynchronous stages** (internal: only the orchestrator and the previous stage call them). `POST
 .../jobs` answers `202` immediately and does the work in the background. The outcome is reported by a
 callback to the central orchestrator (see *Webhooks*), and can be read at any time with
-`GET .../jobs/{request_id}`, which the orchestrator NPWP's `GET /v1/extract-ocr/{request_id}` combines
+`GET .../jobs/{request_id}`, which the orchestrator's `GET /v1/extract-ocr/{request_id}` combines
 over the three stages. Submitting the same request_id again is idempotent:
 `202` with `duplicate: true`, the work is not repeated, unless the earlier attempt `FAILED` or has been
 `PROCESSING` for longer than the job lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default: the
@@ -92,7 +96,7 @@ def create_app(
 ) -> FastAPI:
     """Build the app of a service with everything every service has in common; see the module docstring.
 
-    `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator NPWP): its
+    `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator): its
     OpenAPI `servers` then start with the release's entry Service, the address the central orchestrator
     uses."""
     configure_logging(fmt=settings.effective_log_format, level=settings.log_level, service=service_name)
@@ -115,6 +119,8 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = settings
+    # Named in every error answer (`pipeline_last_stage`), so a caller knows which service the error comes from.
+    app.state.service_name = service_name
     if settings.auth_disabled:
         logging.getLogger(__name__).warning(
             "AUTH_DISABLED=true: X-API-Key is NOT checked on this service; only for local development"
@@ -128,6 +134,8 @@ def create_app(
     )
     for router in routers:
         app.include_router(router)
+    if service_name:
+        _name_the_service_in_error_examples(app, service_name)
     return app
 
 
@@ -176,7 +184,7 @@ def add_stage_callback_webhook(app: FastAPI, *, body_model: type, sent: str) -> 
             "**Expected answer.** Any `2xx`; the body is ignored. `5xx`, a timeout or an unreachable host are "
             "retried (3 attempts by default, exponential back-off from 0.5 s). A `4xx` is NOT retried. A "
             "callback that still fails is logged and dropped: the job itself stays `DONE` / `FAILED`, so the "
-            "orchestrator can reconcile with the orchestrator NPWP's `GET /v1/extract-ocr/{request_id}` and "
+            "orchestrator can reconcile with its own `GET /v1/extract-ocr/{request_id}` and "
             "should time a request out on its own. "
             "With `PIPELINE_OUTBOX` the callback is instead queued in the same transaction as the result and "
             "retried with back-off (up to 5 minutes apart) for up to `PIPELINE_OUTBOX_MAX_AGE_SECONDS` (24 h by "
@@ -307,32 +315,74 @@ def _health_router(
     return router
 
 
+def _error_body(
+    request: Request, status_code: int, message: str, code: str, exc: Exception | None = None
+) -> dict[str, Any]:
+    """The error envelope, plus `pipeline_last_stage`: the service the error comes from. That is the service
+    named by the exception (an error of another service this one called), else this service. Ported from nilam."""
+    return {
+        **envelope(status_code, message, None, get_request_id(request), errors=code),
+        "pipeline_last_stage": getattr(exc, "service", None) or getattr(request.app.state, "service_name", None),
+    }
+
+
+def _name_the_service_in_error_examples(app: FastAPI, service_name: str) -> None:
+    """The OpenAPI error examples as the handlers answer: with `pipeline_last_stage`, this service's name when
+    the example does not name another one."""
+    generate = app.openapi
+
+    def label(example: Any) -> None:
+        if isinstance(example, dict) and "status_code" in example and example.get("pipeline_last_stage") is None:
+            example["pipeline_last_stage"] = service_name
+
+    def openapi() -> dict[str, Any]:
+        fresh = app.openapi_schema is None
+        schema = generate()
+        if fresh:
+            for methods in schema.get("paths", {}).values():
+                for operation in methods.values():
+                    for code, response in operation.get("responses", {}).items():
+                        if not code.startswith(("4", "5")):
+                            continue
+                        for media in response.get("content", {}).values():
+                            label(media.get("example"))
+                            for named in media.get("examples", {}).values():
+                                label(named.get("value"))
+        return schema
+
+    app.openapi = openapi  # ty: ignore[invalid-assignment]
+
+
 def _register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(ServiceError)
     async def service_error_handler(request: Request, exc: ServiceError):
         """Every domain error carries its HTTP status; this is the one place it becomes a response, so
         routes raise and never translate."""
-        request_id = get_request_id(request)
         if exc.status_code >= 500:
             logger.error("%s %s -> %d: %s", request.method, request.url.path, exc.status_code, exc.message)
         return JSONResponse(
             status_code=exc.status_code,
-            content=envelope(exc.status_code, exc.message, None, request_id, errors=exc.message),
+            content=_error_body(request, exc.status_code, exc.message, error_code(exc.status_code, exc.code), exc),
         )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        request_id = get_request_id(request)
+        """Starlette's own, so the router's 404 (no such path) and 405 (wrong method) answer in the envelope too."""
         return JSONResponse(
             status_code=exc.status_code,
-            content=envelope(exc.status_code, str(exc.detail), None, request_id, errors=str(exc.detail)),
+            content=_error_body(request, exc.status_code, str(exc.detail), error_code(exc.status_code)),
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_error_handler(request: Request, exc: Exception):
+        """A bug or an error nobody translated: logged with its traceback, answered in the envelope without
+        its details."""
+        logger.exception("%s %s crashed", request.method, request.url.path, exc_info=exc)
+        return JSONResponse(
+            status_code=500, content=_error_body(request, 500, "Internal server error", error_code(500))
         )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
-        request_id = get_request_id(request)
         message = "; ".join(f"{'.'.join(str(loc) for loc in err['loc'])}: {err['msg']}" for err in exc.errors())
-        return JSONResponse(
-            status_code=422,
-            content=envelope(422, message, None, request_id, errors="VALIDATION_ERROR"),
-        )
+        return JSONResponse(status_code=422, content=_error_body(request, 422, message, "VALIDATION_ERROR"))
