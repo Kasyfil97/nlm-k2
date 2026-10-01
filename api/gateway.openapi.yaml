@@ -123,7 +123,7 @@ paths:
         of a PDF only the first page is judged and read.
 
 
-        **Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `ekstraksi`,
+        **Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `extraction`,
         `structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing
         in the middle may be skipped and the order may not change (else `422` `INVALID_PIPELINE_SEQUENCE`
         and nothing runs). Omitted: all four. The last one ends the request and its result is `data`,

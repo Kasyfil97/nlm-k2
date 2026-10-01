@@ -289,7 +289,7 @@ def _parse_params(raw: str | None) -> Any:
         f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and a PDF with more than "
         "`MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message` the client can show "
         "as is. JPEG, PNG and PDF are accepted; of a PDF only the first page is judged and read.\n\n"
-        "**Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `ekstraksi`, "
+        "**Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `extraction`, "
         "`structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing in "
         f"the middle may be skipped and the order may not change (else `422` `{INVALID_SEQUENCE_CODE}` and "
         "nothing runs). Omitted: all four. The last one ends the request and its result is `data`, as it is: the "
