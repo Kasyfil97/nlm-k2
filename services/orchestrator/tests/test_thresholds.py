@@ -147,7 +147,10 @@ def test_guardrails_tendency_names_the_side(client, auth, stub_guardrails, tende
         ({"guardrails_tendency": "accepted"}, "needs guardrails_confidence_threshold"),
         ({"guardrails_confidence_threshold": '{"other": 0.5}'}, "acc_rej"),
         ({"guardrails_confidence_threshold": '{"acc_rej": 1}'}, "between 0 and 1"),
-        ({"guardrails_confidence_threshold": '{"acc_rej": 0.5}', "guardrails_tendency": "maybe"}, "accepted or rejected"),
+        (
+            {"guardrails_confidence_threshold": '{"acc_rej": 0.5}', "guardrails_tendency": "maybe"},
+            "accepted or rejected",
+        ),
         ({"guardrails_confidence_threshold": "1", "guardrails_tendency": "accepted"}, "between 0 and 1"),
         ({"guardrails_confidence_threshold": "tinggi", "guardrails_tendency": "accepted"}, "between 0 and 1"),
         ({"guardrails_confidence_threshold": "0.5", "guardrails_tendency": "maybe"}, "accepted or rejected"),

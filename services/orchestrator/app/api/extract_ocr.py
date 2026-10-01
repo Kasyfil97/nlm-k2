@@ -224,7 +224,9 @@ def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> Guar
     except (TypeError, ValueError):
         threshold = float("nan")
     if not 0 < threshold < 1:
-        raise _InvalidThreshold(f"guardrails_confidence_threshold.acc_rej must be a number between 0 and 1, got {raw!r}")
+        raise _InvalidThreshold(
+            f"guardrails_confidence_threshold.acc_rej must be a number between 0 and 1, got {raw!r}"
+        )
     if tendency not in TENDENCIES:
         raise _InvalidThreshold(f"guardrails_tendency must be accepted or rejected, got {tendency!r}")
     return GuardrailsThreshold(threshold, TENDENCIES[tendency])
@@ -287,7 +289,7 @@ def _parse_params(raw: str | None) -> Any:
         f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and a PDF with more than "
         "`MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message` the client can show "
         "as is. JPEG, PNG and PDF are accepted; of a PDF only the first page is judged and read.\n\n"
-        "**Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `ekstraksi`, "
+        "**Which services run.** `pipeline_name_sequence` names them, in order, from `guardrails`, `extraction`, "
         "`structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing in "
         f"the middle may be skipped and the order may not change (else `422` `{INVALID_SEQUENCE_CODE}` and "
         "nothing runs). Omitted: all four. The last one ends the request and its result is `data`, as it is: the "
@@ -407,9 +409,9 @@ async def extract_ocr(
     guardrails_tendency: str | None = Form(
         None,
         description=(
-            "Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`): `accepted` (the document passes when its "
-            "probability of being good, `1 - probability_bad`, reaches it) or `rejected` (it is rejected when "
-            "`probability_bad` reaches it)"
+            "Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`): `accepted` "
+            "(the document passes when its probability of being good, `1 - probability_bad`, reaches it) "
+            "or `rejected` (it is rejected when `probability_bad` reaches it)"
         ),
         examples=["accepted"],
     ),
