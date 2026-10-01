@@ -225,7 +225,9 @@ def parse_column_thresholds(value: Any) -> dict[str, float] | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise ValueError('column_confidence_threshold must be a JSON object, e.g. {"all_field": 0.8} or {"no_kk": 0.9, "nik": 0.8}')
+        raise ValueError(
+            'column_confidence_threshold must be a JSON object, e.g. {"all_field": 0.8} or {"no_kk": 0.9, "nik": 0.8}'
+        )
     unknown = sorted(set(value) - set(CONTRACT_FIELDS) - {ALL_FIELD})
     if unknown:
         raise ValueError(
