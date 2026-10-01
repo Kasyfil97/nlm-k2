@@ -30,7 +30,7 @@ PLACEHOLDER_API_KEYS = frozenset(
 class BaseServiceSettings(BaseSettings):
     """Settings shared by all services: API keys, environment, upload limits, `file_url` policy, logging."""
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", populate_by_name=True)
+    model_config = SettingsConfigDict(env_file=(".env", ".env.local"), extra="ignore", populate_by_name=True)
 
     api_key: str = Field(..., min_length=1)
     api_keys: str = ""
@@ -38,6 +38,13 @@ class BaseServiceSettings(BaseSettings):
 
     log_format: Literal["json", "text"] | None = None
     log_level: str = "INFO"
+
+    elasticsearch_enabled: bool = False
+    elasticsearch_url: str | None = None
+    elasticsearch_index: str = "ocr-logs"
+    elasticsearch_api_key: str | None = None
+    elasticsearch_username: str | None = None
+    elasticsearch_password: str | None = None
 
     environment: Environment = "production"
     service_base_url: str | None = None
@@ -166,6 +173,14 @@ class BaseServiceSettings(BaseSettings):
                     f"characters ({shown}), which is how a shared example secret reaches a deployed "
                     f"environment. Set a real key when ENVIRONMENT={self.environment}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _guard_elasticsearch(self) -> Self:
+        if self.elasticsearch_enabled and not self.elasticsearch_url:
+            raise ValueError(
+                "ELASTICSEARCH_URL must be set when ELASTICSEARCH_ENABLED=true"
+            )
         return self
 
     @model_validator(mode="after")

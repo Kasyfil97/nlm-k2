@@ -99,7 +99,16 @@ def create_app(
     `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator): its
     OpenAPI `servers` then start with the release's entry Service, the address the central orchestrator
     uses."""
-    configure_logging(fmt=settings.effective_log_format, level=settings.log_level, service=service_name)
+    configure_logging(
+        fmt=settings.effective_log_format,
+        level=settings.log_level,
+        service=service_name,
+        elasticsearch_url=settings.elasticsearch_url if settings.elasticsearch_enabled else None,
+        elasticsearch_index=settings.elasticsearch_index,
+        elasticsearch_api_key=settings.elasticsearch_api_key,
+        elasticsearch_username=settings.elasticsearch_username,
+        elasticsearch_password=settings.elasticsearch_password,
+    )
 
     servers: list[dict[str, Any]] = [{"url": "/", "description": "This host (where this page is served)"}]
     if settings.service_base_url:

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 db = ["sqlalchemy>=2.0", "greenlet>=3.0"]
+elastic = ["elasticsearch>=8.0,<9"]  # pinned in requirements.txt: elasticsearch==8.19.3
 
 [tool.setuptools.packages.find]
 include = ["ocr_common*"]
