@@ -1439,8 +1439,9 @@ components:
             the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
-            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
-            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
+            threshold for every field; a key for a single field overrides it. A field left out (or the
+            whole map omitted) uses the trust model''s own threshold for that field; a field the model
             has none for (`no_kk`) is then `0`'
           examples:
           - nik: 0.8

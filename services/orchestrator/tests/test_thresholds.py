@@ -122,6 +122,14 @@ def test_without_a_guardrails_threshold_the_services_own_holds(client, auth, stu
     assert guardrails_log.records[0]["threshold_from_request"] is False
 
 
+def test_the_acc_rej_object_applies_to_the_rejected_side_by_default(client, auth, stub_guardrails):
+    response = _submit(client, auth, guardrails_confidence_threshold='{"acc_rej": 0.8}')
+
+    assert response.status_code == 200
+    [threshold] = stub_guardrails.thresholds
+    assert (threshold.value, threshold.target) == (0.8, "reject")
+
+
 @pytest.mark.parametrize(
     ("tendency", "target"),
     [("accepted", "accept"), ("rejected", "reject"), ("ACCEPT", "accept"), (" reject ", "reject")],
@@ -135,8 +143,11 @@ def test_guardrails_tendency_names_the_side(client, auth, stub_guardrails, tende
 @pytest.mark.parametrize(
     ("form", "reason"),
     [
-        ({"guardrails_confidence_threshold": "0.5"}, "together, or neither"),
-        ({"guardrails_tendency": "accepted"}, "together, or neither"),
+        ({"guardrails_confidence_threshold": "0.5"}, "acc_rej"),
+        ({"guardrails_tendency": "accepted"}, "needs guardrails_confidence_threshold"),
+        ({"guardrails_confidence_threshold": '{"other": 0.5}'}, "acc_rej"),
+        ({"guardrails_confidence_threshold": '{"acc_rej": 1}'}, "between 0 and 1"),
+        ({"guardrails_confidence_threshold": '{"acc_rej": 0.5}', "guardrails_tendency": "maybe"}, "accepted or rejected"),
         ({"guardrails_confidence_threshold": "1", "guardrails_tendency": "accepted"}, "between 0 and 1"),
         ({"guardrails_confidence_threshold": "tinggi", "guardrails_tendency": "accepted"}, "between 0 and 1"),
         ({"guardrails_confidence_threshold": "0.5", "guardrails_tendency": "maybe"}, "accepted or rejected"),

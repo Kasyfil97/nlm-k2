@@ -795,18 +795,19 @@ components:
           - type: string
           - type: 'null'
           title: Guardrails Confidence Threshold
-          description: 'Guardrails threshold for this document, between 0 and 1 (exclusive), with `guardrails_tendency`.
-            Omitted: the guardrails service''s own threshold'
+          description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
+            with the value between 0 and 1 (exclusive). Applies to the rejected side unless `guardrails_tendency`
+            says otherwise. Omitted: the guardrails service''s own threshold'
           examples:
-          - '0.3'
+          - '{"acc_rej": 0.8}'
         guardrails_tendency:
           anyOf:
           - type: string
           - type: 'null'
           title: Guardrails Tendency
-          description: 'The side `guardrails_confidence_threshold` applies to: `accepted` (the document
-            passes when its probability of being good, `1 - probability_bad`, reaches it) or `rejected`
-            (it is rejected when `probability_bad` reaches it)'
+          description: 'Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`):
+            `accepted` (the document passes when its probability of being good, `1 - probability_bad`,
+            reaches it) or `rejected` (it is rejected when `probability_bad` reaches it)'
           examples:
           - accepted
         column_confidence_threshold:
@@ -818,11 +819,12 @@ components:
             the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
-            `ayah`, `ibu`), a member field''s threshold applying to every member. A field left out (or
-            the whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
+            threshold for every field; a key for a single field overrides it. A field left out (or the
+            whole map omitted) uses the trust model''s own threshold for that field; a field the model
             has none for (`no_kk`) is then `0`. A JSON object string'
           examples:
-          - '{"no_kk": 0.9, "nik": 0.8}'
+          - '{"all_field": 0.8}'
       type: object
       required:
       - request_id
