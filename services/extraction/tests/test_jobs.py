@@ -280,8 +280,8 @@ def test_without_a_sequence_the_full_pipeline_runs_and_none_is_stored(harness, a
         '["guardrails"]',
         '["structuring", "scoring"]',
         '["extraction", "scoring"]',
-        '["extraction"]',
-        '"extraction"',
+        '["ocr"]',
+        '"ocr"',
         "not json",
     ],
 )
