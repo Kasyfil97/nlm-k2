@@ -50,7 +50,7 @@ def test_localhost_threshold_source_is_refused_outside_local():
 def test_settings_of_the_pipeline_are_ignored(monkeypatch):
     """The entry-point and stage settings live in other services; an environment that still sets
     them (an old ConfigMap, a shared .env) must not stop guardrails from starting."""
-    monkeypatch.setenv("EKSTRAKSI_SERVICE_URL", "http://127.0.0.1:8042")
+    monkeypatch.setenv("EXTRACTION_SERVICE_URL", "http://127.0.0.1:8042")
     monkeypatch.setenv("PIPELINE_WAIT_SECONDS", "15")
     monkeypatch.setenv("DATABASE_URL", "postgresql://nowhere/db")
     settings = _deployed()

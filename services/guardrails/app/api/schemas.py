@@ -1,7 +1,7 @@
 """The response shape of §5.2.
 
 These mirror `ocr_common.pipeline.schemas.GuardrailsDocument` / `GuardrailsResult`, which are frozen:
-the same block is what the orchestrator forwards to `/v1/ekstraksi/jobs` and what reaches scoring
+the same block is what the orchestrator forwards to `/v1/extraction/jobs` and what reaches scoring
 unchanged. They are restated here rather than imported because this is the *producing* end and its
 fields are required, while the pipeline copies are permissive by design -- they have to survive a
 field being added upstream.

@@ -76,7 +76,7 @@ def test_the_full_sequence_is_handed_on_to_scoring(harness, auth):
 
 
 @pytest.mark.parametrize(
-    "sequence", [["guardrails", "extraction"], ["extraction", "scoring"], ["scoring"], ["ekstraksi", "structuring"]]
+    "sequence", [["guardrails", "extraction"], ["extraction", "scoring"], ["scoring"], ["extraction", "structuring"]]
 )
 def test_a_sequence_without_this_stage_or_out_of_order_is_422(harness, auth, sequence):
     client, _, _ = harness

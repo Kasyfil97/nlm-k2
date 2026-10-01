@@ -1,5 +1,5 @@
 ---
-title: "feat: nlm-k2 orchestrator, guardrails, dan ekstraksi"
+title: "feat: nlm-k2 orchestrator, guardrails, dan extraction"
 type: feat
 status: active
 date: 2026-09-26
@@ -7,13 +7,13 @@ deepened: 2026-09-26
 origin: docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md
 ---
 
-# feat: nlm-k2 orchestrator, guardrails, dan ekstraksi
+# feat: nlm-k2 orchestrator, guardrails, dan extraction
 
 ## Overview
 
 Membangun `nlm-k2` — pipeline OCR Kartu Keluarga — sebagai salinan-dan-adaptasi dari
 `nilam-ocr-npwp`. Lima service FastAPI di port 8040–8044 berbagi `libs/ocr_common`. Batch ini
-mengerjakan orchestrator, guardrails, dan ekstraksi dengan tiga agen paralel; structuring dan
+mengerjakan orchestrator, guardrails, dan extraction dengan tiga agen paralel; structuring dan
 scoring hadir sebagai stub supaya seluruh siklus 202→200 bisa diuji.
 
 Pekerjaan dibagi tiga fase: fondasi serial oleh integrator, tiga agen paralel, integrasi serial.
@@ -54,7 +54,7 @@ menyebut requirement yang dimajukannya. Kriteria sukses yang harus dipenuhi di a
 ## Scope Boundaries
 
 - Aturan structuring KK sungguhan (port `K2Regex-v2`) dan trust model scoring: stub.
-- Backend ML asli guardrails dan ekstraksi: sasaran, bukan syarat selesai (origin R20a).
+- Backend ML asli guardrails dan extraction: sasaran, bukan syarat selesai (origin R20a).
 - Enkripsi PII §8.5 ditunda dengan pagar R27.
 - Tidak ada deploy; `deploy/` dan `.github/` tetap lolos gerbang R6.
 - `tools/tracker` dan `tools/load-tester` tidak disalin.
@@ -69,8 +69,8 @@ hasil+outcome+outbox dalam satu transaksi, relay outbox, dan reaper job basi den
 lima hal: konstanta `stage`, `table_prefix`, factory coroutine `Work`, opsional pembangun
 `HandoffPayload` + nama `next_stage`, dan `resume(request_id, input)`.
 
-Contoh kerja: `services/ekstraksi/app/dependencies.py` dan
-`services/ekstraksi/app/services/job_service.py`.
+Contoh kerja: `services/extraction/app/dependencies.py` dan
+`services/extraction/app/services/job_service.py`.
 
 `build_stage_pipeline(settings, *, stage, table_prefix, next_stage=None, testing=False)` membangun
 `SqlOutbox` (hanya bila `PIPELINE_OUTBOX` **dan** `DATABASE_URL`), repository job, dan penulis
@@ -216,7 +216,7 @@ flowchart TB
     U6 --> G
     G --> U7["Unit 7 · orchestrator"]
     G --> U8["Unit 8 · guardrails"]
-    G --> U9["Unit 9 · ekstraksi"]
+    G --> U9["Unit 9 · extraction"]
     U7 --> U10["Unit 10 · integrasi"]
     U8 --> U10
     U9 --> U10
@@ -467,7 +467,7 @@ dikerjakan sebagai pertahanan berlapis, bukan sebagai judulnya.
   berdetak selamanya, tidak pernah dipanen, dan tidak pernah menulis keadaan akhir — menukar bug
   korupsi data dengan bug liveness, dan diam-diam melemahkan kriteria sukses batch ini.
 - Detak berjalan di event loop, jadi ia hanya berdetak kalau `work()` melepaskan loop. Itu berlaku
-  hari ini karena setiap backend ekstraksi nilam adalah klien HTTP, tetapi Unit 9 menggantinya
+  hari ini karena setiap backend extraction nilam adalah klien HTTP, tetapi Unit 9 menggantinya
   dengan model dalam proses — lihat catatan di Unit 9.
 
 **Execution note:** Mulai dari uji regresi yang gagal, digerakkan lewat jalur dead letter relay —
@@ -593,8 +593,8 @@ seluruh siklus bisa diuji.
   override ambang per service.
 - Seluruh nilai dibangkitkan, tidak disalin dari kartu sungguhan.
 
-**Patterns to follow:** `services/ekstraksi/app/ml/mock.py` dan `ml/base.py` sebagai bentuk backend;
-`services/ekstraksi/app/services/job_service.py` sebagai perakitan tahap. Structuring adalah
+**Patterns to follow:** `services/extraction/app/ml/mock.py` dan `ml/base.py` sebagai bentuk backend;
+`services/extraction/app/services/job_service.py` sebagai perakitan tahap. Structuring adalah
 **satu-satunya** tahap yang menyediakan hook `rejection`, dan isinya tiga baris
 (`structuring.get("reject_reason") or None`). Scoring adalah tahap terminal: tanpa `next_stage` dan
 tanpa `handoff_payload`, melainkan `callback_result=final` dan
@@ -645,7 +645,7 @@ tersisa di kedua service.
 **Dependencies:** Unit 1
 
 **Files:**
-- Modify: `Makefile` (`lock-check-<service>` per service; `lock-ekstraksi` dipecah dari aturan pola
+- Modify: `Makefile` (`lock-check-<service>` per service; `lock-extraction` dipecah dari aturan pola
   bersamanya agar bisa memuat indeks PyTorch; `lint`/`format --check` berlingkup pohon),
   `docker-compose.yml` **dan `docker-compose.db.yml`**, `services/*/.env.example`.
   Nama proyek compose saja tidak cukup: setiap service menyetel `container_name:` eksplisit, dan
@@ -714,7 +714,7 @@ contohnya. Ditambah target `make env`.
 **Files:**
 - Modify: `services/orchestrator/app/api/extract_ocr.py`, `api/extract_contract.py`, `api/schemas.py`,
   `app/services/extract_service.py`, `app/services/document_checks.py`, `app/services/pipeline_waiter.py`,
-  `app/clients/{guardrails,ekstraksi,stages}.py`, `app/config.py`
+  `app/clients/{guardrails,extraction,stages}.py`, `app/config.py`
 - Test: `services/orchestrator/tests/`
 
 **Approach:**
@@ -734,7 +734,7 @@ contohnya. Ditambah target `make env`.
   ke kolektor pihak ketiga; lihat `docs/decisions/2026-09-26-keputusan-fase-0.md`.
 
 **Patterns to follow:** `app/api/extract_ocr.py:86` `_CONTRACT_TABLE` untuk menyuntikkan matriks §3.2
-ke OpenAPI; `app/clients/ekstraksi.py` untuk bentuk klien tahap.
+ke OpenAPI; `app/clients/extraction.py` untuk bentuk klien tahap.
 
 **Test scenarios:**
 - Happy path: unggahan gambar valid → 200 dengan sembilan field §3.3 dan `anggota_keluarga` sepanjang
@@ -840,14 +840,14 @@ torch.
 - Error path: `FILE_URL_ALLOWED_HOSTS` kosong dan `GUARDRAILS_FETCH_URL=true` → service menolak start
   di luar `ENVIRONMENT=local`.
 - Integration: blok `data` yang dikembalikan diteruskan apa adanya oleh orchestrator ke
-  `/v1/ekstraksi/jobs` dan tiba di scoring tanpa berubah.
+  `/v1/extraction/jobs` dan tiba di scoring tanpa berubah.
 
 **Verification:** Definisi selesai R24 terpenuhi dengan backend `mock`; backend asli lulus uji
 terpisah bila bobotnya tersedia (R20a — bukan syarat selesai).
 
 ---
 
-- [x] **Unit 9: Ekstraksi (agen C, port 8042)**
+- [x] **Unit 9: Extraction (agen C, port 8042)**
 
 **Goal:** Tahap OCR menerima job asinkron, menghasilkan `{text, score, poly}`, dan menyerahkannya ke
 structuring lewat outbox.
@@ -857,18 +857,18 @@ structuring lewat outbox.
 **Dependencies:** Gerbang R6 (khususnya bentuk §7.1 yang dibekukan Unit 2)
 
 **Files:**
-- Modify: `services/ekstraksi/app/api/jobs.py`, `api/ekstraksi.py`, `api/schemas.py`,
-  `app/services/{ekstraksi_service,job_service}.py`, `app/ml/{base,mock,remote}.py`, `app/config.py`,
+- Modify: `services/extraction/app/api/jobs.py`, `api/extraction.py`, `api/schemas.py`,
+  `app/services/{extraction_service,job_service}.py`, `app/ml/{base,mock,remote}.py`, `app/config.py`,
   `app/dependencies.py`
-- Create: `services/ekstraksi/app/ml/kk_ocr.py`
-- Delete: `services/ekstraksi/app/ml/paddle.py` (diganti backend KK)
-- Test: `services/ekstraksi/tests/`
+- Create: `services/extraction/app/ml/kk_ocr.py`
+- Delete: `services/extraction/app/ml/paddle.py` (diganti backend KK)
+- Test: `services/extraction/tests/`
 
 **Approach:**
-- Tidak ada endpoint ekstraksi sinkron — §11 mendaftarkannya untuk structuring dan scoring saja.
+- Tidak ada endpoint extraction sinkron — §11 mendaftarkannya untuk structuring dan scoring saja.
 - Backend `mock` selesai dan lulus uji lebih dulu; agen A dan R25 bergantung padanya.
 - **Model dalam proses berjalan di luar event loop.** `stage.py:156` mengerjakan
-  `result = dict(await work())` di loop, dan setiap backend ekstraksi nilam selama ini klien HTTP
+  `result = dict(await work())` di loop, dan setiap backend extraction nilam selama ini klien HTTP
   (`app/ml/paddle.py` adalah pembungkus `RemoteModelClient`), sehingga loop selalu bebas. Unit ini
   menghapus berkas itu dan membuat `kk_ocr.py` dalam proses. Kalau inferensinya dipanggil sinkron di
   dalam `work()`, task detak Unit 3 tidak bisa berdetak — dan pembenarannya justru inferensi panjang.
@@ -888,7 +888,7 @@ structuring lewat outbox.
 `app/ml/base.py` sebagai antarmuka backend; `ocr_common/simulation.py` untuk hook nama berkas.
 
 **Test scenarios:**
-- Happy path: `POST /v1/ekstraksi/jobs` dengan berkas → 202, lalu `GET /v1/ekstraksi/jobs/{id}`
+- Happy path: `POST /v1/extraction/jobs` dengan berkas → 202, lalu `GET /v1/extraction/jobs/{id}`
   menunjukkan `DONE` dengan `texts`, `text_regions_count`, `avg_doc_score`, `min_doc_score`.
 - Happy path: `poly` selalu 4 titik × 2 koordinat.
 - Edge case: `request_id` yang sama dikirim dua kali → `duplicate: true`, satu job (§2.5, §6.2).
@@ -958,7 +958,7 @@ structuring lewat outbox.
 
 ## System-Wide Impact
 
-- **Interaction graph:** Orchestrator → guardrails (sinkron) dan → ekstraksi (job). Ketiga tahap →
+- **Interaction graph:** Orchestrator → guardrails (sinkron) dan → extraction (job). Ketiga tahap →
   outbox → tahap berikutnya. Ketiga tahap → tabel outcome milik Orkestrasi pusat. Reaper dan relay
   berjalan per proses di tiap tahap. Orchestrator membaca ketiga tahap lewat API, tidak lewat database.
 - **Error propagation:** Penolakan adalah job `DONE` dengan `reject_reason` di muatan hasil — bukan
@@ -1030,7 +1030,7 @@ structuring lewat outbox.
 - **Ukuran dan sumber bobot `.pth`**, dan apakah backend asli memakai `fullpytorch` atau PaddleOCR
   native (R18). Perlu menjalankan keduanya untuk dibandingkan.
 - **Penanggung jawab orientasi dan pelurusan** pada jalur torch (R18b).
-- **Apakah backend `remote` dipertahankan** di guardrails dan ekstraksi, atau dibuang di keduanya.
+- **Apakah backend `remote` dipertahankan** di guardrails dan extraction, atau dibuang di keduanya.
 - **Apakah peran Orkestrasi pusat bisa dibatasi nlm-k2** atau merupakan peran pemilik — menentukan
   apakah matriks R28 bisa ditegakkan di baseline atau harus jadi kesepakatan lintas tim.
 - **Isi minimum `result_data`** yang dibutuhkan Orkestrasi pusat; posisi bawaan nlm-k2 sembilan field

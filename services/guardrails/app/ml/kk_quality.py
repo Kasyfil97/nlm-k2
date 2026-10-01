@@ -202,7 +202,7 @@ def render_pdf_first_page(content: bytes, dpi: int = PDF_RENDER_DPI) -> bytes:
     """Rasterise page 1 of a PDF to PNG bytes, at the DPI the CNN was trained on.
 
     A Kartu Keluarga is one page, so only the first one is ever looked at -- the same page
-    ekstraksi reads. The orchestrator has already refused a PDF above `MAX_DOCUMENT_PAGES`.
+    extraction reads. The orchestrator has already refused a PDF above `MAX_DOCUMENT_PAGES`.
     """
     import fitz  # ty: ignore[unresolved-import]
 

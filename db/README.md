@@ -14,7 +14,7 @@ membaca apa.
 
 | Tabel | Pemilik schema | Ditulis | Dibaca | Isi |
 |---|---|---|---|---|
-| `ocr_jobs`, `ocr_results` | **repo ini** | ekstraksi | ekstraksi (`GET /v1/ekstraksi/jobs/{request_id}`), orchestrator lewat API itu | status dan hasil tahap OCR |
+| `ocr_jobs`, `ocr_results` | **repo ini** | extraction | extraction (`GET /v1/extraction/jobs/{request_id}`), orchestrator lewat API itu | status dan hasil tahap OCR |
 | `structuring_jobs`, `structuring_results` | **repo ini** | structuring | structuring lewat API-nya (orchestrator) | status dan field hasil structuring |
 | `scoring_jobs`, `scoring_results` | **repo ini** | scoring | scoring lewat API-nya (orchestrator) | status dan skor trust model |
 | `pipeline_outbox` | **repo ini** | ketiga tahap (dalam transaksi job), relay | relay tiap service, `GET /v1/<tahap>/outbox` | callback dan handoff yang belum terkirim (`PIPELINE_OUTBOX`). Baris dihapus setelah terkirim; yang gagal permanen (4xx, atau 5xx lebih lama dari `PIPELINE_OUTBOX_MAX_AGE_SECONDS`) tetap ada sebagai dead letter dengan `failed_at` + `last_error`, tidak pernah diambil lagi oleh relay, dan dilepas manual dengan `failed_at = NULL, next_attempt_at = now()`. `ds` dipakai untuk membersihkan dead letter lama |
@@ -34,7 +34,7 @@ dibatasi, peran Orkestrasi pusat di database yang sama tetap bisa membaca setiap
 
 | Peran | `ocr_*` | `structuring_*` | `scoring_*` | `pipeline_outbox` | tabel outcome | `guardrails_results` |
 |---|---|---|---|---|---|---|
-| ekstraksi | SELECT, INSERT, UPDATE | — | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
+| extraction | SELECT, INSERT, UPDATE | — | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
 | structuring | SELECT (baca hasil hulu) | SELECT, INSERT, UPDATE | — | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
 | scoring | SELECT | SELECT | SELECT, INSERT, UPDATE | SELECT, INSERT, UPDATE, DELETE | INSERT, UPDATE | — |
 | orchestrator | — | — | — | — | — | SELECT, INSERT |

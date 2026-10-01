@@ -1,4 +1,4 @@
-"""The `kk_regex` structurer: the K2Regex-v2 layout parser, reading the boxes ekstraksi produced.
+"""The `kk_regex` structurer: the K2Regex-v2 layout parser, reading the boxes extraction produced.
 
 This is the backend the `mock` one stood in for. Everything it returns is derived from the OCR boxes
 of the submitted image -- which is the whole point, and is exactly what `mock` could not do: `mock`

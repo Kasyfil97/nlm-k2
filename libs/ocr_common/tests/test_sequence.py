@@ -43,7 +43,7 @@ def test_guardrails_may_be_left_out_and_the_end_cut_off(sequence):
         (["extraction", "guardrails"], "without skipping one in the middle"),
         (["guardrails", "guardrails", "extraction"], "listed twice"),
         # nilam's name for the stage is not this repo's: refused rather than silently mapped.
-        (["guardrails", "ekstraksi"], "unknown service 'ekstraksi'"),
+        (["guardrails", "extraction"], "unknown service 'extraction'"),
     ],
 )
 def test_a_skipped_middle_a_wrong_order_or_an_unknown_name_is_refused(sequence, reason):

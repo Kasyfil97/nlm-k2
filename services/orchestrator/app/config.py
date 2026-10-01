@@ -18,9 +18,9 @@ class Settings(BaseServiceSettings):
     # team 23 Sep 2026; only the first is read). MAX_UPLOAD_BYTES (413) is checked here too.
     max_document_pages: int = Field(2, ge=1)
 
-    ekstraksi_service_url: str = "http://127.0.0.1:8042"
-    ekstraksi_api_key: str | None = None
-    ekstraksi_timeout_seconds: float = 10.0
+    extraction_service_url: str = "http://127.0.0.1:8042"
+    extraction_api_key: str | None = None
+    extraction_timeout_seconds: float = 10.0
     structuring_service_url: str = "http://127.0.0.1:8043"
     structuring_api_key: str | None = None
     structuring_timeout_seconds: float = 10.0
@@ -70,7 +70,7 @@ class Settings(BaseServiceSettings):
         # All four always: GET /v1/extract-ocr/{request_id} reads the stages even when POST does not wait.
         self.reject_localhost_outside_local(
             guardrails_service_url=self.guardrails_service_url,
-            ekstraksi_service_url=self.ekstraksi_service_url,
+            extraction_service_url=self.extraction_service_url,
             structuring_service_url=self.structuring_service_url,
             scoring_service_url=self.scoring_service_url,
         )

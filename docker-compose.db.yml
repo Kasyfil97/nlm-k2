@@ -10,7 +10,7 @@ x-database: &database
 services:
   orchestrator:
     <<: *database
-  ekstraksi:
+  extraction:
     <<: *database
   structuring:
     <<: *database

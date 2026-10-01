@@ -21,14 +21,14 @@ services:
     environment:
       PORT: "8040"
       GUARDRAILS_SERVICE_URL: http://guardrails:8041
-      EKSTRAKSI_SERVICE_URL: http://ekstraksi:8042
+      EXTRACTION_SERVICE_URL: http://extraction:8042
       STRUCTURING_SERVICE_URL: http://structuring:8043
       SCORING_SERVICE_URL: http://scoring:8044
     ports:
       - "127.0.0.1:${ORCHESTRATOR_HOST_PORT:-8040}:8040"
     depends_on:
       - guardrails
-      - ekstraksi
+      - extraction
 
   guardrails:
     <<: *common
@@ -69,17 +69,24 @@ services:
     ports:
       - "127.0.0.1:${SCORING_HOST_PORT:-8044}:8044"
 
-  ekstraksi:
+  extraction:
     <<: *common
     build:
       context: .
-      dockerfile: services/ekstraksi/Dockerfile
-    image: nlm-k2-ekstraksi:latest
-    env_file: services/ekstraksi/.env
+      dockerfile: services/extraction/Dockerfile
+    image: nlm-k2-extraction:latest
+    env_file: services/extraction/.env
     environment:
       PORT: "8042"
       STRUCTURING_SERVICE_URL: http://structuring:8043
     ports:
-      - "127.0.0.1:${EKSTRAKSI_HOST_PORT:-8042}:8042"
+      - "127.0.0.1:${EXTRACTION_HOST_PORT:-8042}:8042"
     depends_on:
       - structuring
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16

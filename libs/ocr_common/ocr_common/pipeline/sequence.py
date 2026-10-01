@@ -17,15 +17,15 @@ from typing import Any
 from ocr_common.pipeline.stage import STAGE_OCR, STAGE_SCORING, STAGE_STRUCTURING, HandoffPayload
 
 GUARDRAILS = "guardrails"
-EKSTRAKSI = "extraction"
+EXTRACTION = "extraction"
 STRUCTURING = "structuring"
 SCORING = "scoring"
 
-PIPELINE_NAMES: tuple[str, ...] = (GUARDRAILS, EKSTRAKSI, STRUCTURING, SCORING)
+PIPELINE_NAMES: tuple[str, ...] = (GUARDRAILS, EXTRACTION, STRUCTURING, SCORING)
 DEFAULT_SEQUENCE = PIPELINE_NAMES
 
 # The stage name of each pipeline service in jobs, callbacks and the orchestrator's tables.
-STAGE_OF = {GUARDRAILS: "GUARDRAILS", EKSTRAKSI: STAGE_OCR, STRUCTURING: STAGE_STRUCTURING, SCORING: STAGE_SCORING}
+STAGE_OF = {GUARDRAILS: "GUARDRAILS", EXTRACTION: STAGE_OCR, STRUCTURING: STAGE_STRUCTURING, SCORING: STAGE_SCORING}
 # And back: the pipeline service of a stage name, as pipeline_name_sequence and pipeline_last_stage name it.
 SERVICE_OF_STAGE = {stage: name for name, stage in STAGE_OF.items()}
 
@@ -45,7 +45,7 @@ def validate_sequence(names: Sequence[str] | None) -> tuple[str, ...]:
     if len(set(names)) != len(names):
         raise InvalidSequence("a service is listed twice")
     start = PIPELINE_NAMES.index(names[0])
-    if start > PIPELINE_NAMES.index(EKSTRAKSI):
+    if start > PIPELINE_NAMES.index(EXTRACTION):
         raise InvalidSequence(f"{names[0]} cannot come first: it needs the result of {PIPELINE_NAMES[start - 1]}")
     if names != PIPELINE_NAMES[start : start + len(names)]:
         raise InvalidSequence(

@@ -16,7 +16,7 @@ from ocr_common.types import StructuredField, StructuringResult
 
 #: §7.4, in priority order. The first condition that holds is the one reported.
 NO_TEXT = "Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga"
-NOT_A_KK = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
+NOT_A_KK = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap"
 
 
 def empty(reason: str) -> StructuringResult:

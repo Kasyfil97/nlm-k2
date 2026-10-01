@@ -8,7 +8,7 @@ supaya Orkestrasi pusat bisa memanggil kedua pipeline dengan cara yang sama. Dok
 yang dibalik, apa yang **sengaja tidak** disalin dari nilam, dan kenapa.
 
 Ada juga satu bug yang ikut ditutup: `deploy/helm/nlm-k2/values.yaml` sudah memakai
-`EKSTRAKSI_BACKEND: paddle`, padahal backend itu tidak terdaftar. Pod ekstraksi menolak start dengan
+`EXTRACTION_BACKEND: paddle`, padahal backend itu tidak terdaftar. Pod extraction menolak start dengan
 nilai bawaan chart-nya sendiri.
 
 ## Yang dibalik
@@ -19,12 +19,12 @@ nilai bawaan chart-nya sendiri.
 | Jejak putusan guardrails | tidak ada; `GET` request yang ditolak = 404 | `guardrails_results`; `GET` menjawab dari putusan terakhir | "orchestrator stateless tanpa tabel" (§2.6) |
 | PDF | 400 kecuali `PDF_ENABLED` | diterima bawaan, **halaman 1 saja** | R34a |
 | Backend OCR `paddle` | tidak terdaftar | server PaddleOCR `POST /ocr` | "`kk_ocr` menggantikan `paddle.py`" (plan, `2b2c2be`) |
-| OCR sinkron | tidak ada | `POST /v1/ekstraksi/extract` | R17 |
+| OCR sinkron | tidak ada | `POST /v1/extraction/extract` | R17 |
 
 ## Yang sengaja tidak disalin dari nilam
 
-- **Nama tahap OCR di sequence kini `extraction`** (sebelumnya `ekstraksi`), sama dengan nilam. Nama service
-  repo ini (URL, env, helm) tetap `ekstraksi`; hanya nilai di `pipeline_name_sequence` dan
+- **Nama tahap OCR di sequence kini `extraction`** (sebelumnya `extraction`), sama dengan nilam. Nama service
+  repo ini (URL, env, helm) tetap `extraction`; hanya nilai di `pipeline_name_sequence` dan
   `pipeline_last_stage` yang `extraction`. Konsekuensinya:
   **Orkestrasi pusat mengirim nilai berbeda** untuk KK dan NPWP.
 - **`poly` tidak dijadikan `bbox` tegak.** `paddle.py` nilam membuang kuadrilateralnya; parser tata letak
@@ -34,7 +34,7 @@ nilai bawaan chart-nya sendiri.
   OCR untuk seluruh repo, dan `data`-nya bisa dikirim langsung ke `/v1/ocr_postprocess`.
 - **PDF multi-halaman tidak dibaca per halaman.** nilam menjalankan aturan per halaman. Di sini parser
   membaca satu bingkai halaman, dan kotak dari halaman 2 akan jatuh ke koordinat halaman 1 lalu merusak
-  zonasi. Guardrails dan ekstraksi sama-sama membaca halaman 1. `MAX_DOCUMENT_PAGES=2` tetap seperti
+  zonasi. Guardrails dan extraction sama-sama membaca halaman 1. `MAX_DOCUMENT_PAGES=2` tetap seperti
   nilam, jadi halaman 2 (mis. legalisir) diterima tetapi diabaikan.
 - **Ambang guardrails per request** (`guardrails_confidence_threshold`, `threshold_source=request`) dan
   `column_confidence_threshold` belum dibawa. Kolomnya ada di `guardrails_results`, tetapi
@@ -51,8 +51,8 @@ nilai bawaan chart-nya sendiri.
 - **Orchestrator kini butuh `DATABASE_URL`** untuk mencatat putusan (helm `database: true`, compose).
   Tanpa itu ia tetap berjalan; putusan tidak dicatat dan `GET` request yang tidak pernah sampai tahap
   menjadi 404 seperti sebelumnya. Hibah R28-nya: `SELECT, INSERT` pada `guardrails_results` saja.
-- **DPI render PDF untuk `kk_ocr` (`EKSTRAKSI_PDF_DPI=200`) belum diukur** terhadap baseline korpus. 150
+- **DPI render PDF untuk `kk_ocr` (`EXTRACTION_PDF_DPI=200`) belum diukur** terhadap baseline korpus. 150
   milik guardrails adalah DPI pelatihannya dan tidak dipakai ulang di sini.
-- **Lock ekstraksi hanya ditambah entri `pymupdf`.** Menjalankan `make lock-ekstraksi` penuh di mesin ini
+- **Lock extraction hanya ditambah entri `pymupdf`.** Menjalankan `make lock-extraction` penuh di mesin ini
   juga menurunkan `certifi` dan `idna` ke build lama dari indeks PyTorch, **bahkan tanpa perubahan apa
   pun** — lock yang ada tidak bisa direproduksi di sini. Hash `pymupdf` identik dengan lock guardrails.

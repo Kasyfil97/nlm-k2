@@ -3,7 +3,7 @@ date: 2026-09-26
 topic: nlm-k2-tiga-service-pertama
 ---
 
-# nlm-k2: Orchestrator, Guardrails, dan Ekstraksi
+# nlm-k2: Orchestrator, Guardrails, dan Extraction
 
 ## Problem Frame
 
@@ -16,7 +16,7 @@ Kode lama yang tersedia (`K2Orchestrator`, `K2Quality`, `K2Extractor`) berbentuk
 mandiri bergaya lama — envelope sendiri, logging sendiri, database sendiri. Yang dipakai
 dari sana hanya **inti modelnya**; seluruh lapis web diganti punya nilam.
 
-Batch pertama mengerjakan orchestrator, guardrails, dan ekstraksi dengan tiga agen paralel.
+Batch pertama mengerjakan orchestrator, guardrails, dan extraction dengan tiga agen paralel.
 Hambatan utamanya bukan ketiga service itu, melainkan **apa yang mereka bagi**:
 `libs/ocr_common` (42 modul) dan lapis akar (`Makefile`, `pyproject.toml`,
 `docker-compose.yml`, `db/migrations/`). Tidak satu pun dimiliki oleh salah satu agen.
@@ -33,7 +33,7 @@ flowchart TB
     F --> G{{"Gerbang beku<br/>fixture bentuk · grep semantik · keputusan tercatat<br/>make lint · test-lib · up-db · db-check"}}
     G --> A["Fase 1 · Agen A<br/>orchestrator 8040"]
     G --> B["Fase 1 · Agen B<br/>guardrails 8041"]
-    G --> C["Fase 1 · Agen C<br/>ekstraksi 8042"]
+    G --> C["Fase 1 · Agen C<br/>extraction 8042"]
     A --> I["Fase 2 · Integrasi — serial<br/>smoke e2e · gateway openapi"]
     B --> I
     C --> I
@@ -140,8 +140,8 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
   sintetis yang lolos bentuk tetapi tidak merujuk orang nyata, dan nama fiktif. Tidak pernah
   disalin dari kartu sungguhan; aturan pembangkitnya ditulis sekali di fase 0.
 - R8. Penolakan stub structuring memakai **aturan §7.4 yang sesungguhnya**, bukan kanal simulasi
-  baru. Mock ekstraksi menghasilkan `ocr.texts` kosong — dipicu hook nama berkas di tahap
-  ekstraksi, yang di sana memang masih punya nama berkas — dan stub structuring menerapkan aturan
+  baru. Mock extraction menghasilkan `ocr.texts` kosong — dipicu hook nama berkas di tahap
+  extraction, yang di sana memang masih punya nama berkas — dan stub structuring menerapkan aturan
   pertama §7.4, "tidak ada kotak teks sama sekali" → `reject_reason`. Tidak ada mekanisme baru
   yang mendarat di `ocr_common`, dan jalur yang diuji adalah jalur yang akan dipakai aturan KK
   sungguhan.
@@ -153,7 +153,7 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
 
 - R9. `POST /v1/extract-ocr` dan `GET /v1/extract-ocr/{request_id}` sesuai §3 dan §4, termasuk
   matriks hasil §3.2 yang disuntikkan ke OpenAPI seperti `_CONTRACT_TABLE` di nilam.
-- R10. Alur submit: cek berkas → guardrails §5 → serah ke ekstraksi §6 → tunggu sisa
+- R10. Alur submit: cek berkas → guardrails §5 → serah ke extraction §6 → tunggu sisa
   `PIPELINE_WAIT_SECONDS` → 200 bila pipeline selesai, 202 bila belum.
 - R11. Orchestrator tidak menyentuh database sama sekali. Status tahap dibaca lewat
   `GET /v1/<tahap>/jobs/{request_id}` (§9), sesuai pola nilam.
@@ -163,11 +163,11 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
 **Guardrails — agen B, port 8041**
 
 - R13. `POST /v1/guardrails/check` sesuai §5: selalu menjawab 200, vonis ada di `data.passed`,
-  dan seluruh blok `data` diteruskan apa adanya ke ekstraksi.
+  dan seluruh blok `data` diteruskan apa adanya ke extraction.
 - R14. Backend dipilih lewat `GUARDRAILS_BACKEND`: `mock`, dan backend asli yang memuat blur CNN +
   XGBoost + kalibrasi dari `K2Quality/models/`. Hanya inti model yang diambil; API, envelope,
   middleware, dan lapis database K2Quality dibuang. Backend `remote` nilam dipertahankan atau
-  dibuang bersamaan dengan keputusan yang sama di ekstraksi (R18), tidak sendiri-sendiri.
+  dibuang bersamaan dengan keputusan yang sama di extraction (R18), tidak sendiri-sendiri.
 - R14a. Kontrak §5.2 mewajibkan 200 dan §5.3 hanya mengenal tak-terjangkau dan timeout, sementara
   inti model K2Quality melempar `ImageValidationError`/`ImageLoadError` di 20+ tempat untuk gambar
   yang tidak bisa didekode atau berdimensi di luar rentang. Bagaimana guardrails menjawab keadaan
@@ -180,10 +180,10 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
   kini hanya menangani satu berkas per model, sementara K2Quality butuh enam artefak dan
   K2Extractor dua `.pth`, jadi ia diperluas di fase 0 agar R16 tidak menuntut suntingan belakangan.
 
-**Ekstraksi — agen C, port 8042**
+**Extraction — agen C, port 8042**
 
-- R17. `POST /v1/ekstraksi/jobs` (asinkron, 202) sesuai §6 dan `GET /v1/ekstraksi/jobs/{request_id}`
-  sesuai §9. Tidak ada endpoint ekstraksi sinkron: §11 mendaftarkannya untuk structuring dan
+- R17. `POST /v1/extraction/jobs` (asinkron, 202) sesuai §6 dan `GET /v1/extraction/jobs/{request_id}`
+  sesuai §9. Tidak ada endpoint extraction sinkron: §11 mendaftarkannya untuk structuring dan
   scoring saja.
 - R18. Backend `mock` dan backend asli. Deskripsi backend asli diselesaikan sebelum agen C mulai:
   `ocr_backends.py` K2Extractor mengirim **dua** backend dan yang *default* justru PaddleOCR
@@ -191,7 +191,7 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
   mengembalikan tipe Python yang berbeda. `ppocrv5_conversion.py` sendiri memanggil `import paddle`
   karena tugasnya mengonversi checkpoint Paddle menjadi `.pth`, jadi ia alat luring dan tidak masuk
   image service. Versi juga perlu disamakan: K2Extractor PP-OCRv5, kontrak menulis PP-OCRv6.
-- R18a. Pengunduhan `file_url` tunduk pada `FILE_URL_ALLOWED_HOSTS` di orchestrator, ekstraksi, dan
+- R18a. Pengunduhan `file_url` tunduk pada `FILE_URL_ALLOWED_HOSTS` di orchestrator, extraction, dan
   guardrails (saat `GUARDRAILS_FETCH_URL=true`). Daftar kosong berarti **menolak semua**, bukan
   "hanya alamat publik" seperti §13.1 saat ini; ketiga service menolak start di luar
   `ENVIRONMENT=local` bila daftarnya kosong. Skema dibatasi `https`, redirect tidak diikuti, dan
@@ -216,11 +216,11 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
 **Paralelisasi dan batas kepemilikan**
 
 - R21. Setiap agen hanya menulis di direktori servicenya: A di `services/orchestrator/**`,
-  B di `services/guardrails/**`, C di `services/ekstraksi/**`.
+  B di `services/guardrails/**`, C di `services/extraction/**`.
 - R22. Setelah gerbang R6, `libs/ocr_common/**` (termasuk `tests/`), `Makefile`,
   `docker-compose.yml`, `pyproject.toml`, dan `db/**` beku. Agar pembekuan itu tidak menghalangi
   R24, fase 0 **menyediakan lebih dulu** setiap kunci env compose dan aturan `lock-<service>` yang
-  akan dibutuhkan ketiga service — §13 kontrak sudah mendaftarkannya, dan `lock-ekstraksi` dipecah
+  akan dibutuhkan ketiga service — §13 kontrak sudah mendaftarkannya, dan `lock-extraction` dipecah
   dari aturan pola bersamanya agar bisa memuat indeks PyTorch yang kini hanya ada di
   `lock-guardrails`.
 - R22a. Ada kategori ketiga di luar "milik agen" dan "beku", dimiliki integrator sepanjang batch
@@ -348,7 +348,7 @@ membangun kliennya dari §5 dan §6, bukan dari kode agen B dan C.
   jauh lebih cepat. `grep` saja tidak cukup sebagai gerbang, karena asumsi NPWP yang paling
   berbahaya tidak membawa token itu — karena itu R6 menambahkan fixture bentuk, periksa semantik,
   dan keputusan tercatat.
-- **Stub tipis untuk structuring dan scoring**, bukan berhenti di ekstraksi: seluruh siklus
+- **Stub tipis untuk structuring dan scoring**, bukan berhenti di extraction: seluruh siklus
   202→200, outbox, tabel outcome, dan ketiga jalur penolakan bisa diuji sekarang.
 - **Penolakan stub memakai aturan §7.4, bukan kanal simulasi baru**: `ocr.texts` kosong sudah
   merupakan pemicu di dalam kontrak yang bertahan melewati lompatan JSON, logikanya hidup di

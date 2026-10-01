@@ -9,23 +9,23 @@ Kontraknya ada di [`docs/api-contract.md`](docs/api-contract.md).
 |---|---|---|
 | orchestrator | 8040 | satu-satunya pintu masuk; dipanggil Orkestrasi pusat |
 | guardrails | 8041 | menilai kualitas gambar; selalu 200, vonis di `data.passed` |
-| ekstraksi | 8042 | OCR; tahap pertama pipeline asinkron |
+| extraction | 8042 | OCR; tahap pertama pipeline asinkron |
 | structuring | 8043 | membaca field dari baris OCR; satu-satunya tahap yang boleh menolak isi |
 | scoring | 8044 | trust model: P(field persis benar), terkalibrasi + bin; tahap terakhir, merakit hasil kontrak |
 
-Ekstraksi → structuring → scoring berjalan asinkron lewat outbox transaksional. Orchestrator
+Extraction → structuring → scoring berjalan asinkron lewat outbox transaksional. Orchestrator
 menunggu sebentar lalu menjawab 200, atau 202 kalau pipeline belum selesai.
 
 ## Status
 
-Batch pertama sedang berjalan: orchestrator, guardrails, dan ekstraksi. **Scoring sudah memakai trust
+Batch pertama sedang berjalan: orchestrator, guardrails, dan extraction. **Scoring sudah memakai trust
 model yang sungguhan** (`SCORING_BACKEND=calibrated`, artefak di `services/scoring/weights/`);
 structuring masih stub.
 
 > **Baca ini sebelum membaca `make smoke` yang hijau.** Yang teruji ujung ke ujung adalah **pipanya**
 > — transaksi, idempotensi, lease, outbox, dead letter, tabel outcome, bentuk kontrak — dan model OCR
 > sungguhan. Yang **belum** teruji adalah **isinya**: structuring masih stub yang mengarang field dan
-> tidak membaca teks OCR, jadi tidak ada satu pun field di `data` yang pernah diekstraksi dari sebuah
+> tidak membaca teks OCR, jadi tidak ada satu pun field di `data` yang pernah diextraction dari sebuah
 > gambar, dan dokumen yang bukan Kartu Keluarga pun dijawab `200`. Batasnya diukur dan ditulis di
 > [`docs/decisions/2026-09-27-batas-uji-end-to-end.md`](docs/decisions/2026-09-27-batas-uji-end-to-end.md).
 
@@ -43,13 +43,13 @@ structuring masih stub.
 - `pipeline_name_sequence` menggantikan `skip_guardrails`. Nama tahap OCR-nya `extraction`.
 - Orchestrator mencatat setiap putusan guardrails di `guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
 - PDF diterima bawaan; hanya halaman 1 yang dinilai dan dibaca.
-- `EKSTRAKSI_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.
-- Ada endpoint OCR sinkron `POST /v1/ekstraksi/extract` yang menjawab `OcrPayload` §7.1.
+- `EXTRACTION_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.
+- Ada endpoint OCR sinkron `POST /v1/extraction/extract` yang menjawab `OcrPayload` §7.1.
 
 **Draf 13 (update nilam 29 September):**
 
 - Tiap field `data` kini `{"value", "confidence": 0 | 1}` seperti nilam; `bin` dan `auto` dihapus.
-- Threshold per request: `column_confidence_threshold` (per field kontrak), `guardrails_confidence_threshold` + `guardrails_tendency`.
+- Threshold per request: `column_confidence_threshold` (per field kontrak), `guardrails_confidence_threshold`.
 - `errors` selalu kode stabil (mis. `EMPTY_FILE`, `DOWNSTREAM_UNAVAILABLE`), dan setiap error membawa `pipeline_last_stage`.
 
 - Requirements: [`docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md`](docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md)
@@ -89,7 +89,7 @@ Bobotnya gitignored. Untuk pengembangan tanpa bobot sama sekali, setel `GUARDRAI
 di luar `ENVIRONMENT=local` atau terhadap alamat non-lokal (R25a): ia membuat baris dan
 menghapusnya lagi, termasuk di tabel outcome yang di produksi dimiliki Orkestrasi pusat.
 
-Yang perlu disiapkan sekali, di ketiga `services/{ekstraksi,structuring,scoring}/.env`:
+Yang perlu disiapkan sekali, di ketiga `services/{extraction,structuring,scoring}/.env`:
 
 ```sh
 ORCHESTRATION_OUTCOME_TABLE=orchestration_extract_ocr
@@ -114,15 +114,15 @@ sendiri kalau tidak ada. Resepnya, yang sudah dijalankan dan terbukti:
 ```bash
 printf 'PIPELINE_OUTBOX_MAX_AGE_SECONDS=2
 PIPELINE_OUTBOX_INTERVAL_SECONDS=1
-' >> services/ekstraksi/.env
-docker compose -f docker-compose.yml -f docker-compose.db.yml up -d --force-recreate ekstraksi
+' >> services/extraction/.env
+docker compose -f docker-compose.yml -f docker-compose.db.yml up -d --force-recreate extraction
 docker stop nlm-k2-structuring-1          # penerima handoff dimatikan
-# kirim satu job ke POST /v1/ekstraksi/jobs, tunggu ~15 dtk
+# kirim satu job ke POST /v1/extraction/jobs, tunggu ~15 dtk
 ```
 
-Baris outcome-nya jadi `failed` / `STRUCTURING` / `STRUCTURING_FAILED`, dan `GET /v1/ekstraksi/outbox`
+Baris outcome-nya jadi `failed` / `STRUCTURING` / `STRUCTURING_FAILED`, dan `GET /v1/extraction/outbox`
 melaporkan `dead_letters: 1`. Setelah structuring dinyalakan lagi,
-`POST /v1/ekstraksi/outbox/release` mengirimkannya kembali: structuring dan scoring jadi `DONE` dan
+`POST /v1/extraction/outbox/release` mengirimkannya kembali: structuring dan scoring jadi `DONE` dan
 baris outcome-nya maju ke `completed` / `SCORING`. Jangan lupa mengembalikan kedua kunci env itu.
 
 ## Database

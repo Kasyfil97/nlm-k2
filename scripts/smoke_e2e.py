@@ -46,7 +46,7 @@ from ocr_common.synthetic_kk import member, nomor_kk
 
 
 def _key_from_env_file() -> str:
-    path = os.path.join(os.path.dirname(__file__), "..", "services", "ekstraksi", ".env")
+    path = os.path.join(os.path.dirname(__file__), "..", "services", "extraction", ".env")
     try:
         with open(path, encoding="utf-8") as handle:
             for line in handle:
@@ -60,7 +60,7 @@ def _key_from_env_file() -> str:
 URLS = {
     "orchestrator": os.environ.get("ORCHESTRATOR_URL", "http://127.0.0.1:8040"),
     "guardrails": os.environ.get("GUARDRAILS_URL", "http://127.0.0.1:8041"),
-    "ekstraksi": os.environ.get("EKSTRAKSI_URL", "http://127.0.0.1:8042"),
+    "extraction": os.environ.get("EXTRACTION_URL", "http://127.0.0.1:8042"),
     "structuring": os.environ.get("STRUCTURING_URL", "http://127.0.0.1:8043"),
     "scoring": os.environ.get("SCORING_URL", "http://127.0.0.1:8044"),
 }
@@ -69,10 +69,10 @@ HEADERS = {"X-API-Key": API_KEY}
 CALLBACK_PORT = int(os.environ.get("SMOKE_CALLBACK_PORT") or 0)
 TIMEOUT_SECONDS = float(os.environ.get("SMOKE_TIMEOUT_SECONDS") or 60)
 LATENCY_RUNS = int(os.environ.get("SMOKE_LATENCY_RUNS") or 0)
-STAGES = ("ekstraksi", "structuring", "scoring")
+STAGES = ("extraction", "structuring", "scoring")
 
 #: Nama tahap sebagaimana tertulis di baris job dan baris outcome, per nama service.
-STAGE_NAMES = {"ekstraksi": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
+STAGE_NAMES = {"extraction": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
 
 def _psycopg_url(url: str) -> str:
     """Buang sufiks driver SQLAlchemy supaya psycopg bisa membacanya.
@@ -179,7 +179,7 @@ def _poll(client: httpx.Client, request_id: str) -> dict[str, dict]:
     deadline = time.monotonic() + TIMEOUT_SECONDS
     jobs: dict[str, dict] = {}
     while time.monotonic() < deadline:
-        for stage in ("ekstraksi", "structuring", "scoring"):
+        for stage in ("extraction", "structuring", "scoring"):
             response = client.get(f"{URLS[stage]}/v1/{stage}/jobs/{request_id}", headers=HEADERS)
             if response.status_code == 200:
                 jobs[stage] = response.json()["data"]
@@ -215,7 +215,7 @@ def async_pipeline(client: httpx.Client) -> bool:
         print("  belum selesai saat waktu tunggu habis (202); lanjut polling")
 
     jobs = _poll(client, request_id)
-    for stage in ("ekstraksi", "structuring", "scoring"):
+    for stage in ("extraction", "structuring", "scoring"):
         job = jobs.get(stage)
         print(f"  {stage:<12} {job['status'] if job else '(belum ada job)'} {(job or {}).get('error_message') or ''}")
     ok = all(jobs.get(stage, {}).get("status") == "DONE" for stage in STAGES)

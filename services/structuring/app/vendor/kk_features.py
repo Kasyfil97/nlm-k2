@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ekstraksi fitur confidence per sel KK -- dipakai SAMA oleh latih dan inferensi.
+"""Extraction fitur confidence per sel KK -- dipakai SAMA oleh latih dan inferensi.
 
 Satu definisi fitur untuk keduanya. Memisahkannya adalah cara paling andal
 membuat model yang bagus saat latih lalu buruk saat dipakai.

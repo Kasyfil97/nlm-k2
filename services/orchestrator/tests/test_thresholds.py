@@ -32,13 +32,13 @@ def _done(scoring):
     )
 
 
-def test_column_confidence_threshold_reaches_the_pipeline_and_decides_the_fields(client, auth, stub_ekstraksi):
+def test_column_confidence_threshold_reaches_the_pipeline_and_decides_the_fields(client, auth, stub_extraction):
     columns = {"no_kk": 0.95, "jenis_pekerjaan": 0.1}
 
     response = _submit(client, auth, column_confidence_threshold=json.dumps(columns))
 
     assert response.status_code == 200
-    [handed] = stub_ekstraksi.submitted
+    [handed] = stub_extraction.submitted
     assert handed["column_thresholds"] == columns
     data = response.json()["data"]
     assert data["no_kk"]["confidence"] == 0, "0.94 below the request's 0.95"
@@ -46,10 +46,10 @@ def test_column_confidence_threshold_reaches_the_pipeline_and_decides_the_fields
     assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5, columns)
 
 
-def test_without_thresholds_the_services_defaults_hold(client, auth, stub_ekstraksi):
+def test_without_thresholds_the_services_defaults_hold(client, auth, stub_extraction):
     response = _submit(client, auth)
 
-    assert stub_ekstraksi.submitted[0]["column_thresholds"] is None
+    assert stub_extraction.submitted[0]["column_thresholds"] is None
     assert response.json()["data"] == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5)
 
 
@@ -62,7 +62,7 @@ def test_without_thresholds_the_services_defaults_hold(client, auth, stub_ekstra
     ],
 )
 def test_a_threshold_that_cannot_be_read_is_422_and_nothing_runs(
-    client, auth, stub_guardrails, stub_ekstraksi, raw, reason
+    client, auth, stub_guardrails, stub_extraction, raw, reason
 ):
     response = _submit(client, auth, column_confidence_threshold=raw)
 
@@ -70,7 +70,7 @@ def test_a_threshold_that_cannot_be_read_is_422_and_nothing_runs(
     body = response.json()
     assert body["errors"] == "INVALID_THRESHOLD"
     assert reason in body["message"]
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
 
 
 def test_the_decisions_scoring_stored_win_over_deciding_again(client, auth, stub_waiter):
@@ -106,11 +106,11 @@ def test_the_get_answers_with_the_thresholds_stored_with_the_job(client, auth, s
 def test_the_guardrails_threshold_reaches_guardrails_and_is_recorded_as_the_requests(
     client, auth, stub_guardrails, guardrails_log
 ):
-    response = _submit(client, auth, guardrails_confidence_threshold="0.3", guardrails_tendency="accepted")
+    response = _submit(client, auth, guardrails_confidence_threshold='{"acc_rej": 0.3}')
 
     assert response.status_code == 200
     [threshold] = stub_guardrails.thresholds
-    assert (threshold.value, threshold.target) == (0.3, "accept")
+    assert (threshold.value, threshold.target) == (0.3, "reject")
     [record] = guardrails_log.records
     assert record["threshold_from_request"] is True
 
@@ -131,37 +131,20 @@ def test_the_acc_rej_object_applies_to_the_rejected_side_by_default(client, auth
 
 
 @pytest.mark.parametrize(
-    ("tendency", "target"),
-    [("accepted", "accept"), ("rejected", "reject"), ("ACCEPT", "accept"), (" reject ", "reject")],
-)
-def test_guardrails_tendency_names_the_side(client, auth, stub_guardrails, tendency, target):
-    _submit(client, auth, guardrails_confidence_threshold="0.5", guardrails_tendency=tendency)
-
-    assert stub_guardrails.thresholds[0].target == target
-
-
-@pytest.mark.parametrize(
     ("form", "reason"),
     [
         ({"guardrails_confidence_threshold": "0.5"}, "acc_rej"),
-        ({"guardrails_tendency": "accepted"}, "needs guardrails_confidence_threshold"),
         ({"guardrails_confidence_threshold": '{"other": 0.5}'}, "acc_rej"),
         ({"guardrails_confidence_threshold": '{"acc_rej": 1}'}, "between 0 and 1"),
-        (
-            {"guardrails_confidence_threshold": '{"acc_rej": 0.5}', "guardrails_tendency": "maybe"},
-            "accepted or rejected",
-        ),
-        ({"guardrails_confidence_threshold": "1", "guardrails_tendency": "accepted"}, "between 0 and 1"),
-        ({"guardrails_confidence_threshold": "tinggi", "guardrails_tendency": "accepted"}, "between 0 and 1"),
-        ({"guardrails_confidence_threshold": "0.5", "guardrails_tendency": "maybe"}, "accepted or rejected"),
+        ({"guardrails_confidence_threshold": '{"acc_rej": "tinggi"}'}, "between 0 and 1"),
     ],
 )
 def test_a_guardrails_threshold_that_cannot_be_read_is_422_and_nothing_runs(
-    client, auth, stub_guardrails, stub_ekstraksi, form, reason
+    client, auth, stub_guardrails, stub_extraction, form, reason
 ):
     response = _submit(client, auth, **form)
 
     assert response.status_code == 422
     body = response.json()
     assert body["errors"] == "INVALID_THRESHOLD" and reason in body["message"]
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+    assert stub_guardrails.checked == [] and stub_extraction.submitted == []

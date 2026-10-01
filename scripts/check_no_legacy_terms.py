@@ -46,7 +46,7 @@ FOUNDATION = (
     "services/scoring/",
 )
 
-SERVICES = ("orchestrator", "guardrails", "ekstraksi", "structuring", "scoring")
+SERVICES = ("orchestrator", "guardrails", "extraction", "structuring", "scoring")
 
 # Sebutan yang disengaja, masing-masing dengan alasannya. Menyebut nama repo asal atau menamai uji
 # menurut apa yang dicegahnya bukan sisa yang terlewat.

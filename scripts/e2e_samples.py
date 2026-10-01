@@ -3,7 +3,7 @@
 Berbeda dengan `smoke_e2e.py`, yang menguji **pipa** lewat backend `mock` dan nama file pemicu, skrip
 ini menguji **model**: guardrails, OCR, structuring, dan scoring yang sungguhan harus memberi putusan
 yang benar atas gambar yang nyata. Jadi stack-nya harus jalan dengan backend sungguhan
-(`GUARDRAILS_BACKEND=kk_quality`, `EKSTRAKSI_BACKEND=paddle`, `SCORING_BACKEND=calibrated`).
+(`GUARDRAILS_BACKEND=kk_quality`, `EXTRACTION_BACKEND=paddle`, `SCORING_BACKEND=calibrated`).
 
 | Berkas | Kasus | Harapan |
 |---|---|---|

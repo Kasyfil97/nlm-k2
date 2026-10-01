@@ -49,7 +49,7 @@ class Settings(BaseServiceSettings):
             guardrails_model_url=self.guardrails_model_url, guardrails_threshold_url=self.guardrails_threshold_url
         )
         if self.guardrails_fetch_url:
-            # Same rule the orchestrator and ekstraksi start under, applied here only when the
+            # Same rule the orchestrator and extraction start under, applied here only when the
             # switch makes this service a downloader: an empty allow-list denies every URL, so
             # starting like this would leave the path dead until the first request said so.
             self.require_file_url_allowlist()

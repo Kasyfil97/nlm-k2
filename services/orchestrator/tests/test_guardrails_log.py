@@ -185,7 +185,7 @@ def test_the_get_of_a_guardrails_only_request_answers_with_the_report(client, au
 
 
 def test_a_request_that_passed_but_never_reached_a_stage_is_404(client, auth, stub_waiter):
-    _submit(client, auth)  # passed guardrails; say its hand-off to ekstraksi failed
+    _submit(client, auth)  # passed guardrails; say its hand-off to extraction failed
     stub_waiter.snapshot_outcome = None
 
     assert _get(client, auth).status_code == 404

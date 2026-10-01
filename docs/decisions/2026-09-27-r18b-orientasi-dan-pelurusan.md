@@ -47,7 +47,7 @@ menyalakannya bukan wewenang repo ini.
 Jadi **janji §7.1 bahwa `poly` ada pada gambar yang sudah diluruskan hanya separuh benar**: tegaknya
 ya, lurusnya tidak. Dua jalan keluar, dan pilihannya bukan milik unit ini sendiri:
 
-- **Luruskan di tahap ekstraksi**, dengan biaya satu putaran deteksi tambahan; atau
+- **Luruskan di tahap extraction**, dengan biaya satu putaran deteksi tambahan; atau
 - **ubah §7.1** supaya ia menyatakan kerangkanya adalah gambar yang dikirim setelah koreksi
   orientasi kasar, dan pindahkan masalahnya ke penetapan kolom di structuring.
 
@@ -55,7 +55,7 @@ Yang tidak boleh: membiarkan §7.1 berbunyi seperti sekarang sementara kotaknya 
 menetapkan kolom dari geometri ini, dan kegagalannya sistematis — ia tidak muncul sebagai galat, ia
 muncul sebagai field yang tertukar kolom di sebagian dokumen.
 
-Untuk sekarang jalur mock `ekstraksi` sengaja mengeluarkan poly miring (`_TILT = 0.014`), sehingga
+Untuk sekarang jalur mock `extraction` sengaja mengeluarkan poly miring (`_TILT = 0.014`), sehingga
 tidak ada yang di hilir bisa diam-diam mulai mengandaikan kotak tegak.
 
 ### 3. `page.width`/`page.height` tidak boleh dipercaya — ini yang paling mudah menjebak
@@ -83,7 +83,7 @@ benar-benar berjalan, karena itulah gunanya field `model`.
 ## Yang berubah di kode karena pengukuran ini
 
 Tidak ada yang meluruskan gambar — itu keputusan yang masih terbuka. Yang berubah hanyalah backend
-`remote` jadi benar-benar bisa memanggil VM ini: `EKSTRAKSI_OCR_PATH` (`/ocr`, bukan
-`/v1/predict/json`), `EKSTRAKSI_OCR_QUERY` (parameternya di query string, bukan field form), dan
+`remote` jadi benar-benar bisa memanggil VM ini: `EXTRACTION_OCR_PATH` (`/ocr`, bukan
+`/v1/predict/json`), `EXTRACTION_OCR_QUERY` (parameternya di query string, bukan field form), dan
 `parse_pages` menerima bentuk `texts: [{text, score, poly}]` di samping tiga daftar sejajar
 `rec_*`. Bentuk per kotak VM **sudah** bentuk §7.1, jadi tidak ada yang dikonversi — hanya divalidasi.

@@ -71,7 +71,7 @@ commonEnv:
 #   upstreams  : service lain yang dipanggil; chart mengisi <NAMA>_SERVICE_URL dan NetworkPolicy dari sini.
 # Nama service dipakai sebagai nama port Kubernetes: maksimal 15 karakter, huruf kecil/angka, tanpa `-`.
 services:
-  # Pintu masuk tunggal: POST /v1/extract-ocr (cek guardrails, hand-off ke ekstraksi, tunggu pipeline)
+  # Pintu masuk tunggal: POST /v1/extract-ocr (cek guardrails, hand-off ke extraction, tunggu pipeline)
   # dan GET /v1/extract-ocr/{request_id}. Tanpa callback; DB hanya untuk mencatat setiap putusan guardrails
   # (guardrails_results, migrasi 0002), best-effort: DB yang mati tidak menggagalkan request.
   orchestrator:
@@ -83,7 +83,7 @@ services:
     entrypoint: true
     pipeline: false
     database: true
-    upstreams: [guardrails, ekstraksi, structuring, scoring]
+    upstreams: [guardrails, extraction, structuring, scoring]
     replicaCount: 2
     startupFailureThreshold: 15
     # Satu POST bisa memakan cek guardrails (GUARDRAILS_TIMEOUT_SECONDS) + tunggu pipeline + hand-off;
@@ -138,10 +138,10 @@ services:
         cpu: "2"
         memory: 2Gi
 
-  ekstraksi:
+  extraction:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-ekstraksi
+      repository: ms-bribrain-nlm-k2-extraction
       tag: ""
     port: 8042
     entrypoint: false
@@ -150,10 +150,10 @@ services:
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      EKSTRAKSI_BACKEND: paddle
-      EKSTRAKSI_OCR_URL: ""
-      EKSTRAKSI_OCR_TIMEOUT_SECONDS: "60"
-      EKSTRAKSI_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
+      EXTRACTION_BACKEND: paddle
+      EXTRACTION_OCR_URL: ""
+      EXTRACTION_OCR_TIMEOUT_SECONDS: "60"
+      EXTRACTION_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:

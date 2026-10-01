@@ -1,8 +1,8 @@
-SERVICES := orchestrator guardrails ekstraksi structuring scoring
+SERVICES := orchestrator guardrails extraction structuring scoring
 PY ?= python
 PORT_orchestrator := 8040
 PORT_guardrails := 8041
-PORT_ekstraksi := 8042
+PORT_extraction := 8042
 PORT_structuring := 8043
 PORT_scoring := 8044
 
@@ -30,13 +30,13 @@ lock-orchestrator:
 	$(LOCK) services/orchestrator/requirements.txt libs/ocr_common/pyproject.toml --extra db -o services/orchestrator/requirements.lock
 lock-guardrails:
 	$(LOCK) services/guardrails/requirements.txt libs/ocr_common/pyproject.toml --extra-index-url https://download.pytorch.org/whl/cpu --emit-index-url -o services/guardrails/requirements.lock
-# Ekstraksi dipisah dari aturan pola di bawahnya: backend OCR-nya memuat torch, dan indeks CPU
+# Extraction dipisah dari aturan pola di bawahnya: backend OCR-nya memuat torch, dan indeks CPU
 # PyTorch harus sudah ada di sini SEBELUM gerbang R6 membekukan Makefile -- kalau tidak, agen C
 # tidak bisa meregenerasi locknya tanpa membuka beku lebih dulu.
-lock-ekstraksi:
-	$(LOCK) services/ekstraksi/requirements.txt libs/ocr_common/pyproject.toml --extra db \
+lock-extraction:
+	$(LOCK) services/extraction/requirements.txt libs/ocr_common/pyproject.toml --extra db \
 		--extra-index-url https://download.pytorch.org/whl/cpu --emit-index-url \
-		-o services/ekstraksi/requirements.lock
+		-o services/extraction/requirements.lock
 lock-structuring lock-scoring: lock-%:
 	$(LOCK) services/$*/requirements.txt libs/ocr_common/pyproject.toml --extra db -o services/$*/requirements.lock
 lock-db:

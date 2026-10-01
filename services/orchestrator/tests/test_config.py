@@ -8,7 +8,7 @@ from ocr_common.testing import TEST_API_KEY
 from app.config import Settings
 
 GUARDRAILS = "http://nlm-k2-guardrails:8041"
-EKSTRAKSI = "http://nlm-k2-ekstraksi:8042"
+EXTRACTION = "http://nlm-k2-extraction:8042"
 STRUCTURING = "http://nlm-k2-structuring:8043"
 SCORING = "http://nlm-k2-scoring:8044"
 LOCALHOST = "http://127.0.0.1:9999"
@@ -16,7 +16,7 @@ LOCALHOST = "http://127.0.0.1:9999"
 
 def _deployed(
     guardrails: str = GUARDRAILS,
-    ekstraksi: str = EKSTRAKSI,
+    extraction: str = EXTRACTION,
     structuring: str = STRUCTURING,
     scoring: str = SCORING,
     **extra,
@@ -28,7 +28,7 @@ def _deployed(
         file_url_allowed_hosts="minio.internal",
         pipeline_wait_seconds=0,
         guardrails_service_url=guardrails,
-        ekstraksi_service_url=ekstraksi,
+        extraction_service_url=extraction,
         structuring_service_url=structuring,
         scoring_service_url=scoring,
         **extra,
@@ -43,7 +43,7 @@ def test_service_addresses_are_accepted_outside_local():
     ("setting", "overrides"),
     [
         ("GUARDRAILS_SERVICE_URL", {"guardrails": LOCALHOST}),
-        ("EKSTRAKSI_SERVICE_URL", {"ekstraksi": LOCALHOST}),
+        ("EXTRACTION_SERVICE_URL", {"extraction": LOCALHOST}),
         ("STRUCTURING_SERVICE_URL", {"structuring": LOCALHOST}),
         ("SCORING_SERVICE_URL", {"scoring": LOCALHOST}),
     ],
@@ -94,7 +94,7 @@ def test_an_empty_file_url_allowlist_is_refused_outside_local():
             _env_file=None,
             environment="production",
             guardrails_service_url=GUARDRAILS,
-            ekstraksi_service_url=EKSTRAKSI,
+            extraction_service_url=EXTRACTION,
             structuring_service_url=STRUCTURING,
             scoring_service_url=SCORING,
         )
@@ -137,7 +137,7 @@ def test_the_shipped_env_example_would_refuse_to_start_in_production():
             environment="production",
             file_url_allowed_hosts="minio.internal",
             guardrails_service_url=GUARDRAILS,
-            ekstraksi_service_url=EKSTRAKSI,
+            extraction_service_url=EXTRACTION,
             structuring_service_url=STRUCTURING,
             scoring_service_url=SCORING,
         )

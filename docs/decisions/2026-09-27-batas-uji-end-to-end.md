@@ -10,13 +10,13 @@ PostgreSQL sungguhan. Dokumen ini ada supaya angka itu tidak dibaca lebih besar 
 | Lapisan | Terbukti? | Dengan apa |
 |---|---|---|
 | Intake orchestrator, §3.2 matriks, 200/202/400/422 | **ya** | delapan jalur `make smoke` |
-| Panggilan guardrails sinkron, penerusan laporannya | **ya** | jalur penolakan, dan `guardrails` diteruskan utuh ke ekstraksi |
+| Panggilan guardrails sinkron, penerusan laporannya | **ya** | jalur penolakan, dan `guardrails` diteruskan utuh ke extraction |
 | Siklus job: klaim, lease, handoff, outbox, dead letter, release | **ya** | dijalankan sungguhan: dead letter → `failed`/`STRUCTURING_FAILED` → release → `completed` |
 | Tabel outcome sebagai kanal ke Orkestrasi pusat | **ya** | 7 dari 8 request menulis baris; yang ke-8 penolakan guardrails, yang memang tidak menulis (§2.6) |
 | Korelasi `request_id`, amplop bersama, metrik, log tanpa PII | **ya** | uji per service (R30) + `X-Request-ID` lintas tahap |
 | **Model OCR sungguhan** | **ya** | VM PP-OCRv6, bentuk §7.1, `poly` 4 titik, agregat dihitung `ocr_aggregates` |
 | **Penilaian mutu gambar** | **tidak** | guardrails `mock` menolak berdasarkan NAMA BERKAS, bukan isi gambar |
-| **Ekstraksi field dari teks** | **tidak** | structuring `mock` **mengarang** field; ia tidak membaca teks OCR sama sekali |
+| **Extraction field dari teks** | **tidak** | structuring `mock` **mengarang** field; ia tidak membaca teks OCR sama sekali |
 | **Trust model per field** | **tidak** | scoring `mock` menurunkan skor dari skor structuring, bukan dari model terkalibrasi |
 
 > **Pembaruan, 27 September 2026 (sore).** Ketiga baris "tidak" di atas sudah tertutup; yang tersisa
@@ -26,7 +26,7 @@ PostgreSQL sungguhan. Dokumen ini ada supaya angka itu tidak dibaca lebih besar 
 
 ## Buktinya, bukan klaimnya
 
-Tiga gambar berbeda dikirim lewat `POST /v1/extract-ocr` dengan ekstraksi memakai model sungguhan:
+Tiga gambar berbeda dikirim lewat `POST /v1/extract-ocr` dengan extraction memakai model sungguhan:
 
 | Gambar | Yang dibaca model OCR | Yang dikembalikan `data.no_kk` |
 |---|---|---|
@@ -39,7 +39,7 @@ structuring mengabaikan seluruh teks itu dan mengeluarkan satu keluarga sintetis
 
 Dua konsekuensi yang harus dibaca terang-terangan:
 
-1. **Tidak ada satu pun field di `data` yang pernah diekstraksi dari sebuah gambar.** Kecocokan pada
+1. **Tidak ada satu pun field di `data` yang pernah diextraction dari sebuah gambar.** Kecocokan pada
    baris pertama tabel di atas adalah **kebetulan yang terbangun sendiri**: gambar ujinya digambar
    dari `ocr_common.synthetic_kk` dengan seed bawaan, dan structuring mock memanggil generator yang
    sama dengan seed bawaan yang sama. Bukan hasil parsing.
@@ -73,7 +73,7 @@ transaksi, idempotensi, lease, outbox, dead letter, dan bentuk kontrak.
    | Service | soket (`base.py`) | `mock.py` | backend asli |
    |---|---|---|---|
    | guardrails | 78 | 33 | `kk_quality.py` **761** (inti K2Quality; bobotnya belum ada) |
-   | ekstraksi | 53 | 131 | `kk_ocr.py` **215** + `remote.py` **129** — `remote` sudah jalan ke VM |
+   | extraction | 53 | 131 | `kk_ocr.py` **215** + `remote.py` **129** — `remote` sudah jalan ke VM |
    | structuring | 22 | 117 | **tidak ada** |
    | scoring | 16 | 62 | **tidak ada** |
 
@@ -106,7 +106,7 @@ transaksi, idempotensi, lease, outbox, dead letter, dan bentuk kontrak.
 ## Yang berubah sore itu
 
 Ketiganya sekarang memakai model sungguhan, dan seluruh stack dijalankan tanpa satu pun `mock`:
-guardrails `kk_quality`, ekstraksi `remote` ke VM PP-OCRv6, structuring `kk_regex`, scoring
+guardrails `kk_quality`, extraction `remote` ke VM PP-OCRv6, structuring `kk_regex`, scoring
 `calibrated`.
 
 Diuji dengan satu Kartu Keluarga asli (foto, bukan render):
@@ -118,7 +118,7 @@ Diuji dengan satu Kartu Keluarga asli (foto, bukan render):
 | kartu yang sama, blur r=4 | **400** | 1 | ditolak guardrails sebelum sampai structuring |
 
 Baris kedua adalah yang dulu dijawab `200` dengan KK yang sempurna. Gerbang §7.4 sekarang hidup
-secara semantik, bukan hanya struktural, karena ia memeriksa field yang benar-benar diekstraksi.
+secara semantik, bukan hanya struktural, karena ia memeriksa field yang benar-benar diextraction.
 
 Amplop dan bentuk `data` diperiksa field demi field terhadap §3.3: sepuluh kunci amplop, dua field
 dokumen dan tujuh per anggota, setiap field `{value, confidence, bin, auto}` dengan `value` selalu

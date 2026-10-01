@@ -271,7 +271,7 @@ def test_an_error_names_the_service_it_comes_from():
     from ocr_common.errors import UpstreamUnavailable
 
     class CalledServiceDown(UpstreamUnavailable):
-        service = "ekstraksi"
+        service = "extraction"
 
     router = APIRouter()
 
@@ -281,7 +281,7 @@ def test_an_error_names_the_service_it_comes_from():
 
     @router.get("/called")
     async def called():
-        raise CalledServiceDown("ekstraksi service is unavailable")
+        raise CalledServiceDown("extraction service is unavailable")
 
     probe = TestClient(
         create_app(settings=settings, title="Demo", description="demo", service_name="scoring", routers=[router]),
@@ -289,7 +289,7 @@ def test_an_error_names_the_service_it_comes_from():
     )
 
     assert probe.get("/own").json()["pipeline_last_stage"] == "scoring"
-    assert probe.get("/called").json()["pipeline_last_stage"] == "ekstraksi"
+    assert probe.get("/called").json()["pipeline_last_stage"] == "extraction"
     assert probe.get("/v1/unknown-route").json()["pipeline_last_stage"] == "scoring"
 
 

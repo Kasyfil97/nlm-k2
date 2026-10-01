@@ -1,7 +1,7 @@
 # Helm chart `nlm-k2`
 
 Satu Deployment, Service, ConfigMap, PodDisruptionBudget, dan NetworkPolicy per service:
-`orchestrator` (8040), `guardrails` (8041), `ekstraksi` (8042), `structuring` (8043), `scoring`
+`orchestrator` (8040), `guardrails` (8041), `extraction` (8042), `structuring` (8043), `scoring`
 (8044). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nlm-k2-orchestrator`, dst.
 Tiap service bisa di-scale dan di-restart sendiri; guardrails (torch, CPU-bound) punya HPA opsional, dan
 kalau ia kehabisan memori, tahap lain tidak ikut jatuh.
@@ -47,8 +47,8 @@ langsung berlaku, jadi `networkPolicy.clientNamespaces` harus terisi sebelum Ork
 | ServiceAccount | satu untuk semua | `serviceAccount.{create,name,annotations}` |
 | ExternalSecret | opsional, mati | `externalSecret.*` |
 
-Aturan NetworkPolicy dihitung dari `services.<svc>.upstreams`: guardrails dan ekstraksi hanya
-menerima dari orchestrator, `structuring` dari ekstraksi dan orchestrator, `scoring` dari structuring
+Aturan NetworkPolicy dihitung dari `services.<svc>.upstreams`: guardrails dan extraction hanya
+menerima dari orchestrator, `structuring` dari extraction dan orchestrator, `scoring` dari structuring
 dan orchestrator (orchestrator membaca status tiap tahap). Service ber-`entrypoint` (hanya
 orchestrator) menerima dari semua pod release dan dari namespace di `networkPolicy.clientNamespaces`.
 Egress belum dibatasi (utang teknis di README utama).
@@ -78,7 +78,7 @@ Tulis angka sebagai string (`"0.8"`, `"5242880"`), karena Helm mengubah angka be
 
 URL antar-service memakai nama Service per komponen, bukan `localhost`. Di luar
 `ENVIRONMENT=local`, service menolak `*_SERVICE_URL` yang menunjuk ke localhost (orchestrator: keempat
-URL-nya; ekstraksi dan structuring: tahap berikutnya).
+URL-nya; extraction dan structuring: tahap berikutnya).
 
 ## Secret
 
@@ -128,7 +128,7 @@ dideploy dengan [deploy.sh](deploy.sh) dari Git Bash, WSL, Linux atau macOS:
 ```bash
 deploy/helm/deploy.sh --dry-run --skip-build --tag <tag> scoring
 deploy/helm/deploy.sh scoring
-deploy/helm/deploy.sh ekstraksi structuring scoring
+deploy/helm/deploy.sh extraction structuring scoring
 deploy/helm/deploy.sh all
 ```
 
@@ -157,7 +157,7 @@ dibuang Helm sendiri pada upgrade berikutnya, jadi Secret itu tidak perlu dihapu
 **Upgrade ke chart 0.3.0 (orchestrator sebagai pintu masuk): wajib `deploy.sh all`.** Values baru
 mengubah ConfigMap guardrails (tanpa `*_SERVICE_URL` dan `PIPELINE_WAIT_SECONDS`), jadi annotation
 `checksum/config` me-roll pod guardrails walau guardrails tidak disebut. Image guardrails lama menolak
-start dengan ConfigMap itu (`ENVIRONMENT=production` dan `EKSTRAKSI_SERVICE_URL` default localhost),
+start dengan ConfigMap itu (`ENVIRONMENT=production` dan `EXTRACTION_SERVICE_URL` default localhost),
 lalu `--atomic` me-rollback seluruh release. Tag global `values-ddb-dev.yaml` juga tidak punya image
 orchestrator. Sejak upgrade, entry Service `nlm-k2` hanya membuka 8040: Orkestrasi pusat harus
 pindah dari `:8041/v1/extract-ocr` ke `:8040/v1/extract-ocr` pada saat yang sama. `helm rollback` ke

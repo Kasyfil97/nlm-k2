@@ -32,7 +32,7 @@ class OcrBox(TypedDict):
 
 
 class OcrEngineResult(TypedDict):
-    """What an OCR engine (`app/ml/*` of ekstraksi) returns."""
+    """What an OCR engine (`app/ml/*` of extraction) returns."""
 
     texts: list[OcrBox]
     model: str | None

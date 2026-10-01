@@ -1,4 +1,4 @@
-"""A Kartu Keluarga as §7.1 boxes: the shape ekstraksi hands to structuring.
+"""A Kartu Keluarga as §7.1 boxes: the shape extraction hands to structuring.
 
 `kk_regex` is a *layout* parser, so a fixture that is only a list of strings tests nothing -- the
 whole question is whether the right text lands in the right column. These boxes carry real geometry:

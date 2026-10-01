@@ -26,7 +26,7 @@ def test_health_has_no_backends(client):
     assert body["backends"] == {}
 
 
-def test_extract_ocr_follows_the_central_orchestrators_contract(client, auth, stub_guardrails, stub_ekstraksi):
+def test_extract_ocr_follows_the_central_orchestrators_contract(client, auth, stub_guardrails, stub_extraction):
     response = _submit(client, auth)
 
     assert response.status_code == 200
@@ -44,11 +44,11 @@ def test_extract_ocr_follows_the_central_orchestrators_contract(client, auth, st
         "params": None,
     }
     assert stub_guardrails.checked == [{"request_id": "OCR_1", "filename": "kk.jpg", "content_type": "image/jpeg"}]
-    [handed] = stub_ekstraksi.submitted
+    [handed] = stub_extraction.submitted
     assert handed["guardrails"]["passed"] is True
 
 
-def test_rejection_by_the_guardrails_model_is_400_with_guardrails_0(client, auth, stub_ekstraksi, stub_waiter):
+def test_rejection_by_the_guardrails_model_is_400_with_guardrails_0(client, auth, stub_extraction, stub_waiter):
     response = _submit(client, auth, filename="notkk.jpg")
 
     assert response.status_code == 400
@@ -65,7 +65,7 @@ def test_rejection_by_the_guardrails_model_is_400_with_guardrails_0(client, auth
         "pipeline_last_stage": "guardrails",
         "params": None,
     }
-    assert stub_ekstraksi.submitted == [] and stub_waiter.calls == []
+    assert stub_extraction.submitted == [] and stub_waiter.calls == []
 
 
 def test_request_id_is_required(client, auth):
@@ -76,7 +76,7 @@ def test_request_id_is_required(client, auth):
     assert body["message"] == "body.request_id: Field required"
 
 
-def test_file_url_is_fetched_here_and_forwarded_as_url(client, auth, monkeypatch, stub_ekstraksi):
+def test_file_url_is_fetched_here_and_forwarded_as_url(client, auth, monkeypatch, stub_extraction):
     async def fake_fetch(url, *, limit, timeout=10.0, policy):
         assert url == "http://minio.local/bucket/kk.jpg"
         return JPEG, "kk.jpg", "image/jpeg"
@@ -89,7 +89,7 @@ def test_file_url_is_fetched_here_and_forwarded_as_url(client, auth, monkeypatch
     )
     assert response.status_code == 200
     assert response.json()["job_status"] == "completed"
-    assert stub_ekstraksi.submitted[0]["file_url"] == "http://minio.local/bucket/kk.jpg"
+    assert stub_extraction.submitted[0]["file_url"] == "http://minio.local/bucket/kk.jpg"
 
 
 def test_unsupported_content_type_is_400_before_guardrails(client, auth, stub_guardrails):
@@ -126,17 +126,17 @@ def _submit_pdf(client, auth, content):
     return _submit(client, auth, filename="scan.pdf", content=content, content_type="application/pdf")
 
 
-def test_a_pdf_is_accepted_and_sent_on_as_it_is(client, auth, stub_guardrails, stub_ekstraksi):
-    """As in nilam: a PDF passes intake and goes to guardrails and ekstraksi unchanged; each of them
+def test_a_pdf_is_accepted_and_sent_on_as_it_is(client, auth, stub_guardrails, stub_extraction):
+    """As in nilam: a PDF passes intake and goes to guardrails and extraction unchanged; each of them
     reads its first page. R34a's switch is gone (`docs/decisions/2026-09-29-selaras-nilam.md`)."""
     response = _submit_pdf(client, auth, _pdf(1))
 
     assert response.status_code == 200
     assert len(stub_guardrails.checked) == 1
-    assert len(stub_ekstraksi.submitted) == 1
+    assert len(stub_extraction.submitted) == 1
 
 
-def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_override, stub_guardrails, stub_ekstraksi):
+def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_override, stub_guardrails, stub_extraction):
     response = _submit_pdf(client, auth, _pdf(3))
 
     assert response.status_code == 400
@@ -147,7 +147,7 @@ def test_more_than_two_pages_is_400_before_guardrails(client, auth, settings_ove
         "orchestrator",
     )
     assert "job_status" not in body
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
 
 
 def test_two_pages_are_within_the_limit(client, auth, settings_override, stub_guardrails):
@@ -174,56 +174,56 @@ def test_unreadable_pdf_is_400_before_guardrails(client, auth, settings_override
     assert stub_guardrails.checked == []
 
 
-def test_a_refusal_of_the_guardrails_service_is_answered_as_it_is(client, auth, stub_guardrails, stub_ekstraksi):
+def test_a_refusal_of_the_guardrails_service_is_answered_as_it_is(client, auth, stub_guardrails, stub_extraction):
     stub_guardrails.error = ServiceError(400, "Uploaded file is not a readable image")
 
     response = _submit(client, auth)
 
     assert response.status_code == 400
     assert response.json()["message"] == "Uploaded file is not a readable image"
-    assert stub_ekstraksi.submitted == []
+    assert stub_extraction.submitted == []
 
 
-def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_guardrails, stub_ekstraksi):
+def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_guardrails, stub_extraction):
     stub_guardrails.error = UpstreamUnavailable("guardrails service is unavailable")
 
     response = _submit(client, auth)
 
     assert response.status_code == 503
     assert response.json()["message"] == "guardrails service is unavailable"
-    assert stub_ekstraksi.submitted == []
+    assert stub_extraction.submitted == []
 
 
 NO_GUARDRAILS = ["extraction", "structuring", "scoring"]
 FULL = ["guardrails", "extraction", "structuring", "scoring"]
 
 
-def test_without_a_sequence_the_whole_pipeline_runs(client, auth, stub_guardrails, stub_ekstraksi, stub_waiter):
+def test_without_a_sequence_the_whole_pipeline_runs(client, auth, stub_guardrails, stub_extraction, stub_waiter):
     response = _submit(client, auth)
 
     assert response.status_code == 200
     assert len(stub_guardrails.checked) == 1
-    assert stub_ekstraksi.submitted[0]["sequence"] == FULL
+    assert stub_extraction.submitted[0]["sequence"] == FULL
     assert stub_waiter.last_stages == ["SCORING"]
 
 
-def test_the_sequence_is_taken_as_repeated_fields_or_as_a_json_array(client, auth, stub_ekstraksi, stub_waiter):
+def test_the_sequence_is_taken_as_repeated_fields_or_as_a_json_array(client, auth, stub_extraction, stub_waiter):
     stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
     repeated = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction"])
     as_json = _submit(client, auth, pipeline_name_sequence='["guardrails", "extraction"]')
 
     assert (repeated.status_code, as_json.status_code) == (200, 200)
-    assert [handed["sequence"] for handed in stub_ekstraksi.submitted] == [["guardrails", "extraction"]] * 2
+    assert [handed["sequence"] for handed in stub_extraction.submitted] == [["guardrails", "extraction"]] * 2
     assert stub_waiter.last_stages == ["OCR", "OCR"]
 
 
 @pytest.mark.parametrize("blank", ["", "  ", ["", ""]])
-def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrails, stub_ekstraksi, blank):
+def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrails, stub_extraction, blank):
     """Swagger UI and Postman send an empty form field as "" rather than leaving it out."""
     response = _submit(client, auth, pipeline_name_sequence=blank)
 
     assert response.status_code == 200
-    assert stub_ekstraksi.submitted[0]["sequence"] == FULL
+    assert stub_extraction.submitted[0]["sequence"] == FULL
 
 
 @pytest.mark.parametrize(
@@ -234,12 +234,12 @@ def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrai
         (["structuring", "scoring"], "structuring cannot come first"),
         (["guardrails", "scoring", "structuring", "extraction"], "without skipping one in the middle"),
         (["guardrails", "guardrails"], "listed twice"),
-        (["guardrails", "ekstraksi"], "unknown service 'ekstraksi'"),
+        (["guardrails", "extraction"], "unknown service 'extraction'"),
         ('["guardrails", ', "JSON array of strings"),
     ],
 )
 def test_an_invalid_sequence_is_422_before_anything_runs(
-    client, auth, stub_guardrails, stub_ekstraksi, sequence, reason
+    client, auth, stub_guardrails, stub_extraction, sequence, reason
 ):
     response = _submit(client, auth, pipeline_name_sequence=sequence)
 
@@ -247,17 +247,17 @@ def test_an_invalid_sequence_is_422_before_anything_runs(
     body = response.json()
     assert body["errors"] == "INVALID_PIPELINE_SEQUENCE"
     assert body["message"].startswith("Invalid pipeline_name_sequence: ") and reason in body["message"]
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
 
 
-def test_guardrails_only_answers_with_the_report_as_it_is(client, auth, stub_ekstraksi, stub_waiter):
+def test_guardrails_only_answers_with_the_report_as_it_is(client, auth, stub_extraction, stub_waiter):
     response = _submit(client, auth, pipeline_name_sequence=["guardrails"])
 
     assert response.status_code == 200
     body = response.json()
     assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
     assert body["data"] == ACCEPTED_REPORT
-    assert stub_ekstraksi.submitted == [] and stub_waiter.calls == []
+    assert stub_extraction.submitted == [] and stub_waiter.calls == []
 
 
 def test_guardrails_only_still_rejects(client, auth):
@@ -267,7 +267,7 @@ def test_guardrails_only_still_rejects(client, auth):
     assert (response.json()["errors"], response.json()["guardrails"]) == ("DOWNSTREAM_VALIDATION_ERROR", 1)
 
 
-def test_a_sequence_ending_at_ekstraksi_answers_with_the_ocr_result_as_it_is(client, auth, stub_waiter):
+def test_a_sequence_ending_at_extraction_answers_with_the_ocr_result_as_it_is(client, auth, stub_waiter):
     stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
 
     response = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction"])
@@ -288,7 +288,7 @@ def test_a_sequence_ending_at_structuring_answers_with_its_result_as_it_is(clien
     assert stub_waiter.last_stages == ["STRUCTURING"]
 
 
-def test_without_guardrails_the_document_is_handed_on_without_a_report(client, auth, stub_guardrails, stub_ekstraksi):
+def test_without_guardrails_the_document_is_handed_on_without_a_report(client, auth, stub_guardrails, stub_extraction):
     """Leaving guardrails out is the central orchestrator's call, as in nilam: no setting here can refuse it."""
     # A file name the guardrails model rejects: left out of the sequence, it never gets to judge it.
     response = _submit(client, auth, filename="notkk.jpg", pipeline_name_sequence=NO_GUARDRAILS)
@@ -297,7 +297,7 @@ def test_without_guardrails_the_document_is_handed_on_without_a_report(client, a
     body = response.json()
     assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
     assert stub_guardrails.checked == []
-    [handed] = stub_ekstraksi.submitted
+    [handed] = stub_extraction.submitted
     assert (handed["guardrails"], handed["sequence"]) == (None, NO_GUARDRAILS)
 
 
@@ -315,7 +315,7 @@ def test_without_guardrails_the_kk_validity_gate_still_rejects(client, auth, stu
     )
 
 
-def test_without_guardrails_the_file_checks_still_run(client, auth, settings_override, stub_ekstraksi):
+def test_without_guardrails_the_file_checks_still_run(client, auth, settings_override, stub_extraction):
     pages = _submit(
         client,
         auth,
@@ -329,7 +329,7 @@ def test_without_guardrails_the_file_checks_still_run(client, auth, settings_ove
 
     assert (pages.status_code, pages.json()["message"]) == (400, TOO_MANY_PAGES)
     assert size.status_code == 413
-    assert stub_ekstraksi.submitted == []
+    assert stub_extraction.submitted == []
 
 
 @pytest.mark.parametrize(
@@ -408,7 +408,7 @@ def test_a_guardrails_rejection_is_answered_again_by_the_get_from_guardrails_res
     assert fetched.json()["message"] == rejected.json()["message"]
 
 
-def test_the_same_request_id_twice_gives_two_consistent_answers(client, auth, stub_ekstraksi):
+def test_the_same_request_id_twice_gives_two_consistent_answers(client, auth, stub_extraction):
     """§2.5. The orchestrator stores nothing, so idempotency is the stage's: the second hand-off
     comes back `duplicate: true` and the pipeline does not run again. What this pins is that the
     caller cannot tell the two apart."""
@@ -417,29 +417,29 @@ def test_the_same_request_id_twice_gives_two_consistent_answers(client, auth, st
 
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json()
-    assert len(stub_ekstraksi.submitted) == 2, "both are handed over; the stage decides it is a duplicate"
+    assert len(stub_extraction.submitted) == 2, "both are handed over; the stage decides it is a duplicate"
 
 
-def test_an_empty_file_is_400_before_guardrails(client, auth, stub_guardrails, stub_ekstraksi):
+def test_an_empty_file_is_400_before_guardrails(client, auth, stub_guardrails, stub_extraction):
     response = _submit(client, auth, content=b"")
 
     assert response.status_code == 400
-    assert stub_guardrails.checked == [] and stub_ekstraksi.submitted == []
+    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
 
 
-def test_guardrails_timing_out_is_504_and_nothing_starts(client, auth, stub_guardrails, stub_ekstraksi):
+def test_guardrails_timing_out_is_504_and_nothing_starts(client, auth, stub_guardrails, stub_extraction):
     stub_guardrails.error = UpstreamTimeout("guardrails service did not answer in time")
 
     response = _submit(client, auth)
 
     assert response.status_code == 504
-    assert stub_ekstraksi.submitted == []
+    assert stub_extraction.submitted == []
 
 
 @pytest.mark.parametrize("failing", ["guardrails", "extraction"])
-def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardrails, stub_ekstraksi, failing):
+def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardrails, stub_extraction, failing):
     """Ported from nilam: the answer names the service that could not be reached, in the extract-ocr shape."""
-    stub = stub_guardrails if failing == "guardrails" else stub_ekstraksi
+    stub = stub_guardrails if failing == "guardrails" else stub_extraction
     stub.error = UpstreamUnavailable(f"{failing} service is unavailable")
 
     response = _submit(client, auth, params='{"refno": "X1"}')

@@ -5,7 +5,7 @@ import httpx
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import ServiceError
 
-from app.clients.ekstraksi import EkstraksiJobClient
+from app.clients.extraction import ExtractionJobClient
 from app.clients.guardrails import GuardrailsClient
 from app.clients.stages import StageStatusClient
 from app.config import get_settings
@@ -69,18 +69,18 @@ def test_still_running_when_the_wait_runs_out_is_202(client, auth, stub_waiter):
 
 
 def test_failure_within_the_wait_is_422_with_the_failed_stage(client, auth, stub_waiter):
-    stub_waiter.outcome = WaitOutcome("OCR", "FAILED", "ekstraksi OCR model is unavailable")
+    stub_waiter.outcome = WaitOutcome("OCR", "FAILED", "extraction OCR model is unavailable")
 
     response = _submit(client, auth)
 
     assert response.status_code == 422
     body = response.json()
-    assert (body["errors"], body["message"]) == ("OCR_FAILED", "ekstraksi OCR model is unavailable")
+    assert (body["errors"], body["message"]) == ("OCR_FAILED", "extraction OCR model is unavailable")
     assert (body["job_status"], body["data"], body["guardrails"]) == ("failed", None, 0)
 
 
 def test_rejection_by_the_kk_validity_gate_is_400_with_its_reason(client, auth, stub_waiter):
-    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap"
     stub_waiter.outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, reason)
 
     response = _submit(client, auth)
@@ -113,9 +113,9 @@ def test_waiting_disabled_answers_202_right_after_the_handoff(client, auth, stub
 
 async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
     remote = RemoteModelClient(
-        "http://ekstraksi:8042",
+        "http://extraction:8042",
         5.0,
-        name="ekstraksi service",
+        name="extraction service",
         passthrough_client_errors=True,
         transport=httpx.MockTransport(
             lambda request: httpx.Response(
@@ -131,7 +131,7 @@ async def test_the_wait_is_counted_from_the_arrival_of_the_request(stub_waiter):
     )
     settings = get_settings().model_copy(update={"pipeline_wait_seconds": 15})
     service = ExtractOcrService(
-        GuardrailsClient(guardrails), EkstraksiJobClient(remote, attempts=1, delay=0), stub_waiter, settings
+        GuardrailsClient(guardrails), ExtractionJobClient(remote, attempts=1, delay=0), stub_waiter, settings
     )
 
     await service.submit(RID, "kk", "kk.jpg", "image/jpeg", JPEG, received_at=time.monotonic() - 10)
@@ -213,7 +213,7 @@ async def test_waiter_gives_up_when_the_time_runs_out():
 
 async def test_waiter_keeps_polling_through_status_errors():
     stages = [
-        FakeStage("OCR", ServiceError(503, "ekstraksi service is unavailable"), _job("DONE", {})),
+        FakeStage("OCR", ServiceError(503, "extraction service is unavailable"), _job("DONE", {})),
         FakeStage("STRUCTURING", _job("DONE", {})),
         FakeStage("SCORING", _job("DONE", SCORING_RESULT)),
     ]
@@ -262,9 +262,9 @@ async def test_a_slow_guardrails_check_that_eats_the_budget_answers_202(stub_wai
     longer than the whole budget leaves `remaining <= 0` with the setting still positive. The
     answer is an explicit 202 at the first stage, not a wait that overruns the budget."""
     remote = RemoteModelClient(
-        "http://ekstraksi:8042",
+        "http://extraction:8042",
         5.0,
-        name="ekstraksi service",
+        name="extraction service",
         passthrough_client_errors=True,
         transport=httpx.MockTransport(
             lambda request: httpx.Response(
@@ -280,7 +280,7 @@ async def test_a_slow_guardrails_check_that_eats_the_budget_answers_202(stub_wai
     )
     settings = get_settings().model_copy(update={"pipeline_wait_seconds": 30})
     service = ExtractOcrService(
-        GuardrailsClient(guardrails), EkstraksiJobClient(remote, attempts=1, delay=0), stub_waiter, settings
+        GuardrailsClient(guardrails), ExtractionJobClient(remote, attempts=1, delay=0), stub_waiter, settings
     )
 
     # Arrived 40 s ago: the whole 30 s budget is already gone.

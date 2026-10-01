@@ -329,7 +329,7 @@ paths:
                   nik: '9901011203850001'
                   refno: PK19039Y8U
         '500':
-          description: The guardrails or ekstraksi service failed, or answered in an unexpected shape
+          description: The guardrails or extraction service failed, or answered in an unexpected shape
             (`DOWNSTREAM_SERVER_ERROR`); `pipeline_last_stage` names it
           content:
             application/json:
@@ -344,7 +344,7 @@ paths:
                 document_type: kk
                 pipeline_last_stage: guardrails
         '503':
-          description: The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
+          description: The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
             nothing was started. `pipeline_last_stage` names it
           content:
             application/json:
@@ -353,13 +353,13 @@ paths:
               example:
                 status_code: 503
                 status_desc: Service Unavailable
-                message: ekstraksi service is unavailable
+                message: extraction service is unavailable
                 errors: DOWNSTREAM_UNAVAILABLE
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 document_type: kk
                 pipeline_last_stage: extraction
         '504':
-          description: The guardrails service, its model, or the ekstraksi service did not answer in time
+          description: The guardrails service, its model, or the extraction service did not answer in time
             (`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it
           content:
             application/json:
@@ -368,7 +368,7 @@ paths:
               example:
                 status_code: 504
                 status_desc: Gateway Timeout
-                message: ekstraksi service timed out after 10.0s
+                message: extraction service timed out after 10.0s
                 errors: DOWNSTREAM_TIMEOUT
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 document_type: kk
@@ -398,7 +398,7 @@ paths:
       - 3. Status
       summary: 'Where a request is now: the extract-ocr answer, without waiting'
       description: 'Reads the jobs of `request_id` once each, in pipeline order, up to the last service
-        of the `pipeline_name_sequence` stored with its ekstraksi job, and answers in the same contract
+        of the `pipeline_name_sequence` stored with its extraction job, and answers in the same contract
         as `POST /v1/extract-ocr` ("Finished" meaning finished by now):
 
 
@@ -427,7 +427,7 @@ paths:
         **No stage job.** A request that never reached a stage is answered from its last guardrails verdict
         (`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report
         as `data` when guardrails was its only service. **404** otherwise: refused before the check, still
-        being judged, passed but its hand-off to ekstraksi failed, or no verdict kept (no `DATABASE_URL`).
+        being judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).
 
 
         **Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it
@@ -536,7 +536,7 @@ paths:
               example:
                 status_code: 400
                 status_desc: Bad Request
-                message: Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap
+                message: Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap
                 errors: DOWNSTREAM_VALIDATION_ERROR
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 document_type: kk
@@ -573,7 +573,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: No stage has a job for this request_id and no guardrails verdict answers for it
-            (not submitted yet, refused before the check, or its hand-off to ekstraksi failed)
+            (not submitted yet, refused before the check, or its hand-off to extraction failed)
           content:
             application/json:
               example:
@@ -661,7 +661,7 @@ webhooks:
         **When.** Once per stage, from the service that ran it:
 
 
-        - **ekstraksi**: Once per job of `POST /v1/ekstraksi/jobs`: `stage: OCR` with `status: DONE` once
+        - **extraction**: Once per job of `POST /v1/extraction/jobs`: `stage: OCR` with `status: DONE` once
         the OCR result is stored, or `status: FAILED` with `error_message` when the document could not
         be read (the chain stops there). An image with no readable text is `DONE`, not `FAILED`: it is
         rejected by the structuring rules. Additionally `stage: STRUCTURING`, `status: FAILED` when OCR
@@ -790,20 +790,10 @@ components:
           - type: 'null'
           title: Guardrails Confidence Threshold
           description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
-            with the value between 0 and 1 (exclusive). Applies to the rejected side unless `guardrails_tendency`
-            says otherwise. Omitted: the guardrails service''s own threshold'
+            with the value between 0 and 1 (exclusive). Applies to the rejected side.
+            Omitted: the guardrails service''s own threshold'
           examples:
           - '{"acc_rej": 0.8}'
-        guardrails_tendency:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Guardrails Tendency
-          description: 'Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`):
-            `accepted` (the document passes when its probability of being good, `1 - probability_bad`,
-            reaches it) or `rejected` (it is rejected when `probability_bad` reaches it)'
-          examples:
-          - accepted
         column_confidence_threshold:
           anyOf:
           - type: string
@@ -1307,7 +1297,7 @@ components:
         request_id:
           type: string
           title: Request Id
-          description: The request_id you submitted with `POST /v1/ekstraksi/jobs`
+          description: The request_id you submitted with `POST /v1/extraction/jobs`
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
         stage:
@@ -1360,7 +1350,7 @@ components:
         request_id:
           type: string
           title: Request Id
-          description: The request_id you submitted with `POST /v1/ekstraksi/jobs`
+          description: The request_id you submitted with `POST /v1/extraction/jobs`
           examples:
           - REQ_9cb01af2-493d-446d-b191-af120333f6d0
         stage:

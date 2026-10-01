@@ -125,11 +125,11 @@ def test_a_field_that_was_not_found_is_empty_with_confidence_0():
 @pytest.mark.parametrize(
     ("stage", "error_message", "error_code", "expected_code"),
     [
-        ("OCR", "ekstraksi OCR model is unavailable", None, "OCR_FAILED"),
+        ("OCR", "extraction OCR model is unavailable", None, "OCR_FAILED"),
         ("SCORING", "Internal error in SCORING stage", None, "SCORING_FAILED"),
         (
             "STRUCTURING",
-            "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap",
+            "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap",
             "DOWNSTREAM_VALIDATION_ERROR",
             "DOWNSTREAM_VALIDATION_ERROR",
         ),

@@ -11,7 +11,7 @@ sebagai antrean, yaitu biaya yang justru dihindari dengan membuat fase 0.
 
 | Kategori | Isi | Siapa menyunting |
 |---|---|---|
-| Milik agen | `services/orchestrator/**`, `services/guardrails/**`, `services/ekstraksi/**` | agennya sendiri, bebas |
+| Milik agen | `services/orchestrator/**`, `services/guardrails/**`, `services/extraction/**` | agennya sendiri, bebas |
 | **Beku** | `libs/ocr_common/**`, `Makefile`, `docker-compose*.yml`, `pyproject.toml`, `db/**` | hanya lewat prosedur di bawah |
 | Milik integrator | `scripts/**`, `.github/**`, `api/**`, `services/structuring/**`, `services/scoring/**`, `.env.example` (akar dan per service), dokumen akar | integrator, atas permintaan |
 

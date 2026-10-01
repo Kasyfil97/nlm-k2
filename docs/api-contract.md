@@ -23,8 +23,8 @@ Status: draf 14, 29 September 2026.
 3. [`POST /v1/extract-ocr` — pintu masuk](#3-post-v1extract-ocr--pintu-masuk)
 4. [`GET /v1/extract-ocr/{request_id}` — keadaan request](#4-get-v1extract-ocrrequest_id--keadaan-request)
 5. [orchestrator → guardrails](#5-orchestrator--guardrails)
-6. [orchestrator → ekstraksi](#6-orchestrator--ekstraksi)
-7. [ekstraksi → structuring](#7-ekstraksi--structuring)
+6. [orchestrator → extraction](#6-orchestrator--extraction)
+7. [extraction → structuring](#7-extraction--structuring)
 8. [structuring → scoring](#8-structuring--scoring)
 9. [`GET /v1/<tahap>/jobs/{request_id}`](#9-get-v1tahapjobsrequest_id--dibaca-orchestrator)
 10. [Skema data bersama](#10-skema-data-bersama)
@@ -38,9 +38,9 @@ Status: draf 14, 29 September 2026.
 
 | Service | Port | Peran | Berasal dari |
 |---|---|---|---|
-| **orchestrator** | 8040 | Pintu masuk tunggal. Cek file → minta guardrails menilai → serahkan ke ekstraksi → tunggu sampai `PIPELINE_WAIT_SECONDS`. Stateless. | `K2Orchestrator` (dirombak) |
+| **orchestrator** | 8040 | Pintu masuk tunggal. Cek file → minta guardrails menilai → serahkan ke extraction → tunggu sampai `PIPELINE_WAIT_SECONDS`. Stateless. | `K2Orchestrator` (dirombak) |
 | **guardrails** | 8041 | Sinkron, internal. Vonis `accepted` / `reject` untuk keseluruhan dokumen sebelum pipeline jalan. | `K2Quality` (XGBoost + NR-IQA) |
-| **ekstraksi** | 8042 | Tahap async 1. OCR PaddleOCR — orientasi dan pelurusan ditangani di dalamnya. | `K2Extractor` |
+| **extraction** | 8042 | Tahap async 1. OCR PaddleOCR — orientasi dan pelurusan ditangani di dalamnya. | `K2Extractor` |
 | **structuring** | 8043 | Tahap async 2. Kotak teks → 11 field dokumen + `anggota_keluarga`. **Satu-satunya tahap yang boleh menolak dokumen.** | `K2Regex-v2` (layout parser + CRF) |
 | **scoring** | 8044 | Tahap async 3, terakhir. Confidence per field terkalibrasi; menulis hasil akhir. | baru |
 
@@ -57,11 +57,11 @@ Alur panggilan:
 Orkestrasi pusat ──► orchestrator :8040   POST /v1/extract-ocr   SATU-SATUNYA PANGGILAN MASUK
               orchestrator ──► guardrails :8041  POST /v1/guardrails/check     SINKRON
                  reject ◄── 400 DOWNSTREAM_VALIDATION_ERROR, tidak ada tahap yang jalan
-                 accept ──► ekstraksi :8042      POST /v1/ekstraksi/jobs       202 segera
-                            ekstraksi   ──► structuring :8043  POST /v1/structuring/jobs   202
+                 accept ──► extraction :8042      POST /v1/extraction/jobs       202 segera
+                            extraction   ──► structuring :8043  POST /v1/structuring/jobs   202
                             structuring ──► scoring :8044      POST /v1/scoring/jobs       202
               orchestrator menunggu maks. PIPELINE_WAIT_SECONDS sambil polling
-                 GET /v1/{ekstraksi,structuring,scoring}/jobs/{request_id} tiap 0,5 dtk
+                 GET /v1/{extraction,structuring,scoring}/jobs/{request_id} tiap 0,5 dtk
               ◄── 200 completed | 202 processing | 400 ditolak | 422 satu tahap gagal
 ```
 
@@ -76,14 +76,14 @@ relay outbox mengirim ke tahap berikutnya.
 | model guardrails | sebelum pipeline jalan | respons sinkron `POST /v1/guardrails/check` |
 | aturan structuring | tahap 2 | `reject_reason` di dalam payload hasil structuring |
 
-Ekstraksi dan scoring **tidak pernah menolak**. Kegagalan di sana selalu job `FAILED` → `422`, bukan `400`.
+Extraction dan scoring **tidak pernah menolak**. Kegagalan di sana selalu job `FAILED` → `422`, bukan `400`.
 Alasannya dijelaskan di [7.4](#74-gerbang-validitas-kk).
 
 **Yang sengaja tidak ada.**
 
-- **Tidak ada service orientasi dan rectifier** — PaddleOCR di dalam tahap ekstraksi menangani keduanya.
+- **Tidak ada service orientasi dan rectifier** — PaddleOCR di dalam tahap extraction menangani keduanya.
 - **PDF hanya dibaca halaman pertamanya** (draf 12, seperti nilam menerima PDF): lebih dari
-  `MAX_DOCUMENT_PAGES` halaman ditolak `400` di orchestrator; guardrails menilai dan ekstraksi membaca
+  `MAX_DOCUMENT_PAGES` halaman ditolak `400` di orchestrator; guardrails menilai dan extraction membaca
   halaman 1 saja, karena parser tata letak membaca satu bingkai halaman.
 - **Tidak ada pengecekan kualitas crop.** `K2QualityDL` tidak dipakai di nlm-k2. Satu-satunya penilaian
   kualitas gambar adalah model guardrails, yang menilai dokumen **secara keseluruhan** sebelum OCR.
@@ -172,7 +172,7 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 | 413 | `FILE_TOO_LARGE` | berkas melebihi `MAX_UPLOAD_BYTES` | tidak |
 | 422 | `INVALID_PARAMS` | `params` bukan JSON object / string | tidak |
 | 422 | `INVALID_PIPELINE_SEQUENCE` | `pipeline_name_sequence` bukan urutan yang sah (3.1) | tidak |
-| 422 | `INVALID_THRESHOLD` | `guardrails_confidence_threshold` / `guardrails_tendency` / `column_confidence_threshold` tidak terbaca (3.1) | tidak |
+| 422 | `INVALID_THRESHOLD` | `guardrails_confidence_threshold` / `column_confidence_threshold` tidak terbaca (3.1) | tidak |
 | 422 | `VALIDATION_ERROR` | field wajib tidak dikirim atau salah tipe | tidak |
 | 422 | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | satu tahap gagal | ya, kirim ulang |
 | 429 | `TOO_MANY_REQUESTS` | rate limit orchestrator | ya, setelah `Retry-After` |
@@ -247,7 +247,7 @@ Satu database dipakai bersama, jadi penting jelas tabel mana milik siapa.
 
 | Tabel | Pemilik | Ditulis | Dibaca |
 |---|---|---|---|
-| `ocr_jobs` / `ocr_results` | **nlm-k2** | ekstraksi | ekstraksi lewat API-nya; orchestrator lewat API itu |
+| `ocr_jobs` / `ocr_results` | **nlm-k2** | extraction | extraction lewat API-nya; orchestrator lewat API itu |
 | `structuring_jobs` / `structuring_results` | **nlm-k2** | structuring | idem |
 | `scoring_jobs` / `scoring_results` | **nlm-k2** | scoring | idem |
 | `pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
@@ -279,8 +279,7 @@ request tetap dijawab.
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
-| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected` kecuali `guardrails_tendency` menyebut lain. Tidak dikirim = ambang milik service guardrails. Angka telanjang (`"0.8"`) masih dibaca, tetapi harus disertai `guardrails_tendency` |
-| `guardrails_tendency` | string | tidak | opsional, bawaan `rejected`. `accepted` \| `rejected`: sisi yang dikenai ambang. `accepted`: lolos bila `1 − probability_bad ≥ x`; `rejected`: ditolak bila `probability_bad ≥ x`. Tanpa `guardrails_confidence_threshold` → 422 `INVALID_THRESHOLD` |
+| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. Tidak dikirim = ambang milik service guardrails. |
 | `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
 
 `file` dan `file_url` **tepat satu**, tidak boleh dua-duanya dan tidak boleh kosong keduanya.
@@ -291,7 +290,7 @@ keempatnya (bawaan), `[guardrails, extraction]`, `[extraction, structuring]`, `[
 Service terakhir mengakhiri request: hasilnya menjadi `data` **apa adanya** — laporan guardrails, hasil
 OCR (7.1), hasil structuring (7.3), atau sembilan field setelah scoring — dan `pipeline_last_stage`
 menyebut service itu. Tanpa `guardrails`, cek file tetap berjalan dan aturan structuring tetap menolak.
-Urutannya ikut ke setiap tahap (form ke ekstraksi, badan handoff, `input` job), jadi job basi yang
+Urutannya ikut ke setiap tahap (form ke extraction, badan handoff, `input` job), jadi job basi yang
 dijalankan ulang berhenti di tempat yang sama.
 
 **Field kosong berbeda dengan nilam.** Klien form mengirim field kosong sebagai `""`, bukan
@@ -311,7 +310,7 @@ curl -X POST http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr \
 ```
 
 **Kenapa `file_url` disarankan.** Kalau request memakai `file_url`, orchestrator meneruskan **URL**-nya
-(bukan byte-nya) ke `/v1/ekstraksi/jobs`. Ekstraksi menyimpan URL itu di kolom `input` job-nya, sehingga
+(bukan byte-nya) ke `/v1/extraction/jobs`. Extraction menyimpan URL itu di kolom `input` job-nya, sehingga
 job yang ditinggalkan pod mati bisa dijalankan ulang otomatis. Upload inline tidak disimpan, jadi job
 OCR-nya `FAILED` dan minta kirim ulang. Presigned URL karena itu harus hidup lebih lama dari
 `PIPELINE_JOB_LEASE_SECONDS`.
@@ -392,7 +391,7 @@ masuk sebelum service pipeline mana pun dipanggil (sejak draf 13; sebelumnya `nu
 Aturan isi `data`:
 
 - **Hanya sembilan field yang keluar**: 2 field dokumen (`no_kk`, `nama_kepala_keluarga`) dan 7 field per
-  anggota. Tidak ada field lain, walau tahap structuring mengekstraksi lebih banyak.
+  anggota. Tidak ada field lain, walau tahap structuring mengextraction lebih banyak.
 - Bentuk tiap field selalu `{"value": <string>, "confidence": 0 | 1}` (draf 13, seperti nilam) — **tidak
   pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan: `{"value": "", "confidence": 0}`.
 - **`confidence` bernilai `1`** bila probabilitas trust model bahwa nilai itu PERSIS benar (kapital & spasi
@@ -412,7 +411,7 @@ Aturan isi `data`:
 
 ### 3.3.1 Proyeksi dari hasil structuring ke `data`
 
-Tahap structuring tetap mengekstraksi **11 field dokumen + 15 field per anggota** ([7.3](#73-hasil-tahap-structuring))
+Tahap structuring tetap mengextraction **11 field dokumen + 15 field per anggota** ([7.3](#73-hasil-tahap-structuring))
 — itu yang disimpan di `structuring_results` dan terbaca lewat `GET /v1/structuring/jobs/{request_id}`.
 Orchestrator memproyeksikan sebagian kecilnya ke `data`, sekaligus mengganti dua nama:
 
@@ -436,7 +435,7 @@ structuring dan scoring tidak ikut berubah.
 
 Sembilan field ini disebut **field kontrak** di seluruh dokumen.
 
-Field yang **tidak** keluar tapi tetap diekstraksi dan tersimpan: `alamat`, `rt`, `rw`, `desa_kelurahan`,
+Field yang **tidak** keluar tapi tetap diextraction dan tersimpan: `alamat`, `rt`, `rw`, `desa_kelurahan`,
 `kecamatan`, `kabupaten_kota`, `provinsi`, `kode_pos`, `tanggal_dikeluarkan`, dan per anggota
 `jenis_kelamin`, `tempat_lahir`, `tanggal_lahir`, `agama`, `golongan_darah`, `status_perkawinan`,
 `tanggal_perkawinan`, `kewarganegaraan`.
@@ -471,7 +470,7 @@ Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message` dan
 |---|---|---|
 | model guardrails | sebelum pipeline | `Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas` |
 | aturan structuring | structuring | `Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga` |
-| aturan structuring | structuring | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap` |
+| aturan structuring | structuring | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap` |
 
 Semua `message` berbahasa Indonesia dan boleh ditampilkan langsung ke pengguna akhir. Penolakan oleh
 guardrails terjadi **sebelum** tahap mana pun berjalan, jadi tidak ada baris job. Putusannya tetap
@@ -486,7 +485,7 @@ tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
 
 ```json
 {"status_code": 422, "status_desc": "Unprocessable Entity",
- "message": "ekstraksi OCR model is unavailable",
+ "message": "extraction OCR model is unavailable",
  "data": null, "errors": "OCR_FAILED", "request_id": "REQ_001",
  "pipeline_last_stage": "extraction",
  "document_type": "kk", "job_status": "failed", "guardrails": 0,
@@ -499,7 +498,7 @@ tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
 
 `received_at` diambil di baris pertama handler, sebelum `params` di-parse. Anggaran
 `PIPELINE_WAIT_SECONDS` (default **30 detik** untuk KK) dipakai berurutan oleh: baca/unduh file →
-guardrails → `POST /v1/ekstraksi/jobs` → polling. Sisa untuk polling dihitung
+guardrails → `POST /v1/extraction/jobs` → polling. Sisa untuk polling dihitung
 `PIPELINE_WAIT_SECONDS - (now - received_at)`, tidak di-reset. Satu `asyncio.timeout` membungkus polling
 ketiga tahap, jadi anggarannya dibagi bertiga, bukan per tahap.
 
@@ -530,12 +529,12 @@ curl http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr/REQ_001 \
 | sebuah tahap tak terbaca | 503 / 504 | – | – | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | tahap itu |
 
 - `params` **selalu** `null` di sini (tidak disimpan). `document_type` selalu `kk`.
-- Tahap yang dibaca berhenti di service terakhir `pipeline_name_sequence` yang tersimpan di job ekstraksi.
+- Tahap yang dibaca berhenti di service terakhir `pipeline_name_sequence` yang tersimpan di job extraction.
 - Request yang **tidak punya job tahap** dijawab dari putusan guardrails terakhirnya di
   `guardrails_results` (draf 12, seperti nilam), sama dengan jawaban `POST`-nya: `400` kalau ditolak
   guardrails, `200` dengan laporan sebagai `data` kalau guardrails satu-satunya service-nya.
 - `404` berarti tidak ada job tahap **dan** tidak ada putusan yang menjawab: `POST`-nya belum dinilai,
-  ditolak sebelum dinilai, lolos tetapi handoff ke ekstraksi gagal, atau tidak ada `DATABASE_URL`.
+  ditolak sebelum dinilai, lolos tetapi handoff ke extraction gagal, atau tidak ada `DATABASE_URL`.
 - Penolakan aturan structuring terbaca di sini karena `reject_reason` ikut di dalam payload hasil
   structuring ([7.3](#73-hasil-tahap-structuring)) — orchestrator membacanya lewat
   `GET /v1/structuring/jobs/{request_id}`, tanpa perlu akses database.
@@ -631,7 +630,7 @@ yang dilatihkan ke checkpoint:
 - `confidence` dan `probability_bad` **null** pada `unassessable`. Tahap scoring harus menanganinya,
   bukan mengasumsikan ada angka — meski pada praktiknya dokumen itu tidak pernah sampai ke sana.
 - `reason` berbahasa Indonesia dan dipakai langsung sebagai `message` pada respons 400 orchestrator.
-- **Blok `data` ini diteruskan apa adanya** ke `/v1/ekstraksi/jobs` sebagai field form `guardrails`, lalu
+- **Blok `data` ini diteruskan apa adanya** ke `/v1/extraction/jobs` sebagai field form `guardrails`, lalu
   mengalir ke structuring dan scoring tanpa diubah. `probability_bad` menjadi fitur `guardrail_probability`
   di trust model tahap scoring.
 
@@ -647,13 +646,13 @@ boleh kirim ulang. Pipeline tidak dimulai.
 
 ---
 
-## 6. orchestrator → ekstraksi
+## 6. orchestrator → extraction
 
 ### 6.1 Request
 
 ```
-POST http://nlm-k2-ekstraksi:8042/v1/ekstraksi/jobs
-X-API-Key: <EKSTRAKSI_API_KEY | API_KEY>
+POST http://nlm-k2-extraction:8042/v1/extraction/jobs
+X-API-Key: <EXTRACTION_API_KEY | API_KEY>
 X-Request-ID: REQ_001
 Content-Type: multipart/form-data
 ```
@@ -687,7 +686,7 @@ diulang dan diteruskan ke pemanggil.
 muncul sebagai job `FAILED`, bukan 4xx. Yang langsung ditolak hanya bentuk request yang salah (400 intake,
 401, 422).
 
-### 6.3 Yang dikerjakan tahap ekstraksi
+### 6.3 Yang dikerjakan tahap extraction
 
 1. Satu transaksi klaim: `INSERT ocr_jobs (PROCESSING, input: {document_type, guardrails, file_url})
    ON CONFLICT DO NOTHING` + upsert baris outcome `{downstream_status: processing, stage: OCR}`.
@@ -709,7 +708,7 @@ Tahap ini juga **tidak** memanggil klasifikator crop dan **tidak** membawa extra
 
 ---
 
-## 7. ekstraksi → structuring
+## 7. extraction → structuring
 
 ### 7.1 Request
 
@@ -743,7 +742,7 @@ Content-Type: application/json
 ```
 
 **`texts` memakai bentuk PP-OCRv6 `{text, score, poly}`** — bentuk yang sudah dipakai `K2Regex-v2`, bukan
-bentuk lama `[[poly, [text, score]]]` dari `K2Extractor`. Adaptasinya tanggung jawab tahap ekstraksi.
+bentuk lama `[[poly, [text, score]]]` dari `K2Extractor`. Adaptasinya tanggung jawab tahap extraction.
 `poly` selalu 4 titik × 2 koordinat, dalam piksel gambar yang **sudah** diluruskan PaddleOCR — bukan
 koordinat pada foto yang diunggah.
 
@@ -908,7 +907,7 @@ Ini **satu-satunya gerbang isi** di seluruh pipeline, dan mekanismenya mengikuti
 | Kondisi | `reject_reason` |
 |---|---|
 | tidak ada kotak teks sama sekali | `Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga` |
-| `nomor_kk` kosong atau `"Not found"` | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap` |
+| `nomor_kk` kosong atau `"Not found"` | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap` |
 | tidak ada anggota dengan `nik` **dan** `nama_lengkap` terisi | idem |
 
 Kalau lebih dari satu kondisi terpenuhi, yang dipakai adalah yang pertama menurut urutan di atas.
@@ -1048,7 +1047,7 @@ bawah Clopper-Pearson-nya. Untuk menjanjikan 99.9% dibutuhkan ~3000 sel beruruta
 bin teratas; yang tersedia sekarang 1686 sel seluruhnya.
 
 **Scoring hanya menilai sembilan field kontrak** (2 dokumen + 7 anggota), bukan seluruh 11 + 15 yang
-diekstraksi structuring. Alasannya: tiap field butuh kalibratornya sendiri, dan melatih 26 kalibrator untuk
+diextraction structuring. Alasannya: tiap field butuh kalibratornya sendiri, dan melatih 26 kalibrator untuk
 9 angka yang dipakai adalah pemborosan. Kunci di sini memakai **nama internal**; penggantian nama ke
 kontrak keluar terjadi di orchestrator (3.3.1).
 
@@ -1191,7 +1190,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | `document.confidence` | float 0–1 \| null | keyakinan pada vonis; null kalau `unassessable` |
 | `document.probability_bad` | float 0–1 \| null | keluaran mentah model; fitur trust model; null kalau `unassessable` |
 | `document.threshold_used` | float | ambang yang berlaku saat penilaian |
-| `document.threshold_target` | `accept` \| `reject` | sisi yang dikenai ambang: `reject` (bawaan) atau `accept` (dari `guardrails_tendency` request) |
+| `document.threshold_target` | `accept` \| `reject` | sisi yang dikenai ambang: selalu `reject` |
 
 ### `OcrPayload`
 
@@ -1223,7 +1222,7 @@ Ada **dua daftar** yang tidak boleh tertukar.
   `pendidikan`, `jenis_pekerjaan`, `golongan_darah`, `status_perkawinan`, `tanggal_perkawinan`,
   `status_hubungan_dalam_keluarga`, `kewarganegaraan`, `ayah`, `ibu`.
 
-`no_paspor` dan `no_kitap` sengaja tidak diekstraksi. Scoring hanya menilai sembilan di antaranya —
+`no_paspor` dan `no_kitap` sengaja tidak diextraction. Scoring hanya menilai sembilan di antaranya —
 padanan internal dari daftar B.
 
 **B. Nama kontrak keluar** — hanya muncul di `data` pada `POST` / `GET /v1/extract-ocr`:
@@ -1246,7 +1245,7 @@ Urutan di atas adalah urutan kontrak. Pemetaan A → B ada di [3.3.1](#331-proye
 | tiga tahap | GET | `/v1/<tahap>/jobs/{request_id}` | ya | Status dan hasil satu tahap ([9](#9-get-v1tahapjobsrequest_id--dibaca-orchestrator)) |
 | tiga tahap | GET | `/v1/<tahap>/outbox` | ya | `{enabled, stage, pending, retrying, oldest_pending_seconds, dead_letters}` |
 | tiga tahap | POST | `/v1/<tahap>/outbox/release` | ya | query `request_id` opsional → dead letter diantrekan ulang; 409 kalau outbox mati |
-| ekstraksi | POST | `/v1/ekstraksi/extract` | ya | Sinkron, debug (draf 12, seperti nilam `/v1/extraction/extract`). `file` atau `file_url`; menjawab `OcrPayload` 7.1 yang sama dengan hasil job, tanpa menyimpan apa pun, jadi `data`-nya bisa dikirim langsung ke `/v1/ocr_postprocess` |
+| extraction | POST | `/v1/extraction/extract` | ya | Sinkron, debug (draf 12, seperti nilam `/v1/extraction/extract`). `file` atau `file_url`; menjawab `OcrPayload` 7.1 yang sama dengan hasil job, tanpa menyimpan apa pun, jadi `data`-nya bisa dikirim langsung ke `/v1/ocr_postprocess` |
 | structuring | POST | `/v1/ocr_postprocess` | ya | Sinkron, debug. Endpoint `K2Regex-v2` yang ada sekarang, dipertahankan apa adanya (`texts` tetap `min_length=1`) |
 | scoring | POST | `/v1/scoring/confidence` | ya | Sinkron, debug. Kalibrasi dan evaluasi trust model ([8.4](#84-endpoint-sinkron-untuk-tim-ml)) |
 
@@ -1282,16 +1281,16 @@ kodenya sendiri.
 | `request_id` | wajib UUID, diambil dulu lewat `GET /get_request_id`, sekali pakai (409 kalau dipakai ulang) | bebas ≤100 karakter, dibuat pemanggil, **idempoten** (kiriman ulang 202 `duplicate: true`) | **ya** |
 | Baca hasil | `GET /api/v1/get_result?request_id=` | `GET /v1/extract-ocr/{request_id}` | **ya** |
 | Sifat panggilan | sinkron penuh, satu request menjalankan 7 step sampai selesai (`pipeline_timeout_seconds: 60`) | gerbang sinkron + rantai async; 200 kalau selesai dalam `PIPELINE_WAIT_SECONDS`, 202 kalau belum | **ya** |
-| Orientasi & rectifier | dipanggil orchestrator (`ORIENTATION_URL`, `DOC_RECTIFIER_URL`) | **dihapus** — ditangani PaddleOCR di tahap ekstraksi | tidak (internal) |
+| Orientasi & rectifier | dipanggil orchestrator (`ORIENTATION_URL`, `DOC_RECTIFIER_URL`) | **dihapus** — ditangani PaddleOCR di tahap extraction | tidak (internal) |
 | PDF | dikonversi orchestrator lewat PyMuPDF | diterima; **hanya halaman 1** yang dinilai dan dibaca, lebih dari `MAX_DOCUMENT_PAGES` → 400 | tidak untuk PDF satu halaman |
 | **Crop quality (`K2QualityDL`)** | gerbang per crop, paralel dengan postprocessor; dokumen dengan mayoritas crop buruk ditolak 422 | **dihapus seluruhnya** — tidak ada penilaian legibilitas per field; lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field) | **ya** — dokumen buram yang dulu ditolak kini dijawab 200 dengan `confidence` rendah |
 | Kurasi crop | extractor KK ke-dua yang di-*vendor* ke orchestrator (1211 baris) | **dihapus** bersama gerbangnya | tidak |
-| Gerbang blank | Step 5B di orchestrator, `text_regions_count == 0` → 422 | **pindah ke aturan structuring** → 400 `DOWNSTREAM_VALIDATION_ERROR`; ekstraksi tidak pernah menolak | **ya** (kode status berubah) |
+| Gerbang blank | Step 5B di orchestrator, `text_regions_count == 0` → 422 | **pindah ke aturan structuring** → 400 `DOWNSTREAM_VALIDATION_ERROR`; extraction tidak pernah menolak | **ya** (kode status berubah) |
 | Gerbang validitas KK | Step 7 di orchestrator, setelah postprocessor → 422 | aturan structuring menulis `reject_reason`; orchestrator menjawab 400 | **ya** |
 | Bentuk OCR ke postprocessor | `{ocr_text: [[poly,[text,score]]], processing_time, text_regions_count}` | `{ocr: {texts: [{text, score, poly}], ...}}` — bentuk v6 yang sudah dipakai `K2Regex-v2` | tidak (internal) |
 | Bentuk hasil structuring | `data.ocr_result` K2Regex-v2, tiap field `{value, conf}` | struktur sama, tiap field `{value, ocr_conf, crf_conf}`, plus kunci `reject_reason` | **ya** bagi pembaca `conf` |
 | `texts` kosong | – | endpoint job **harus** menerimanya (`min_length` 0), supaya gambar kosong sampai ke aturan structuring | tidak |
-| Isi `data` | seluruh keluaran postprocessor | **9 field saja**; sisanya tetap diekstraksi dan tersimpan, tapi tidak dikembalikan | **ya** |
+| Isi `data` | seluruh keluaran postprocessor | **9 field saja**; sisanya tetap diextraction dan tersimpan, tapi tidak dikembalikan | **ya** |
 | Nama field | `no_kk`, `status_hubungan_dalam_keluarga` | `no_kk` (sama), `status_hubungan_dalam_rumah_tangga` (berubah) | **ya** |
 | Confidence | `conf` CRF mentah diteruskan apa adanya | tahap **scoring** mengkalibrasinya; kontrak keluar memakai `confidence` 0/1 | **ya** |
 | Penolakan | `422` untuk semua gerbang | `400` + `errors: DOWNSTREAM_VALIDATION_ERROR` + `guardrails: 1` | **ya** |
@@ -1335,18 +1334,18 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `MAX_UPLOAD_BYTES` | tidak | `5242880` | 5 MB; lebih besar → 413 |
 | `ALLOWED_CONTENT_TYPES` | tidak | `image/jpeg,image/jpg,image/png,application/pdf` | satu-satunya daftar yang dibaca intake (`PDF_ENABLED` dihapus di draf 12) |
 | `MAX_DOCUMENT_PAGES` | tidak | `2` | PDF dengan halaman lebih banyak → 400; hanya halaman 1 yang dibaca |
-| `FILE_URL_ALLOWED_HOSTS` | produksi: ya | kosong | host yang boleh diunduh; **kosong = tolak semua**, bukan "hanya alamat publik". **Harus diisi di orchestrator dan ekstraksi**, karena keduanya mengunduh, dan keduanya menolak start tanpa daftar ini di luar `ENVIRONMENT=local` |
+| `FILE_URL_ALLOWED_HOSTS` | produksi: ya | kosong | host yang boleh diunduh; **kosong = tolak semua**, bukan "hanya alamat publik". **Harus diisi di orchestrator dan extraction**, karena keduanya mengunduh, dan keduanya menolak start tanpa daftar ini di luar `ENVIRONMENT=local` |
 | `GUARDRAILS_SERVICE_URL` | ya | – | mis. `http://nlm-k2-guardrails:8041` |
 | `GUARDRAILS_API_KEY` | tidak | = `API_KEY` | |
 | `GUARDRAILS_TIMEOUT_SECONDS` | tidak | `20` | tanpa retry |
-| `EKSTRAKSI_SERVICE_URL` | ya | – | mis. `http://nlm-k2-ekstraksi:8042` |
+| `EXTRACTION_SERVICE_URL` | ya | – | mis. `http://nlm-k2-extraction:8042` |
 | `STRUCTURING_SERVICE_URL` | ya | – | mis. `http://nlm-k2-structuring:8043`; dipolling untuk status |
 | `SCORING_SERVICE_URL` | ya | – | mis. `http://nlm-k2-scoring:8044`; dipolling untuk status |
-| `EKSTRAKSI_API_KEY` / `STRUCTURING_API_KEY` / `SCORING_API_KEY` | tidak | = `API_KEY` | |
-| `EKSTRAKSI_TIMEOUT_SECONDS` / `STRUCTURING_...` / `SCORING_...` | tidak | `10` | timeout per panggilan, termasuk tiap GET polling |
+| `EXTRACTION_API_KEY` / `STRUCTURING_API_KEY` / `SCORING_API_KEY` | tidak | = `API_KEY` | |
+| `EXTRACTION_TIMEOUT_SECONDS` / `STRUCTURING_...` / `SCORING_...` | tidak | `10` | timeout per panggilan, termasuk tiap GET polling |
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
-| `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/ekstraksi/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
+| `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/extraction/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
 | `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `confidence` 0/1 di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`) dan request tidak mengirim `column_confidence_threshold` |
 | `DATABASE_URL` | tidak | kosong | hanya untuk `guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
 | `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `guardrails_results`; lewat = dicatat di log, request tetap dijawab |
@@ -1354,7 +1353,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 
 Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat API, bukan lewat database.
 
-### 13.2 Ketiga tahap pipeline (ekstraksi, structuring, scoring)
+### 13.2 Ketiga tahap pipeline (extraction, structuring, scoring)
 
 | Variabel | Wajib? | Default | Keterangan |
 |---|---|---|---|
@@ -1373,9 +1372,9 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 | `SCORING_MODEL_PATH` | scoring, `calibrated` | `weights/kk_trust_model.joblib` | artefak joblib: dua keluarga model, masing-masing dengan urutan kolom, tepi bin, dan ambang per field-nya sendiri. Ketiganya bukan konfigurasi — semuanya berpindah bersama bobotnya |
 | `PII_ENCRYPTION_KEY` | scoring, produksi: ya | – | Fernet, untuk enkripsi hasil sebelum audit ([8.5](#85-menutup-request)) |
 | `TESTING_ENDPOINTS` | tidak | `false` | `true` = orchestrator dan ketiga tahap membuka kembaran `-test` dari endpoint pipeline, memakai tabel `testing_*`, tanpa menulis tabel outcome. Untuk load test tim ML di dev; `false` = route-nya 404 |
-| `EKSTRAKSI_BACKEND` | ekstraksi saja | `mock` | `mock` \| `kk_ocr` \| `paddle` \| `remote`. `paddle` = server PaddleOCR tim ML di `POST /ocr` (jalur tetap), `poly` diteruskan utuh |
-| `EKSTRAKSI_OCR_URL` / `_API_KEY` / `_TIMEOUT_SECONDS` / `_QUERY` | ekstraksi, `paddle`/`remote` | – / – / `30` / `{}` | alamat server, kunci opsional, timeout, dan parameter query (mis. `{"use_doc_orientation_classify": true}`) |
-| `EKSTRAKSI_PDF_DPI` | ekstraksi, `kk_ocr` | `200` | DPI render halaman 1 PDF sebelum deteksi |
+| `EXTRACTION_BACKEND` | extraction saja | `mock` | `mock` \| `kk_ocr` \| `paddle` \| `remote`. `paddle` = server PaddleOCR tim ML di `POST /ocr` (jalur tetap), `poly` diteruskan utuh |
+| `EXTRACTION_OCR_URL` / `_API_KEY` / `_TIMEOUT_SECONDS` / `_QUERY` | extraction, `paddle`/`remote` | – / – / `30` / `{}` | alamat server, kunci opsional, timeout, dan parameter query (mis. `{"use_doc_orientation_classify": true}`) |
+| `EXTRACTION_PDF_DPI` | extraction, `kk_ocr` | `200` | DPI render halaman 1 PDF sebelum deteksi |
 
 ### 13.3 Guardrails
 
@@ -1460,7 +1459,7 @@ Menyelaraskan request dan bentuk respons dengan update nilam 29 September (708d5
 1. **`data` jadi `{value, confidence: 0 | 1}`** (§3.3, §10), seperti nilam: `bin` dan `auto` dihapus.
    **Memecah** konsumen draf 11–12. `confidence` sekarang memegang peran yang dulu dipegang `auto`.
 2. **Threshold per request** (§3.1): `column_confidence_threshold` (per field kontrak) dan
-   `guardrails_confidence_threshold` + `guardrails_tendency`. Tidak sah → 422 `INVALID_THRESHOLD`.
+   `guardrails_confidence_threshold`. Tidak sah → 422 `INVALID_THRESHOLD`.
    Guardrails menerima `threshold` + `threshold_target` (§10), berpasangan.
 3. **Kode `errors` yang stabil dan `pipeline_last_stage` di setiap error** (§2.4). `errors` tidak lagi
    menyalin `message`.
@@ -1477,8 +1476,8 @@ Menyelaraskan lima perilaku dengan nilam-ocr-npwp. Alasannya dan keputusan yang 
 2. **`guardrails_results`** (§2.6, §4, §13.1): orchestrator mencatat setiap putusan guardrails, dan `GET`
    menjawab request yang tidak pernah sampai tahap dari tabel itu.
 3. **PDF diterima bawaan** (§1, §2.4, §3.1, §12, §13.1), halaman 1 saja; `PDF_ENABLED` dihapus (R34a dibalik).
-4. **Backend ekstraksi `paddle`** (§6.3, §13.2): server PaddleOCR `POST /ocr`, `poly` utuh.
-5. **`POST /v1/ekstraksi/extract`** (§11): endpoint sinkron yang menjawab `OcrPayload` 7.1 (R17 dibalik).
+4. **Backend extraction `paddle`** (§6.3, §13.2): server PaddleOCR `POST /ocr`, `poly` utuh.
+5. **`POST /v1/extraction/extract`** (§11): endpoint sinkron yang menjawab `OcrPayload` 7.1 (R17 dibalik).
 
 ### draf 11 — 27 September 2026
 

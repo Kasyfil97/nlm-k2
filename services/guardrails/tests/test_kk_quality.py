@@ -153,7 +153,7 @@ def _pdf(sizes: list[tuple[int, int]]) -> bytes:
 
 def test_a_pdf_is_judged_by_its_first_page_only():
     """Page 1 at the training DPI (150): a 288x144 pt first page becomes 600x300 px, whatever the
-    second page looks like -- the same page ekstraksi reads."""
+    second page looks like -- the same page extraction reads."""
     png = render_pdf_first_page(_pdf([(288, 144), (600, 800)]))
     assert Image.open(io.BytesIO(png)).size == (600, 300)
 

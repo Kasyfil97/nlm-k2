@@ -84,7 +84,7 @@ def test_failed_stage_is_422(client, auth, stub_waiter):
 
 
 def test_rejection_by_the_kk_validity_gate_is_400(client, auth, stub_waiter):
-    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap"
     stub_waiter.snapshot_outcome = WaitOutcome("STRUCTURING", STATUS_REJECTED, reason)
 
     body = _get(client, auth).json()
@@ -166,7 +166,7 @@ async def test_snapshot_reads_a_next_stage_without_a_job_yet_as_running():
 
 
 async def test_snapshot_stops_at_a_failed_stage():
-    stages = _stages(_job("FAILED", error_message="ekstraksi OCR model is unavailable"))
+    stages = _stages(_job("FAILED", error_message="extraction OCR model is unavailable"))
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
 
@@ -174,7 +174,7 @@ async def test_snapshot_stops_at_a_failed_stage():
     assert (outcome.stage, outcome.status, outcome.error_message) == (
         "OCR",
         "FAILED",
-        "ekstraksi OCR model is unavailable",
+        "extraction OCR model is unavailable",
     )
     assert [stage.calls for stage in stages] == [1, 0, 0]
 
@@ -217,18 +217,18 @@ async def test_a_stage_answering_404_is_no_job_and_401_is_500_not_passed_on():
         return httpx.Response(401, json={"message": "Invalid API key"})
 
     remote = RemoteModelClient(
-        "http://ekstraksi:8042",
+        "http://extraction:8042",
         5.0,
-        name="ekstraksi service",
+        name="extraction service",
         passthrough_statuses=(404,),
         transport=httpx.MockTransport(handler),
     )
-    stage = StageStatusClient("OCR", remote, "/v1/ekstraksi/jobs")
+    stage = StageStatusClient("OCR", remote, "/v1/extraction/jobs")
 
     assert await stage.get("missing") is None
     with pytest.raises(ServiceError) as exc:
         await stage.get(RID)
-    assert (exc.value.status_code, exc.value.message) == (500, "ekstraksi service error (401): Invalid API key")
+    assert (exc.value.status_code, exc.value.message) == (500, "extraction service error (401): Invalid API key")
 
 
 def test_the_stage_clients_pass_only_404_through():

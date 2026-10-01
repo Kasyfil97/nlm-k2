@@ -14,7 +14,7 @@ set_test_env(AUTH_DISABLED="false", RATE_LIMIT_REQUESTS="100000")
 
 from app.config import get_settings  # noqa: E402
 from app.dependencies import (  # noqa: E402
-    get_ekstraksi_client,
+    get_extraction_client,
     get_guardrails_client,
     get_guardrails_log,
     get_pipeline_waiter,
@@ -144,7 +144,7 @@ class StubGuardrails:
         pass
 
 
-class StubEkstraksi:
+class StubExtraction:
     def __init__(self) -> None:
         self.submitted: list[dict] = []
         self.error: Exception | None = None
@@ -242,11 +242,11 @@ def stub_guardrails():
 
 
 @pytest.fixture(autouse=True)
-def stub_ekstraksi():
-    stub = StubEkstraksi()
-    app.dependency_overrides[get_ekstraksi_client] = lambda: stub
+def stub_extraction():
+    stub = StubExtraction()
+    app.dependency_overrides[get_extraction_client] = lambda: stub
     yield stub
-    app.dependency_overrides.pop(get_ekstraksi_client, None)
+    app.dependency_overrides.pop(get_extraction_client, None)
 
 
 @pytest.fixture(autouse=True)

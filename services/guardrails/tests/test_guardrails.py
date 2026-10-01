@@ -77,7 +77,7 @@ async def test_an_image_that_cannot_be_judged_is_a_verdict_and_not_an_error():
 
 
 async def test_the_report_fits_the_frozen_pipeline_shape():
-    """The same block travels to ekstraksi, structuring and scoring, so it has to parse as the
+    """The same block travels to extraction, structuring and scoring, so it has to parse as the
     frozen `GuardrailsResult` -- not merely look like it."""
     for model in (StubModel(0.0287), StubModel(0.8821), unassessable_model()):
         report = await _check(model)

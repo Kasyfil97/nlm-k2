@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from ocr_common.kk import REJECTED_CODE, contract_data, contract_fields
-from ocr_common.pipeline import EKSTRAKSI, GUARDRAILS, SERVICE_OF_STAGE, STAGE_SCORING, STATUS_DONE, STATUS_FAILED
+from ocr_common.pipeline import EXTRACTION, GUARDRAILS, SERVICE_OF_STAGE, STAGE_SCORING, STATUS_DONE, STATUS_FAILED
 from ocr_common.web.envelope import envelope
 
 from app.services.pipeline_waiter import STATUS_REJECTED
@@ -36,14 +36,14 @@ def extract_body(
 
 def last_stage(outcome: dict[str, Any]) -> str | None:
     """The pipeline service this answer comes from: guardrails when it rejected, else the stage the
-    pipeline reached (the one that finished it, failed, rejected, or is still running), and ekstraksi
+    pipeline reached (the one that finished it, failed, rejected, or is still running), and extraction
     right after the hand-off when there was no wait."""
     if not outcome["passed"]:
         return GUARDRAILS
     pipeline = outcome.get("pipeline")
     if pipeline:
         return SERVICE_OF_STAGE.get(pipeline["stage"])
-    return EKSTRAKSI if outcome.get("job") else None
+    return EXTRACTION if outcome.get("job") else None
 
 
 def extract_response(

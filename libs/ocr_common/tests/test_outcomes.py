@@ -86,7 +86,7 @@ async def test_failing_records_the_stage_that_failed(repository):
 
 async def test_a_rejection_marks_the_request_failed_with_400_and_the_reason(repository):
     repo, _ = repository
-    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap"
+    reason = "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap"
     await repo.claim(RID)
     await repo.complete(RID, {"reject_reason": reason}, outcome_data=DATA, rejection=reason)
 

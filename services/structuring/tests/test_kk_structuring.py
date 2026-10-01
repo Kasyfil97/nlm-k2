@@ -66,7 +66,7 @@ def test_only_the_nine_scored_fields_carry_a_feature_vector(client, auth):
     Kelengkapannya yang mengikat, bukan nilainya: scoring membaca setiap nama di
     `kk.MEMBER_CELL_FEATURES` / `kk.DOC_CELL_FEATURES`, dan nama yang hilang menjadi NaN pada
     model yang tidak pernah dilatih membacanya sebagai "tidak ada". Delapan field anggota lain
-    diekstraksi tapi tidak pernah diskor, jadi mengarang fitur untuk mereka akan menyesatkan.
+    diextraction tapi tidak pernah diskor, jadi mengarang fitur untuk mereka akan menyesatkan.
     """
     client.post(JOBS, json=job_body("REQ_features", "KARTU KELUARGA"), headers=auth)
     result = result_of(client, auth, "REQ_features")["result"]

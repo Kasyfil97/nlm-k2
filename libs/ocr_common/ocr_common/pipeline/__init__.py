@@ -52,7 +52,7 @@ from ocr_common.pipeline.results import StageResults, load_upstream
 from ocr_common.pipeline.runner import CANCEL_GRACE_SECONDS, BackgroundRunner
 from ocr_common.pipeline.sequence import (
     DEFAULT_SEQUENCE,
-    EKSTRAKSI,
+    EXTRACTION,
     GUARDRAILS,
     PIPELINE_NAMES,
     SCORING,
@@ -80,7 +80,7 @@ from ocr_common.pipeline.stage import (
 __all__ = [
     "CANCEL_GRACE_SECONDS",
     "DEFAULT_SEQUENCE",
-    "EKSTRAKSI",
+    "EXTRACTION",
     "GUARDRAILS",
     "PIPELINE_NAMES",
     "SCORING",

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class StageError(ServiceError):
-    """A `ServiceError` from calling one pipeline service (guardrails, ekstraksi, or reading a stage's job),
+    """A `ServiceError` from calling one pipeline service (guardrails, extraction, or reading a stage's job),
     with that service's name (`service`, as pipeline_name_sequence names it). Still a ServiceError:
     uncaught, it becomes the usual error envelope, naming that service. Ported from nilam."""
 

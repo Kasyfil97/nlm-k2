@@ -9,7 +9,7 @@ from ocr_common.errors import NotFound, ServiceError
 from ocr_common.kk import DOCUMENT_TYPE, final_result
 from ocr_common.pipeline import (
     DEFAULT_SEQUENCE,
-    EKSTRAKSI,
+    EXTRACTION,
     GUARDRAILS,
     STAGE_OF,
     STAGE_SCORING,
@@ -18,7 +18,7 @@ from ocr_common.pipeline import (
 )
 from ocr_common.types import ScoringResult, StructuringResult
 
-from app.clients.ekstraksi import EkstraksiJobClient
+from app.clients.extraction import ExtractionJobClient
 from app.clients.guardrails import GuardrailsClient, GuardrailsThreshold
 from app.config import Settings
 from app.services.document_checks import check_document
@@ -40,14 +40,14 @@ class ExtractOcrService:
     def __init__(
         self,
         guardrails: GuardrailsClient,
-        ekstraksi: EkstraksiJobClient,
+        extraction: ExtractionJobClient,
         waiter: PipelineWait,
         settings: Settings,
         log: GuardrailsLog | None = None,
     ):
         self._guardrails = guardrails
         self._log = log or NoGuardrailsLog()
-        self._ekstraksi = ekstraksi
+        self._extraction = extraction
         self._waiter = waiter
         self._settings = settings
 
@@ -101,7 +101,7 @@ class ExtractOcrService:
             verdict = {"passed": True, "reason": None}
 
         try:
-            job = await self._ekstraksi.submit(
+            job = await self._extraction.submit(
                 request_id,
                 document_type,
                 report,
@@ -113,7 +113,7 @@ class ExtractOcrService:
                 column_thresholds=column_thresholds,
             )
         except ServiceError as exc:
-            raise StageError(EKSTRAKSI, exc) from exc
+            raise StageError(EXTRACTION, exc) from exc
         wait_seconds = self._settings.pipeline_wait_seconds
         if wait_seconds <= 0:
             return {**verdict, "job": job, "pipeline": None, "result": None}
@@ -142,7 +142,7 @@ class ExtractOcrService:
     async def _judged_only(self, request_id: str) -> dict[str, Any] | None:
         """A request no stage has a job for, answered from its last guardrails verdict, as its POST was: rejected
         (the 400), or guardrails was its only service (the report as `data`). None otherwise: never judged, the
-        verdict was not kept, or it passed and its hand-off to ekstraksi failed (nothing ran)."""
+        verdict was not kept, or it passed and its hand-off to extraction failed (nothing ran)."""
         verdict = await self._log.latest(request_id)
         if verdict is None:
             return None

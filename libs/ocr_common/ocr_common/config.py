@@ -47,7 +47,7 @@ class BaseServiceSettings(BaseSettings):
     # with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
     # §13.1, as in nilam: JPEG, PNG or PDF. Of a PDF only the first page is read -- guardrails
-    # judges it and ekstraksi reads it -- because a Kartu Keluarga is one sheet and the layout
+    # judges it and extraction reads it -- because a Kartu Keluarga is one sheet and the layout
     # parser reads one page frame; the orchestrator refuses more than `MAX_DOCUMENT_PAGES`.
     allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
     file_url_allowed_hosts: str = ""
@@ -95,7 +95,7 @@ class BaseServiceSettings(BaseSettings):
 
     def require_file_url_allowlist(self) -> None:
         """Raises outside local when `FILE_URL_ALLOWED_HOSTS` is empty. Called by the services that
-        download: orchestrator and ekstraksi always, guardrails when `GUARDRAILS_FETCH_URL`."""
+        download: orchestrator and extraction always, guardrails when `GUARDRAILS_FETCH_URL`."""
         if self.is_local or self.file_url_allowed_hosts.strip():
             return
         raise ValueError(
