@@ -34,7 +34,7 @@ def _body(request_id, sequence, *texts):
 
 def test_a_sequence_ending_here_stops_with_the_structuring_result_as_the_answer(harness, auth):
     client, callback, next_stage = harness
-    sequence = ["guardrails", "ekstraksi", "structuring"]
+    sequence = ["guardrails", "extraction", "structuring"]
 
     assert client.post(JOBS, headers=auth, json=_body("REQ_seq_end", sequence)).status_code == 202
 
@@ -54,7 +54,7 @@ def test_the_validity_gate_still_rejects_when_structuring_is_last(harness, auth)
     """Ending the chain here does not bypass §7.4: a document with no text is still a rejection."""
     client, callback, next_stage = harness
 
-    body = {**job_body("REQ_seq_reject"), "pipeline_name_sequence": ["ekstraksi", "structuring"]}
+    body = {**job_body("REQ_seq_reject"), "pipeline_name_sequence": ["extraction", "structuring"]}
     client.post(JOBS, headers=auth, json=body)
 
     wait_for_job(client, f"{JOBS}/REQ_seq_reject")
@@ -66,7 +66,7 @@ def test_the_validity_gate_still_rejects_when_structuring_is_last(harness, auth)
 
 def test_the_full_sequence_is_handed_on_to_scoring(harness, auth):
     client, _, next_stage = harness
-    sequence = ["ekstraksi", "structuring", "scoring"]
+    sequence = ["extraction", "structuring", "scoring"]
 
     client.post(JOBS, headers=auth, json=_body("REQ_seq_on", sequence))
 
@@ -76,7 +76,7 @@ def test_the_full_sequence_is_handed_on_to_scoring(harness, auth):
 
 
 @pytest.mark.parametrize(
-    "sequence", [["guardrails", "ekstraksi"], ["ekstraksi", "scoring"], ["scoring"], ["extraction", "structuring"]]
+    "sequence", [["guardrails", "extraction"], ["extraction", "scoring"], ["scoring"], ["ekstraksi", "structuring"]]
 )
 def test_a_sequence_without_this_stage_or_out_of_order_is_422(harness, auth, sequence):
     client, _, _ = harness

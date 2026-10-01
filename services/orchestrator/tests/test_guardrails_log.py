@@ -53,7 +53,7 @@ def test_a_rejected_document_is_recorded_too(client, auth, guardrails_log):
 
 
 def test_nothing_is_recorded_when_guardrails_is_left_out(client, auth, guardrails_log):
-    _submit(client, auth, pipeline_name_sequence='["ekstraksi", "structuring", "scoring"]')
+    _submit(client, auth, pipeline_name_sequence='["extraction", "structuring", "scoring"]')
 
     assert guardrails_log.records == []
 
@@ -70,7 +70,7 @@ def test_the_sequence_is_recorded_with_the_verdict(client, auth, guardrails_log)
 
     assert [r["sequence"] for r in guardrails_log.records] == [
         ["guardrails"],
-        ["guardrails", "ekstraksi", "structuring", "scoring"],
+        ["guardrails", "extraction", "structuring", "scoring"],
     ]
 
 
@@ -131,11 +131,11 @@ async def test_the_sequence_is_written_and_the_last_verdict_read_back(database):
     url, table = database
     log = SqlGuardrailsLog(url)
 
-    await log.record(RID, REJECTED_REPORT, sequence=["guardrails", "ekstraksi"])
+    await log.record(RID, REJECTED_REPORT, sequence=["guardrails", "extraction"])
     await log.record(RID, ACCEPTED_REPORT, sequence=["guardrails"])
 
     first, _ = await _rows(url, table)
-    assert first["pipeline_name_sequence"] == ["guardrails", "ekstraksi"]
+    assert first["pipeline_name_sequence"] == ["guardrails", "extraction"]
     assert await log.latest(RID) == {"report": ACCEPTED_REPORT, "sequence": ["guardrails"]}
     assert await log.latest("OCR_never_judged") is None
 

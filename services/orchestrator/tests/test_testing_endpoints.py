@@ -90,9 +90,9 @@ def test_testing_endpoint_takes_the_sequence_like_the_live_one(auth):
     app.dependency_overrides[get_testing_pipeline_waiter] = lambda: waiter
     client = make_client(app)
 
-    refused = _submit(client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["ekstraksi", "scoring"])
+    refused = _submit(client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["extraction", "scoring"])
     skipped = _submit(
-        client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["ekstraksi", "structuring", "scoring"]
+        client, auth, "/v1/extract-ocr-test", pipeline_name_sequence=["extraction", "structuring", "scoring"]
     )
 
     assert refused.status_code == 422

@@ -342,14 +342,14 @@ def _parse_params(raw: str | None) -> Any:
             503,
             "The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
             "nothing was started. `pipeline_last_stage` names it",
-            "ekstraksi",
+            "extraction",
             "ekstraksi service is unavailable",
         ),
         504: _stage_error_response(
             504,
             "The guardrails service, its model, or the ekstraksi service did not answer in time "
             "(`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it",
-            "ekstraksi",
+            "extraction",
             "ekstraksi service timed out after 10.0s",
         ),
     },
@@ -373,11 +373,11 @@ async def extract_ocr(
     pipeline_name_sequence: list[str] | None = Form(
         None,
         description=(
-            "The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`; guardrails "
+            "The services to run, in order: `guardrails`, `extraction`, `structuring`, `scoring`; guardrails "
             "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, or "
             "one JSON array string. Omitted or blank: all four. The last one's result is `data`, as it is"
         ),
-        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+        examples=[["guardrails", "extraction", "structuring", "scoring"]],
     ),
     guardrails_confidence_threshold: str | None = Form(
         None,

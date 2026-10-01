@@ -113,7 +113,7 @@ def test_a_document_that_skipped_guardrails_is_handed_over_without_a_guardrails_
     """ekstraksi refuses a `guardrails` that is not a JSON object, so no report means no field, not `null`.
     The sequence goes along as a JSON array, so each stage knows where the chain stops."""
     handler = ekstraksi(_accepted)
-    sequence = ["ekstraksi", "structuring", "scoring"]
+    sequence = ["extraction", "structuring", "scoring"]
     response = client.post(
         "/v1/extract-ocr",
         headers=auth,

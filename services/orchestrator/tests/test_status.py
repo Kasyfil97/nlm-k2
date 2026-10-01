@@ -238,7 +238,7 @@ def test_the_stage_clients_pass_only_404_through():
 
 
 async def test_snapshot_stops_at_the_last_stage_of_the_stored_sequence():
-    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["guardrails", "ekstraksi"]}
+    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["guardrails", "extraction"]}
     stages = _stages(ocr, _job("DONE", {}), _job("DONE", {}))
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)
@@ -250,7 +250,7 @@ async def test_snapshot_stops_at_the_last_stage_of_the_stored_sequence():
 
 async def test_snapshot_of_a_job_without_a_valid_sequence_reads_the_whole_pipeline():
     """Jobs submitted before pipeline_name_sequence existed, or with an unreadable one."""
-    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["ekstraksi", "scoring"]}
+    ocr = {**_job("DONE", {"texts": []}), "pipeline_name_sequence": ["extraction", "scoring"]}
     stages = _stages(ocr, _job("DONE", {}), _job("PROCESSING"))
 
     outcome = await PipelineWaiter(stages, poll_interval=0.01).snapshot(RID)

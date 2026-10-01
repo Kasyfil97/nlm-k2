@@ -194,8 +194,8 @@ def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_gua
     assert stub_ekstraksi.submitted == []
 
 
-NO_GUARDRAILS = ["ekstraksi", "structuring", "scoring"]
-FULL = ["guardrails", "ekstraksi", "structuring", "scoring"]
+NO_GUARDRAILS = ["extraction", "structuring", "scoring"]
+FULL = ["guardrails", "extraction", "structuring", "scoring"]
 
 
 def test_without_a_sequence_the_whole_pipeline_runs(client, auth, stub_guardrails, stub_ekstraksi, stub_waiter):
@@ -209,11 +209,11 @@ def test_without_a_sequence_the_whole_pipeline_runs(client, auth, stub_guardrail
 
 def test_the_sequence_is_taken_as_repeated_fields_or_as_a_json_array(client, auth, stub_ekstraksi, stub_waiter):
     stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
-    repeated = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi"])
-    as_json = _submit(client, auth, pipeline_name_sequence='["guardrails", "ekstraksi"]')
+    repeated = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction"])
+    as_json = _submit(client, auth, pipeline_name_sequence='["guardrails", "extraction"]')
 
     assert (repeated.status_code, as_json.status_code) == (200, 200)
-    assert [handed["sequence"] for handed in stub_ekstraksi.submitted] == [["guardrails", "ekstraksi"]] * 2
+    assert [handed["sequence"] for handed in stub_ekstraksi.submitted] == [["guardrails", "extraction"]] * 2
     assert stub_waiter.last_stages == ["OCR", "OCR"]
 
 
@@ -229,12 +229,12 @@ def test_a_blank_sequence_field_is_the_full_pipeline(client, auth, stub_guardrai
 @pytest.mark.parametrize(
     ("sequence", "reason"),
     [
-        (["ekstraksi", "scoring"], "without skipping one in the middle"),
+        (["extraction", "scoring"], "without skipping one in the middle"),
         (["guardrails", "structuring", "scoring"], "without skipping one in the middle"),
         (["structuring", "scoring"], "structuring cannot come first"),
-        (["guardrails", "scoring", "structuring", "ekstraksi"], "without skipping one in the middle"),
+        (["guardrails", "scoring", "structuring", "extraction"], "without skipping one in the middle"),
         (["guardrails", "guardrails"], "listed twice"),
-        (["guardrails", "extraction"], "unknown service 'extraction'"),
+        (["guardrails", "ekstraksi"], "unknown service 'ekstraksi'"),
         ('["guardrails", ', "JSON array of strings"),
     ],
 )
@@ -270,7 +270,7 @@ def test_guardrails_only_still_rejects(client, auth):
 def test_a_sequence_ending_at_ekstraksi_answers_with_the_ocr_result_as_it_is(client, auth, stub_waiter):
     stub_waiter.outcome = WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT})
 
-    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi"])
+    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction"])
 
     assert response.status_code == 200
     assert (response.json()["job_status"], response.json()["data"]) == ("completed", OCR_RESULT)
@@ -281,7 +281,7 @@ def test_a_sequence_ending_at_structuring_answers_with_its_result_as_it_is(clien
         "STRUCTURING", "DONE", results={"OCR": OCR_RESULT, "STRUCTURING": STRUCTURING_RESULT}
     )
 
-    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "ekstraksi", "structuring"])
+    response = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction", "structuring"])
 
     assert response.status_code == 200
     assert response.json()["data"] == STRUCTURING_RESULT
@@ -337,8 +337,8 @@ def test_without_guardrails_the_file_checks_still_run(client, auth, settings_ove
     [
         (None, None, 200, "scoring"),
         (["guardrails"], None, 200, "guardrails"),
-        (["guardrails", "ekstraksi"], WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT}), 200, "ekstraksi"),
-        (None, WaitOutcome("OCR", "FAILED", "OCR model is unavailable"), 422, "ekstraksi"),
+        (["guardrails", "extraction"], WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT}), 200, "extraction"),
+        (None, WaitOutcome("OCR", "FAILED", "OCR model is unavailable"), 422, "extraction"),
         (None, WaitOutcome("STRUCTURING", STATUS_REJECTED, "dokumen blur / blank"), 400, "structuring"),
         (None, WaitOutcome("STRUCTURING", "PROCESSING"), 202, "structuring"),
     ],
@@ -362,7 +362,7 @@ def test_a_guardrails_rejection_comes_from_guardrails(client, auth):
 
 
 def test_a_refusal_before_any_pipeline_service_names_the_orchestrator(client, auth):
-    response = _submit(client, auth, pipeline_name_sequence=["ekstraksi", "scoring"])
+    response = _submit(client, auth, pipeline_name_sequence=["extraction", "scoring"])
 
     assert (response.status_code, response.json()["pipeline_last_stage"]) == (422, "orchestrator")
 
@@ -436,7 +436,7 @@ def test_guardrails_timing_out_is_504_and_nothing_starts(client, auth, stub_guar
     assert stub_ekstraksi.submitted == []
 
 
-@pytest.mark.parametrize("failing", ["guardrails", "ekstraksi"])
+@pytest.mark.parametrize("failing", ["guardrails", "extraction"])
 def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardrails, stub_ekstraksi, failing):
     """Ported from nilam: the answer names the service that could not be reached, in the extract-ocr shape."""
     stub = stub_guardrails if failing == "guardrails" else stub_ekstraksi

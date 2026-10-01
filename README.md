@@ -40,7 +40,7 @@ structuring masih stub.
 **Diselaraskan dengan nilam (kontrak draf 12, 29 September 2026)**, lihat
 [`docs/decisions/2026-09-29-selaras-nilam.md`](docs/decisions/2026-09-29-selaras-nilam.md):
 
-- `pipeline_name_sequence` menggantikan `skip_guardrails`. Nama tahap OCR-nya `ekstraksi`, bukan `extraction`.
+- `pipeline_name_sequence` menggantikan `skip_guardrails`. Nama tahap OCR-nya `extraction`.
 - Orchestrator mencatat setiap putusan guardrails di `guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
 - PDF diterima bawaan; hanya halaman 1 yang dinilai dan dibaca.
 - `EKSTRAKSI_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.

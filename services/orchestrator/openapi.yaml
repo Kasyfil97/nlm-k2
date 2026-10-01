@@ -461,7 +461,7 @@ paths:
                 errors: DOWNSTREAM_UNAVAILABLE
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 document_type: kk
-                pipeline_last_stage: ekstraksi
+                pipeline_last_stage: extraction
         '504':
           description: The guardrails service, its model, or the ekstraksi service did not answer in time
             (`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it
@@ -476,7 +476,7 @@ paths:
                 errors: DOWNSTREAM_TIMEOUT
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 document_type: kk
-                pipeline_last_stage: ekstraksi
+                pipeline_last_stage: extraction
       security:
       - APIKeyHeader: []
   /v1/extract-ocr/{request_id}:
@@ -781,13 +781,13 @@ components:
             type: array
           - type: 'null'
           title: Pipeline Name Sequence
-          description: 'The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`;
+          description: 'The services to run, in order: `guardrails`, `extraction`, `structuring`, `scoring`;
             guardrails optional at the front, the end may be cut off, nothing skipped in the middle. Repeated
             form fields, or one JSON array string. Omitted or blank: all four. The last one''s result
             is `data`, as it is'
           examples:
           - - guardrails
-            - ekstraksi
+            - extraction
             - structuring
             - scoring
         guardrails_confidence_threshold:
@@ -898,7 +898,7 @@ components:
           - type: string
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `extraction`,
             `structuring`, `scoring`), or the pipeline service it called when that one failed'
           examples:
           - orchestrator
@@ -961,7 +961,7 @@ components:
             enum:
             - orchestrator
             - guardrails
-            - ekstraksi
+            - extraction
             - structuring
             - scoring
           - type: 'null'

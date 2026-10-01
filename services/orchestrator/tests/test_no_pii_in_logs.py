@@ -57,7 +57,7 @@ def test_the_request_id_is_the_one_thing_that_may_be_logged(client, auth, caplog
         client.post(
             "/v1/extract-ocr",
             headers=auth,
-            data={"request_id": RID, "pipeline_name_sequence": ["ekstraksi", "structuring", "scoring"]},
+            data={"request_id": RID, "pipeline_name_sequence": ["extraction", "structuring", "scoring"]},
             files=image_upload("kk.jpg", JPEG),
         )
 

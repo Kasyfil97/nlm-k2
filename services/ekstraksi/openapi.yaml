@@ -369,7 +369,7 @@ paths:
         lease (`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again.
 
 
-        **Where the chain stops.** `pipeline_name_sequence` decides: when `ekstraksi` is its last service,
+        **Where the chain stops.** `pipeline_name_sequence` decides: when `extraction` is its last service,
         the job ends here, nothing is handed on, and the OCR result is the request''s answer, as it is
         (the `OCR` callback then carries `final: true`).'
       operationId: submitOcrJob
@@ -414,7 +414,7 @@ paths:
                     request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
           description: Neither or both of file / file_url, `guardrails` is not a JSON object, `pipeline_name_sequence`
-            is not a valid sequence that includes `ekstraksi`, or `column_confidence_threshold` is invalid
+            is not a valid sequence that includes `extraction`, or `column_confidence_threshold` is invalid
           content:
             application/json:
               schema:
@@ -902,12 +902,12 @@ components:
           - type: 'null'
           title: Pipeline Name Sequence
           description: 'The services this request runs, in order, from the central orchestrator (forwarded
-            by the orchestrator and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`,
+            by the orchestrator and each stage): `guardrails`, `extraction`, `structuring`, `scoring`,
             guardrails optional at the front and the end cut off, never one skipped in the middle. The
             last one ends the request: its result is the answer, as it is, and nothing is handed on. Omitted:
             the full pipeline. Serialised as a JSON array string'
           examples:
-          - '["guardrails", "ekstraksi", "structuring", "scoring"]'
+          - '["guardrails", "extraction", "structuring", "scoring"]'
         column_confidence_threshold:
           anyOf:
           - type: string
@@ -988,7 +988,7 @@ components:
           - type: string
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `extraction`,
             `structuring`, `scoring`), or the pipeline service it called when that one failed'
           examples:
           - orchestrator
@@ -1275,7 +1275,7 @@ components:
             ends the request. Null for a job submitted without it: the full pipeline'
           examples:
           - - guardrails
-            - ekstraksi
+            - extraction
             - structuring
             - scoring
         column_confidence_threshold:

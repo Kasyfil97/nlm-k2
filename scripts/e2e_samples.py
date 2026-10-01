@@ -20,7 +20,7 @@ kesembilan field. Hasilnya, setiap field yang terisi harus ber-confidence 1. Ini
 request sampai ke scoring pada data sungguhan.
 
 Untuk kasus negatif, dokumen yang sama dikirim sekali lagi dengan
-`pipeline_name_sequence=["ekstraksi","structuring","scoring"]`, yaitu tanpa guardrails. Ini melihat
+`pipeline_name_sequence=["extraction","structuring","scoring"]`, yaitu tanpa guardrails. Ini melihat
 apakah gerbang keabsahan di structuring juga menangkapnya. `kk_bad.jpg` saat ini **lolos** di jalur itu:
 teksnya terbaca sebagian, jadi structuring tidak punya alasan menolak, dan guardrails-lah satu-satunya
 penjaganya. Karena itu hasilnya dicetak sebagai CATATAN, bukan dihitung gagal.
@@ -46,7 +46,7 @@ import smoke_e2e as smoke
 from ocr_common.kk import CONTRACT_FIELDS
 
 SAMPLES_DIR = os.environ.get("E2E_SAMPLES_DIR") or os.path.join(os.path.dirname(__file__), "..", "test", "data")
-NO_GUARDRAILS = json.dumps(["ekstraksi", "structuring", "scoring"])
+NO_GUARDRAILS = json.dumps(["extraction", "structuring", "scoring"])
 DOC_KEYS = {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
 MEMBER_KEYS = set(CONTRACT_FIELDS) - DOC_KEYS
 

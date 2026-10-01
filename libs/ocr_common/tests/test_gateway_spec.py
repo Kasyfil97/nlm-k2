@@ -16,7 +16,7 @@ def _builder():
     return module
 
 
-SERVICES = ("orchestrator", "guardrails", "ekstraksi", "structuring", "scoring")
+SERVICES = ("orchestrator", "guardrails", "extraction", "structuring", "scoring")
 
 
 def _stale_specs() -> list[str]:

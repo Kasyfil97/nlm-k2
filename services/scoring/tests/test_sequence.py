@@ -27,7 +27,7 @@ def harness():
 
 def test_scoring_ends_every_request_it_runs_for(harness, auth):
     client, callback = harness
-    sequence = ["ekstraksi", "structuring", "scoring"]
+    sequence = ["extraction", "structuring", "scoring"]
 
     client.post(JOBS, headers=auth, json={**job_body("REQ_seq"), "pipeline_name_sequence": sequence})
 
@@ -37,7 +37,7 @@ def test_scoring_ends_every_request_it_runs_for(harness, auth):
     assert (done["stage"], done["status"], done["final"]) == ("SCORING", "DONE", True)
 
 
-@pytest.mark.parametrize("sequence", [["guardrails", "ekstraksi", "structuring"], ["ekstraksi", "scoring"]])
+@pytest.mark.parametrize("sequence", [["guardrails", "extraction", "structuring"], ["extraction", "scoring"]])
 def test_a_sequence_without_scoring_or_out_of_order_is_422(harness, auth, sequence):
     client, _ = harness
 

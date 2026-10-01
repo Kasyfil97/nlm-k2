@@ -944,7 +944,7 @@ components:
           - type: string
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `extraction`,
             `structuring`, `scoring`), or the pipeline service it called when that one failed'
           examples:
           - orchestrator
@@ -1756,13 +1756,13 @@ components:
           - type: 'null'
           title: Pipeline Name Sequence
           description: 'The services this request runs, in order, from the central orchestrator (forwarded
-            by the orchestrator and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`,
+            by the orchestrator and each stage): `guardrails`, `extraction`, `structuring`, `scoring`,
             guardrails optional at the front and the end cut off, never one skipped in the middle. The
             last one ends the request: its result is the answer, as it is, and nothing is handed on. Omitted:
             the full pipeline'
           examples:
           - - guardrails
-            - ekstraksi
+            - extraction
             - structuring
             - scoring
         column_confidence_threshold:
@@ -1846,7 +1846,7 @@ components:
             ends the request. Null for a job submitted without it: the full pipeline'
           examples:
           - - guardrails
-            - ekstraksi
+            - extraction
             - structuring
             - scoring
         column_confidence_threshold:

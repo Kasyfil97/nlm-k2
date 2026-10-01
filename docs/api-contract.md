@@ -182,7 +182,7 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 
 Sejak draf 13 (seperti nilam) `errors` **selalu** kode stabil, tidak pernah salinan `message`; cabangkan
 logika padanya. Setiap jawaban error juga membawa **`pipeline_last_stage`**: service asal error itu —
-`orchestrator` untuk penolakan pintu masuk sendiri, atau `guardrails` / `ekstraksi` / `structuring` /
+`orchestrator` untuk penolakan pintu masuk sendiri, atau `guardrails` / `extraction` / `structuring` /
 `scoring` bila service itu yang gagal atau tidak terjangkau.
 
 `status_desc` mengikuti reason phrase HTTP: `OK`, `Accepted`, `Bad Request`, `Unauthorized`, `Forbidden`,
@@ -278,16 +278,16 @@ request tetap dijawab.
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
-| `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `ekstraksi`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
+| `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
 | `guardrails_confidence_threshold` | string (angka) | tidak | ambang guardrails untuk dokumen ini, `0 < x < 1`, **berpasangan** dengan `guardrails_tendency`. Tidak dikirim = ambang milik service guardrails |
 | `guardrails_tendency` | string | tidak | `accepted` \| `rejected`: sisi yang dikenai ambang. `accepted`: lolos bila `1 − probability_bad ≥ x`; `rejected`: ditolak bila `probability_bad ≥ x`. Salah satu tanpa yang lain → 422 `INVALID_THRESHOLD` |
 | `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
 
 `file` dan `file_url` **tepat satu**, tidak boleh dua-duanya dan tidak boleh kosong keduanya.
 
-**`pipeline_name_sequence`, sama seperti nilam** kecuali nama tahap OCR-nya: `ekstraksi` (nama nilam,
-`extraction`, ditolak sebagai service tak dikenal). Contoh sah: keempatnya (bawaan), `[guardrails, ekstraksi]`,
-`[ekstraksi, structuring]`, `[guardrails]`. Tidak sah: `[ekstraksi, scoring]`, `[structuring, scoring]`.
+**`pipeline_name_sequence`, sama seperti nilam**, termasuk nama tahap OCR-nya: `extraction`. Contoh sah:
+keempatnya (bawaan), `[guardrails, extraction]`, `[extraction, structuring]`, `[guardrails]`. Tidak sah:
+`[extraction, scoring]`, `[structuring, scoring]`.
 Service terakhir mengakhiri request: hasilnya menjadi `data` **apa adanya** — laporan guardrails, hasil
 OCR (7.1), hasil structuring (7.3), atau sembilan field setelah scoring — dan `pipeline_last_stage`
 menyebut service itu. Tanpa `guardrails`, cek file tetap berjalan dan aturan structuring tetap menolak.
@@ -488,7 +488,7 @@ tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
 {"status_code": 422, "status_desc": "Unprocessable Entity",
  "message": "ekstraksi OCR model is unavailable",
  "data": null, "errors": "OCR_FAILED", "request_id": "REQ_001",
- "pipeline_last_stage": "ekstraksi",
+ "pipeline_last_stage": "extraction",
  "document_type": "kk", "job_status": "failed", "guardrails": 0,
  "params": null}
 ```
@@ -663,7 +663,7 @@ Content-Type: multipart/form-data
 | `request_id` | string | ya | sama dengan yang dikirim pemanggil |
 | `document_type` | string | tidak | default `kk` |
 | `guardrails` | string (JSON object) | tidak | `data` dari 5.2, di-serialize. **Dihilangkan** kalau `pipeline_name_sequence` tanpa `guardrails`; bukan objek JSON → 400 |
-| `pipeline_name_sequence` | string (JSON array) | tidak | urutan dari 3.1; tidak sah atau tanpa `ekstraksi` → 400. Kalau `ekstraksi` yang terakhir, job berakhir di sini: tidak ada handoff, dan callback `OCR` `DONE` membawa `final: true` |
+| `pipeline_name_sequence` | string (JSON array) | tidak | urutan dari 3.1; tidak sah atau tanpa `extraction` → 400. Kalau `extraction` yang terakhir, job berakhir di sini: tidak ada handoff, dan callback `OCR` `DONE` membawa `final: true` |
 | `file` | file | salah satu | byte gambar, kalau pemanggil mengunggah inline |
 | `file_url` | string | salah satu | URL asli, kalau pemanggil mengirim `file_url` — diteruskan, bukan byte-nya |
 
@@ -1151,7 +1151,7 @@ Tersedia di ketiga tahap dengan bentuk identik. Internal; dipakai orchestrator u
     "error_message": null,
     "created_at": "2026-09-26T04:12:30.118Z",
     "updated_at": "2026-09-26T04:12:33.481Z",
-    "pipeline_name_sequence": ["guardrails", "ekstraksi", "structuring", "scoring"]
+    "pipeline_name_sequence": ["guardrails", "extraction", "structuring", "scoring"]
   }
 }
 ```
@@ -1471,7 +1471,7 @@ Menyelaraskan lima perilaku dengan nilam-ocr-npwp. Alasannya dan keputusan yang 
 [`decisions/2026-09-29-selaras-nilam.md`](decisions/2026-09-29-selaras-nilam.md).
 
 1. **`pipeline_name_sequence`** (§3.1, §3.2, §4, §6.1, §9) menggantikan `skip_guardrails` dan gerbang 403
-   `GUARDRAILS_SKIP_ALLOWED`. Nama tahap OCR tetap `ekstraksi`. Tambahan di respons: `pipeline_last_stage`;
+   `GUARDRAILS_SKIP_ALLOWED`. Nama tahap OCR di sequence: `extraction`. Tambahan di respons: `pipeline_last_stage`;
    kode baru: 422 `INVALID_PIPELINE_SEQUENCE`. **Memecah** klien yang mengirim `skip_guardrails`: field itu
    kini diabaikan dan guardrails tetap berjalan.
 2. **`guardrails_results`** (§2.6, §4, §13.1): orchestrator mencatat setiap putusan guardrails, dan `GET`
