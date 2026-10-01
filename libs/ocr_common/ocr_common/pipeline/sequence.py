@@ -1,12 +1,12 @@
 """`pipeline_name_sequence`: which services one request runs, chosen by the central orchestrator.
 
-Ported from nilam, with this repo's name for the OCR stage: `ekstraksi`, not `extraction`.
+Ported from nilam, with the OCR stage named `extraction`.
 
-The order is always guardrails -> ekstraksi -> structuring -> scoring. A request may leave guardrails
+The order is always guardrails -> extraction -> structuring -> scoring. A request may leave guardrails
 out at the front and cut the end off, never skip a service in the middle: every service after
-guardrails needs the result of the one before it. Valid: [guardrails, ekstraksi, structuring,
-scoring] (the default), [guardrails, ekstraksi], [ekstraksi, structuring], [guardrails]. Not valid:
-[ekstraksi, scoring], [structuring, scoring], a wrong order, a name twice.
+guardrails needs the result of the one before it. Valid: [guardrails, extraction, structuring,
+scoring] (the default), [guardrails, extraction], [extraction, structuring], [guardrails]. Not valid:
+[extraction, scoring], [structuring, scoring], a wrong order, a name twice.
 
 The last service in the sequence ends the request: its result is the answer, as it is.
 """
@@ -17,7 +17,7 @@ from typing import Any
 from ocr_common.pipeline.stage import STAGE_OCR, STAGE_SCORING, STAGE_STRUCTURING, HandoffPayload
 
 GUARDRAILS = "guardrails"
-EKSTRAKSI = "ekstraksi"
+EKSTRAKSI = "extraction"
 STRUCTURING = "structuring"
 SCORING = "scoring"
 

@@ -240,11 +240,11 @@ def _submit_with_sequence(client, auth, request_id, sequence):
 def test_a_sequence_ending_here_stops_with_the_ocr_result_as_the_answer(harness, auth):
     client, callback, next_stage = harness
 
-    assert _submit_with_sequence(client, auth, "REQ_seq_end", ["guardrails", "ekstraksi"]).status_code == 202
+    assert _submit_with_sequence(client, auth, "REQ_seq_end", ["guardrails", "extraction"]).status_code == 202
 
     job = wait_for_job(client, "/v1/ekstraksi/jobs/REQ_seq_end")
     assert job["status"] == "DONE"
-    assert job["pipeline_name_sequence"] == ["guardrails", "ekstraksi"]
+    assert job["pipeline_name_sequence"] == ["guardrails", "extraction"]
     assert next_stage.payloads == [], "nothing is handed on after the last service"
     [done] = callback.calls
     assert (done["stage"], done["status"], done["final"], done["result"]) == ("OCR", "DONE", True, job["result"])
@@ -252,7 +252,7 @@ def test_a_sequence_ending_here_stops_with_the_ocr_result_as_the_answer(harness,
 
 def test_a_longer_sequence_is_handed_on_with_the_job(harness, auth):
     client, callback, next_stage = harness
-    sequence = ["ekstraksi", "structuring"]
+    sequence = ["extraction", "structuring"]
 
     assert _submit_with_sequence(client, auth, "REQ_seq_on", sequence).status_code == 202
 
@@ -279,9 +279,9 @@ def test_without_a_sequence_the_full_pipeline_runs_and_none_is_stored(harness, a
     [
         '["guardrails"]',
         '["structuring", "scoring"]',
-        '["ekstraksi", "scoring"]',
-        '["extraction"]',
-        '"ekstraksi"',
+        '["extraction", "scoring"]',
+        '["ekstraksi"]',
+        '"extraction"',
         "not json",
     ],
 )
@@ -301,7 +301,7 @@ async def test_a_stale_job_is_run_again_with_the_sequence_it_was_submitted_with(
         "document_type": DOCUMENT_TYPE,
         "guardrails": GUARDRAILS,
         "file_url": FILE_URL,
-        "pipeline_name_sequence": ["ekstraksi"],
+        "pipeline_name_sequence": ["extraction"],
     }
     await pipeline.repository.claim("REQ_stale_seq", input=stored)
 

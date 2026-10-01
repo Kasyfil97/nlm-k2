@@ -489,7 +489,7 @@ components:
           - type: string
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`,
+          description: 'The service the error comes from: this one (`orchestrator`, `guardrails`, `extraction`,
             `structuring`, `scoring`), or the pipeline service it called when that one failed'
           examples:
           - orchestrator

@@ -206,11 +206,14 @@ DOC_CELL_FEATURES: tuple[str, ...] = (
 
 CONTRACT_FIELDS: tuple[str, ...] = CONTRACT_DOC_FIELDS + CONTRACT_MEMBER_FIELDS
 
+ALL_FIELD = "all_field"
+
 COLUMN_THRESHOLD_DESCRIPTION = (
     "Per field, from the central orchestrator: the trust model's probability that the field's value is correct "
     "must reach it for the field's `confidence` to be `1` (else `0`). Keys are the contract names: `no_kk`, "
     "`nama_kepala_keluarga`, and the seven member fields (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, "
     "`status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), a member field's threshold applying to every member. "
+    "`all_field` sets one threshold for every field; a key for a single field overrides it. "
     "A field left out (or the whole map omitted) uses the trust model's own threshold for that field; a field the "
     "model has none for (`no_kk`) is then `0`"
 )
@@ -222,12 +225,12 @@ def parse_column_thresholds(value: Any) -> dict[str, float] | None:
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise ValueError('column_confidence_threshold must be a JSON object, e.g. {"no_kk": 0.9, "nik": 0.8}')
-    unknown = sorted(set(value) - set(CONTRACT_FIELDS))
+        raise ValueError('column_confidence_threshold must be a JSON object, e.g. {"all_field": 0.8} or {"no_kk": 0.9, "nik": 0.8}')
+    unknown = sorted(set(value) - set(CONTRACT_FIELDS) - {ALL_FIELD})
     if unknown:
         raise ValueError(
             f"column_confidence_threshold has unknown field(s) {', '.join(unknown)}; "
-            f"expected {', '.join(CONTRACT_FIELDS)}"
+            f"expected {ALL_FIELD} or {', '.join(CONTRACT_FIELDS)}"
         )
     thresholds = {}
     for name, threshold in value.items():
@@ -236,6 +239,9 @@ def parse_column_thresholds(value: Any) -> dict[str, float] | None:
         if not 0 <= threshold <= 1:
             raise ValueError(f"column_confidence_threshold.{name} must be between 0 and 1, got {threshold}")
         thresholds[name] = float(threshold)
+    if ALL_FIELD in thresholds:
+        every = thresholds.pop(ALL_FIELD)
+        thresholds = {**dict.fromkeys(CONTRACT_FIELDS, every), **thresholds}
     return thresholds or None
 
 

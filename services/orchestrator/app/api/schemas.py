@@ -78,7 +78,7 @@ class ExtractOcrResponse(BaseModel):
         None, description="Failure code when the request failed or was refused; null otherwise", examples=[None]
     )
     request_id: str | None = Field(None, description="The request_id this response belongs to")
-    pipeline_last_stage: Literal["orchestrator", "guardrails", "ekstraksi", "structuring", "scoring"] | None = Field(
+    pipeline_last_stage: Literal["orchestrator", "guardrails", "extraction", "structuring", "scoring"] | None = Field(
         None,
         description=(
             "The service this answer comes from, named as in `pipeline_name_sequence`: the last service of the "

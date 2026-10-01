@@ -23,9 +23,9 @@ nilai bawaan chart-nya sendiri.
 
 ## Yang sengaja tidak disalin dari nilam
 
-- **Nama tahap OCR di sequence tetap `ekstraksi`**, bukan `extraction`. Nama service repo ini dipakai
-  di mana-mana (URL, env, helm), dan memetakan diam-diam dua nama menjadi satu justru menyembunyikan
-  kiriman yang salah alamat. `extraction` ditolak 422 sebagai service tak dikenal. Konsekuensinya:
+- **Nama tahap OCR di sequence kini `extraction`** (sebelumnya `ekstraksi`), sama dengan nilam. Nama service
+  repo ini (URL, env, helm) tetap `ekstraksi`; hanya nilai di `pipeline_name_sequence` dan
+  `pipeline_last_stage` yang `extraction`. Konsekuensinya:
   **Orkestrasi pusat mengirim nilai berbeda** untuk KK dan NPWP.
 - **`poly` tidak dijadikan `bbox` tegak.** `paddle.py` nilam membuang kuadrilateralnya; parser tata letak
   KK mengukur kemiringan dari sana (`estimate_shear`). Backend `paddle` di sini adalah `remote` dengan

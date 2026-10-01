@@ -51,7 +51,7 @@ class ErrorResponse(BaseModel):
     pipeline_last_stage: str | None = Field(
         None,
         description=(
-            "The service the error comes from: this one (`orchestrator`, `guardrails`, `ekstraksi`, `structuring`, "
+            "The service the error comes from: this one (`orchestrator`, `guardrails`, `extraction`, `structuring`, "
             "`scoring`), or the pipeline service it called when that one failed"
         ),
         examples=["orchestrator"],
@@ -117,7 +117,7 @@ class JobStatusBase(BaseModel):
             "The services this request runs, as the job was submitted with them; the last one ends the request. "
             "Null for a job submitted without it: the full pipeline"
         ),
-        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+        examples=[["guardrails", "extraction", "structuring", "scoring"]],
     )
     column_confidence_threshold: dict[str, float] | None = Field(
         None,
@@ -131,7 +131,7 @@ class JobStatusBase(BaseModel):
 
 PIPELINE_SEQUENCE_DESCRIPTION = (
     "The services this request runs, in order, from the central orchestrator (forwarded by the orchestrator "
-    "and each stage): `guardrails`, `ekstraksi`, `structuring`, `scoring`, guardrails optional at the front "
+    "and each stage): `guardrails`, `extraction`, `structuring`, `scoring`, guardrails optional at the front "
     "and the end cut off, never one skipped in the middle. The last one ends the request: its result is the "
     "answer, as it is, and nothing is handed on. Omitted: the full pipeline"
 )

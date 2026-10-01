@@ -73,7 +73,7 @@ class ScoringJobRequest(BaseModel):
     pipeline_name_sequence: list[str] | None = Field(
         None,
         description=PIPELINE_SEQUENCE_DESCRIPTION,
-        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+        examples=[["guardrails", "extraction", "structuring", "scoring"]],
     )
 
     @field_validator("pipeline_name_sequence")

@@ -195,20 +195,36 @@ TENDENCIES: dict[str, Literal["accept", "reject"]] = {
 
 
 def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> GuardrailsThreshold | None:
-    """`guardrails_confidence_threshold` + `guardrails_tendency`, both or neither; None (neither) leaves the
-    guardrails service's own threshold in force. Raises `_InvalidThreshold`. Ported from nilam."""
+    """`guardrails_confidence_threshold`, a JSON object `{"acc_rej": 0.8}`, with the optional
+    `guardrails_tendency` naming the side it applies to (`rejected` when omitted). A bare number is still read,
+    but then needs `guardrails_tendency`. None (nothing sent) leaves the guardrails service's own threshold in
+    force. Raises `_InvalidThreshold`."""
     value = (value or "").strip()
     tendency = (tendency or "").strip().lower()
     if not value and not tendency:
         return None
-    if not value or not tendency:
-        raise _InvalidThreshold("send guardrails_confidence_threshold and guardrails_tendency together, or neither")
+    if not value:
+        raise _InvalidThreshold("guardrails_tendency needs guardrails_confidence_threshold")
+    raw: Any = value
+    if value.startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict) or set(parsed) != {"acc_rej"}:
+            raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
+        raw = parsed["acc_rej"]
+        tendency = tendency or "rejected"
+    elif not tendency:
+        raise _InvalidThreshold('send guardrails_confidence_threshold as {"acc_rej": 0.8}')
     try:
-        threshold = float(value)
-    except ValueError:
+        if isinstance(raw, bool):
+            raise ValueError
+        threshold = float(raw)
+    except (TypeError, ValueError):
         threshold = float("nan")
     if not 0 < threshold < 1:
-        raise _InvalidThreshold(f"guardrails_confidence_threshold must be a number between 0 and 1, got {value!r}")
+        raise _InvalidThreshold(f"guardrails_confidence_threshold.acc_rej must be a number between 0 and 1, got {raw!r}")
     if tendency not in TENDENCIES:
         raise _InvalidThreshold(f"guardrails_tendency must be accepted or rejected, got {tendency!r}")
     return GuardrailsThreshold(threshold, TENDENCIES[tendency])
@@ -342,14 +358,14 @@ def _parse_params(raw: str | None) -> Any:
             503,
             "The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
             "nothing was started. `pipeline_last_stage` names it",
-            "ekstraksi",
+            "extraction",
             "ekstraksi service is unavailable",
         ),
         504: _stage_error_response(
             504,
             "The guardrails service, its model, or the ekstraksi service did not answer in time "
             "(`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it",
-            "ekstraksi",
+            "extraction",
             "ekstraksi service timed out after 10.0s",
         ),
     },
@@ -373,24 +389,25 @@ async def extract_ocr(
     pipeline_name_sequence: list[str] | None = Form(
         None,
         description=(
-            "The services to run, in order: `guardrails`, `ekstraksi`, `structuring`, `scoring`; guardrails "
+            "The services to run, in order: `guardrails`, `extraction`, `structuring`, `scoring`; guardrails "
             "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, or "
             "one JSON array string. Omitted or blank: all four. The last one's result is `data`, as it is"
         ),
-        examples=[["guardrails", "ekstraksi", "structuring", "scoring"]],
+        examples=[["guardrails", "extraction", "structuring", "scoring"]],
     ),
     guardrails_confidence_threshold: str | None = Form(
         None,
         description=(
-            "Guardrails threshold for this document, between 0 and 1 (exclusive), with `guardrails_tendency`. "
-            "Omitted: the guardrails service's own threshold"
+            'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}` with the value '
+            "between 0 and 1 (exclusive). Applies to the rejected side unless `guardrails_tendency` says "
+            "otherwise. Omitted: the guardrails service's own threshold"
         ),
-        examples=["0.3"],
+        examples=['{"acc_rej": 0.8}'],
     ),
     guardrails_tendency: str | None = Form(
         None,
         description=(
-            "The side `guardrails_confidence_threshold` applies to: `accepted` (the document passes when its "
+            "Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`): `accepted` (the document passes when its "
             "probability of being good, `1 - probability_bad`, reaches it) or `rejected` (it is rejected when "
             "`probability_bad` reaches it)"
         ),
@@ -399,7 +416,7 @@ async def extract_ocr(
     column_confidence_threshold: str | None = Form(
         None,
         description=f"{COLUMN_THRESHOLD_DESCRIPTION}. A JSON object string",
-        examples=['{"no_kk": 0.9, "nik": 0.8}'],
+        examples=['{"all_field": 0.8}'],
     ),
     service: ExtractOcrService = Depends(get_extract_service),
     settings: Settings = Depends(get_settings),

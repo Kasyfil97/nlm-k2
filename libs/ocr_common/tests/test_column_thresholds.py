@@ -49,3 +49,12 @@ def test_anything_else_is_refused_with_the_reason(raw, reason):
     the contract names in `data`."""
     with pytest.raises(ValueError, match=reason.replace("(", r"\(").replace(")", r"\)")):
         column_thresholds_from_json(raw)
+
+
+def test_all_field_sets_every_field_and_a_named_field_overrides_it():
+    from ocr_common.kk import CONTRACT_FIELDS
+
+    every = column_thresholds_from_json('{"all_field": 0.8}')
+    assert every == dict.fromkeys(CONTRACT_FIELDS, 0.8)
+    mixed = column_thresholds_from_json('{"all_field": 0.8, "nik": 0.5}')
+    assert mixed["nik"] == 0.5 and mixed["no_kk"] == 0.8

@@ -141,7 +141,7 @@ def _parse_sequence(raw: str | None) -> list[str] | None:
         "**Idempotency.** The same request_id again answers `202` with `duplicate: true` and does not run OCR "
         "twice, unless the earlier attempt `FAILED` or has been `PROCESSING` for longer than the job lease "
         "(`PIPELINE_JOB_LEASE_SECONDS`, 5 minutes by default), in which case it is run again.\n\n"
-        "**Where the chain stops.** `pipeline_name_sequence` decides: when `ekstraksi` is its last service, the "
+        "**Where the chain stops.** `pipeline_name_sequence` decides: when `extraction` is its last service, the "
         "job ends here, nothing is handed on, and the OCR result is the request's answer, as it is (the `OCR` "
         "callback then carries `final: true`)."
     ),
@@ -170,7 +170,7 @@ def _parse_sequence(raw: str | None) -> list[str] | None:
         400: error(
             400,
             "Neither or both of file / file_url, `guardrails` is not a JSON object, `pipeline_name_sequence` is "
-            "not a valid sequence that includes `ekstraksi`, or `column_confidence_threshold` is invalid",
+            "not a valid sequence that includes `extraction`, or `column_confidence_threshold` is invalid",
             "Send exactly one of file or file_url",
         ),
         401: UNAUTHORIZED,
@@ -198,7 +198,7 @@ async def submit_job(
     pipeline_name_sequence: str | None = Form(
         None,
         description=f"{PIPELINE_SEQUENCE_DESCRIPTION}. Serialised as a JSON array string",
-        examples=['["guardrails", "ekstraksi", "structuring", "scoring"]'],
+        examples=['["guardrails", "extraction", "structuring", "scoring"]'],
     ),
     column_confidence_threshold: str | None = Form(
         None,
