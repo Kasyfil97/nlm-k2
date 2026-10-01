@@ -1,7 +1,7 @@
 import json
 import logging
 import time
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
@@ -185,38 +185,22 @@ class _InvalidThreshold(Exception):
     pass
 
 
-# guardrails_tendency as the central orchestrator writes it (accepted / rejected), to the side it names.
-TENDENCIES: dict[str, Literal["accept", "reject"]] = {
-    "accepted": "accept",
-    "accept": "accept",
-    "rejected": "reject",
-    "reject": "reject",
-}
-
-
-def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> GuardrailsThreshold | None:
-    """`guardrails_confidence_threshold`, a JSON object `{"acc_rej": 0.8}`, with the optional
-    `guardrails_tendency` naming the side it applies to (`rejected` when omitted). A bare number is still read,
-    but then needs `guardrails_tendency`. None (nothing sent) leaves the guardrails service's own threshold in
+def _parse_guardrails_threshold(value: str | None) -> GuardrailsThreshold | None:
+    """`guardrails_confidence_threshold`, a JSON object `{"acc_rej": 0.8}` with the value between 0 and 1.
+    Always applies to the `rejected` side. None (nothing sent) leaves the guardrails service's own threshold in
     force. Raises `_InvalidThreshold`."""
     value = (value or "").strip()
-    tendency = (tendency or "").strip().lower()
-    if not value and not tendency:
-        return None
     if not value:
-        raise _InvalidThreshold("guardrails_tendency needs guardrails_confidence_threshold")
-    raw: Any = value
-    if value.startswith("{"):
-        try:
-            parsed = json.loads(value)
-        except ValueError:
-            parsed = None
-        if not isinstance(parsed, dict) or set(parsed) != {"acc_rej"}:
-            raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
-        raw = parsed["acc_rej"]
-        tendency = tendency or "rejected"
-    elif not tendency:
+        return None
+    if not value.startswith("{"):
         raise _InvalidThreshold('send guardrails_confidence_threshold as {"acc_rej": 0.8}')
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        parsed = None
+    if not isinstance(parsed, dict) or set(parsed) != {"acc_rej"}:
+        raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
+    raw: Any = parsed["acc_rej"]
     try:
         if isinstance(raw, bool):
             raise ValueError
@@ -227,17 +211,18 @@ def _parse_guardrails_threshold(value: str | None, tendency: str | None) -> Guar
         raise _InvalidThreshold(
             f"guardrails_confidence_threshold.acc_rej must be a number between 0 and 1, got {raw!r}"
         )
-    if tendency not in TENDENCIES:
-        raise _InvalidThreshold(f"guardrails_tendency must be accepted or rejected, got {tendency!r}")
-    return GuardrailsThreshold(threshold, TENDENCIES[tendency])
+    return GuardrailsThreshold(threshold, "reject")
 
 
 def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
-    """`pipeline_name_sequence` as repeated form fields, or as one JSON array string; the full pipeline when
-    omitted. A blank field (a form client's "send empty value") counts as omitted. Raises `InvalidSequence`."""
+    """`pipeline_name_sequence` as repeated form fields, a comma-separated string, or one JSON array string;
+    the full pipeline when omitted. A blank field (a form client's "send empty value") counts as omitted.
+    Raises `InvalidSequence`."""
     values = [value.strip() for value in values or () if value.strip()]
     if not values:
         return DEFAULT_SEQUENCE
+    if len(values) == 1 and "," in values[0] and not values[0].lstrip().startswith("["):
+        values = [v.strip() for v in values[0].split(",") if v.strip()]
     if len(values) == 1 and values[0].lstrip().startswith("["):
         try:
             parsed = json.loads(values[0])
@@ -351,24 +336,24 @@ def _parse_params(raw: str | None) -> Any:
         },
         500: _stage_error_response(
             500,
-            "The guardrails or ekstraksi service failed, or answered in an unexpected shape "
+            "The guardrails or extraction service failed, or answered in an unexpected shape "
             "(`DOWNSTREAM_SERVER_ERROR`); `pipeline_last_stage` names it",
             "guardrails",
             "guardrails service returned an unexpected response",
         ),
         503: _stage_error_response(
             503,
-            "The guardrails service, its model, or the ekstraksi service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
+            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
             "nothing was started. `pipeline_last_stage` names it",
             "extraction",
-            "ekstraksi service is unavailable",
+            "extraction service is unavailable",
         ),
         504: _stage_error_response(
             504,
-            "The guardrails service, its model, or the ekstraksi service did not answer in time "
+            "The guardrails service, its model, or the extraction service did not answer in time "
             "(`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it",
             "extraction",
-            "ekstraksi service timed out after 10.0s",
+            "extraction service timed out after 10.0s",
         ),
     },
 )
@@ -392,8 +377,9 @@ async def extract_ocr(
         None,
         description=(
             "The services to run, in order: `guardrails`, `extraction`, `structuring`, `scoring`; guardrails "
-            "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, or "
-            "one JSON array string. Omitted or blank: all four. The last one's result is `data`, as it is"
+            "optional at the front, the end may be cut off, nothing skipped in the middle. Repeated form fields, "
+            "a comma-separated string, or one JSON array string. Omitted or blank: all four. The last one's result "
+            "is `data`, as it is"
         ),
         examples=[["guardrails", "extraction", "structuring", "scoring"]],
     ),
@@ -401,19 +387,10 @@ async def extract_ocr(
         None,
         description=(
             'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}` with the value '
-            "between 0 and 1 (exclusive). Applies to the rejected side unless `guardrails_tendency` says "
-            "otherwise. Omitted: the guardrails service's own threshold"
+            "between 0 and 1 (exclusive). Applies to the rejected side. "
+            "Omitted: the guardrails service's own threshold"
         ),
         examples=['{"acc_rej": 0.8}'],
-    ),
-    guardrails_tendency: str | None = Form(
-        None,
-        description=(
-            "Optional. The side `guardrails_confidence_threshold` applies to (default `rejected`): `accepted` "
-            "(the document passes when its probability of being good, `1 - probability_bad`, reaches it) "
-            "or `rejected` (it is rejected when `probability_bad` reaches it)"
-        ),
-        examples=["accepted"],
     ),
     column_confidence_threshold: str | None = Form(
         None,
@@ -459,7 +436,7 @@ async def extract_ocr(
             pipeline_last_stage=ENTRY,
         )
     try:
-        guardrails_threshold = _parse_guardrails_threshold(guardrails_confidence_threshold, guardrails_tendency)
+        guardrails_threshold = _parse_guardrails_threshold(guardrails_confidence_threshold)
         try:
             column_thresholds = column_thresholds_from_json(column_confidence_threshold)
         except ValueError as exc:
@@ -517,7 +494,7 @@ async def extract_ocr(
     summary="Where a request is now: the extract-ocr answer, without waiting",
     description=(
         "Reads the jobs of `request_id` once each, in pipeline order, up to the last service of the "
-        "`pipeline_name_sequence` stored with its ekstraksi job, and answers in "
+        "`pipeline_name_sequence` stored with its extraction job, and answers in "
         'the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished by now):\n\n'
         + _CONTRACT_TABLE
         + "Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is always "
@@ -525,7 +502,7 @@ async def extract_ocr(
         "**No stage job.** A request that never reached a stage is answered from its last guardrails verdict "
         "(`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
         "`data` when guardrails was its only service. **404** otherwise: refused before the check, still being "
-        "judged, passed but its hand-off to ekstraksi failed, or no verdict kept (no `DATABASE_URL`).\n\n"
+        "judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).\n\n"
         "**Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it became a "
         "dead letter in the outbox) leaves the next stage without a job, so this endpoint keeps answering `202` "
         "for it. The `FAILED` callback and the central orchestrator's own tables carry that final state; this "
@@ -553,7 +530,7 @@ async def extract_ocr(
                 "application/json": {
                     "example": {
                         **_REJECTED,
-                        "message": "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil ekstraksi tidak lengkap",
+                        "message": "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap",
                         "params": None,
                     }
                 }
@@ -564,7 +541,7 @@ async def extract_ocr(
         404: error(
             404,
             "No stage has a job for this request_id and no guardrails verdict answers for it (not submitted yet, "
-            "refused before the check, or its hand-off to ekstraksi failed)",
+            "refused before the check, or its hand-off to extraction failed)",
             f"No request found for request_id {RID}",
             errors="REQUEST_ID_NOT_FOUND",
         ),
