@@ -1,5 +1,7 @@
 """One async SQLAlchemy engine per database URL, shared by everything in the process."""
 
+import os
+
 from sqlalchemy import JSON, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
@@ -11,10 +13,19 @@ _engines: dict[str, AsyncEngine] = {}
 _factories: dict[str, async_sessionmaker] = {}
 
 
+def _connect_args(url: str) -> dict:
+    """TLS stays on asyncpg's default; `DATABASE_SSL_DISABLE=true` turns it off for a local Postgres only."""
+    if url.startswith("postgresql+asyncpg") and os.environ.get("DATABASE_SSL_DISABLE", "").lower() == "true":
+        return {"ssl": False}
+    return {}
+
+
 def get_engine(url: str) -> AsyncEngine:
     """The engine for `url`, created on first use with pool pre-ping."""
     if url not in _engines:
-        _engines[url] = create_async_engine(url, pool_pre_ping=True, hide_parameters=True)
+        _engines[url] = create_async_engine(
+            url, pool_pre_ping=True, hide_parameters=True, connect_args=_connect_args(url)
+        )
     return _engines[url]
 
 

@@ -463,8 +463,8 @@ paths:
                 document_type: kk
                 pipeline_last_stage: extraction
         '504':
-          description: The guardrails service, its model, or the extraction service did not answer in time
-            (`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it
+          description: The guardrails service, its model, or the extraction service did not answer in
+            time (`DOWNSTREAM_TIMEOUT`); `pipeline_last_stage` names it
           content:
             application/json:
               schema:
@@ -783,8 +783,8 @@ components:
           title: Pipeline Name Sequence
           description: 'The services to run, in order: `guardrails`, `extraction`, `structuring`, `scoring`;
             guardrails optional at the front, the end may be cut off, nothing skipped in the middle. Repeated
-            form fields, or one JSON array string. Omitted or blank: all four. The last one''s result
-            is `data`, as it is'
+            form fields, a comma-separated string, or one JSON array string. Omitted or blank: all four.
+            The last one''s result is `data`, as it is'
           examples:
           - - guardrails
             - extraction
@@ -796,8 +796,8 @@ components:
           - type: 'null'
           title: Guardrails Confidence Threshold
           description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
-            with the value between 0 and 1 (exclusive). Applies to the rejected side.
-            Omitted: the guardrails service''s own threshold'
+            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: the guardrails
+            service''s own threshold'
           examples:
           - '{"acc_rej": 0.8}'
         column_confidence_threshold:

@@ -75,9 +75,7 @@ def test_the_full_sequence_is_handed_on_to_scoring(harness, auth):
     assert payload["pipeline_name_sequence"] == sequence
 
 
-@pytest.mark.parametrize(
-    "sequence", [["guardrails", "extraction"], ["extraction", "scoring"], ["scoring"], ["extraction", "structuring"]]
-)
+@pytest.mark.parametrize("sequence", [["guardrails", "extraction"], ["extraction", "scoring"], ["scoring"]])
 def test_a_sequence_without_this_stage_or_out_of_order_is_422(harness, auth, sequence):
     client, _, _ = harness
 
