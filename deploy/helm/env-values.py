@@ -45,7 +45,7 @@ def generate(root, release):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--release", default="nlm-k2")
+    parser.add_argument("--release", default="nilam-ocr-kk")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     values = generate(Path(__file__).resolve().parents[2], args.release)

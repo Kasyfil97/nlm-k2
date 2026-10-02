@@ -5,10 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CHART="$ROOT/deploy/helm/nlm-k2"
 DEPLOY_ENV="${DEPLOY_ENV:-ddb-dev}"
 VALUES="$CHART/values-$DEPLOY_ENV.yaml"
-RELEASE="${RELEASE:-nlm-k2}"
+RELEASE="${RELEASE:-nilam-ocr-kk}"
 NAMESPACE="${NAMESPACE:-nlm-k2}"
 REGISTRY="${REGISTRY:-asia-southeast2-docker.pkg.dev/common-cicd-dev-01/gc-bribrain-dev-gar-temp-01}"
-IMAGE_PREFIX="${IMAGE_PREFIX:-ms-bribrain-nlm-k2}"
+IMAGE_PREFIX="${IMAGE_PREFIX:-nilam-ocr-kk}"
 EXPECTED_CONTEXT="${EXPECTED_CONTEXT:-gke_ddb-kubecluster-dev-01_asia-southeast2_gc-ddb-dev-gke-cluster-01}"
 TIMEOUT="${TIMEOUT:-10m}"
 # Revisi release yang disimpan Helm (satu Secret sh.helm.release.v1.<release>.vN per revisi), untuk rollback.
@@ -44,12 +44,12 @@ Opsi:
                   <sha>-dirty-<waktu>. Hanya bersama --build-only: image ini tidak bisa di-deploy
   --skip-build    tanpa build/push; tag harus sudah ada di registry
   --build-only    build + push saja, tanpa helm upgrade
-  --dry-run       tampilkan diff manifest terhadap release yang berjalan, tanpa apply
+  --dry-run       validasi manifest tanpa apply atau mencetak Secret
   -y, --yes       tanpa konfirmasi
   -h, --help      tampilkan bantuan ini
 
 Environment: DEPLOY_ENV (default ddb-dev -> values-ddb-dev.yaml), RELEASE, NAMESPACE,
-REGISTRY, EXPECTED_CONTEXT, TIMEOUT (default 10m), HISTORY_MAX (revisi release yang disimpan
+REGISTRY, IMAGE_PREFIX (default nilam-ocr-kk), PYTHON, EXPECTED_CONTEXT, TIMEOUT (default 10m), HISTORY_MAX (revisi release yang disimpan
 untuk rollback, default 5).
 
 Contoh:
@@ -93,10 +93,15 @@ done
 [[ $SKIP_BUILD -eq 1 && -z "$TAG" ]] && die "--skip-build butuh --tag"
 [[ -f "$VALUES" ]] || die "file values tidak ada: $VALUES"
 
-for tool in git helm kubectl; do
+for tool in git; do
   command -v "$tool" >/dev/null || die "$tool tidak ditemukan di PATH"
 done
-if [[ $SKIP_BUILD -eq 0 ]]; then
+if [[ $BUILD_ONLY -eq 0 ]]; then
+  for tool in helm kubectl "$PYTHON"; do
+    command -v "$tool" >/dev/null || die "$tool tidak ditemukan di PATH"
+  done
+fi
+if [[ $SKIP_BUILD -eq 0 && $DRY_RUN -eq 0 ]]; then
   for tool in docker gcloud; do
     command -v "$tool" >/dev/null || die "$tool tidak ditemukan di PATH"
   done
@@ -139,8 +144,13 @@ if [[ $BUILD_ONLY -eq 0 ]]; then
   CONTEXT="$(kubectl config current-context 2>/dev/null || true)"
   [[ "$CONTEXT" == "$EXPECTED_CONTEXT" ]] \
     || die "kubectl context sekarang '$CONTEXT', diharapkan '$EXPECTED_CONTEXT'. Ganti context atau set EXPECTED_CONTEXT."
-  helm status "$RELEASE" -n "$NAMESPACE" >/dev/null 2>&1 \
-    || die "release $RELEASE tidak ditemukan di namespace $NAMESPACE; install pertama kali lihat deploy/helm/README.md"
+  EXISTING_RELEASE="$(helm list -n "$NAMESPACE" --all --filter "^${RELEASE}$" -q)"
+  if [[ -z "$EXISTING_RELEASE" && ${#SERVICES[@]} -ne ${#ALL_SERVICES[@]} ]]; then
+    die "install pertama harus memilih all agar kelima image mendapat repository dan tag yang benar"
+  fi
+  # Validate/read production files before building or pushing any images.
+  ENV_VALUES="$(mktemp)"
+  "$PYTHON" "$ROOT/deploy/helm/env-values.py" --release "$RELEASE" --output "$ENV_VALUES"
 fi
 
 log "Rencana"
@@ -183,14 +193,13 @@ if [[ $BUILD_ONLY -eq 1 ]]; then
   exit 0
 fi
 
-HELM_ARGS=(upgrade "$RELEASE" "$CHART" -n "$NAMESPACE" --reset-then-reuse-values -f "$VALUES" --timeout "$TIMEOUT"
+HELM_ARGS=(upgrade --install "$RELEASE" "$CHART" -n "$NAMESPACE" --create-namespace --reset-then-reuse-values -f "$VALUES" --timeout "$TIMEOUT"
   --history-max "$HISTORY_MAX")
-command -v "$PYTHON" >/dev/null || die "Python tidak ditemukan; set PYTHON ke interpreter dengan python-dotenv"
-ENV_VALUES="$(mktemp)"
-"$PYTHON" "$ROOT/deploy/helm/env-values.py" --release "$RELEASE" --output "$ENV_VALUES"
 HELM_ARGS+=(-f "$ENV_VALUES")
+HELM_ARGS+=(--set-string "image.registry=$REGISTRY" --set-string "fullnameOverride=$RELEASE")
 for svc in "${SERVICES[@]}"; do
-  HELM_ARGS+=(--set "services.$svc.image.tag=$TAG")
+  HELM_ARGS+=(--set-string "services.$svc.image.repository=$IMAGE_PREFIX-$svc"
+    --set-string "services.$svc.image.tag=$TAG")
 done
 
 if [[ $DRY_RUN -eq 1 ]]; then
