@@ -25,6 +25,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include "nlm-k2.serviceEnv" (dict "root" $ "svc" $svc) | sha256sum }}
+        {{- if dig "dotenv" "enabled" false $svc }}
+        checksum/dotenv: {{ toJson $svc.dotenv.data | sha256sum }}
+        {{- end }}
         {{- with $.Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -53,9 +56,15 @@ spec:
             - name: {{ $name }}
               containerPort: {{ $svc.port }}
           envFrom:
+            {{- if dig "dotenv" "enabled" false $svc }}
+            - secretRef:
+                name: {{ include "nlm-k2.componentName" $component }}-env
+            {{- else }}
             - configMapRef:
                 name: {{ include "nlm-k2.componentName" $component }}
+            {{- end }}
           env:
+            {{- if not (dig "dotenv" "enabled" false $svc) }}
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
@@ -87,6 +96,7 @@ spec:
                   name: {{ $.Values.existingSecret }}
                   key: {{ $.Values.secretKeys.callbackKey }}
                   optional: true
+            {{- end }}
             {{- end }}
             - name: HOME
               value: /tmp

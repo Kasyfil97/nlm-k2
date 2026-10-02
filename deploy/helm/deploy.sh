@@ -14,6 +14,14 @@ TIMEOUT="${TIMEOUT:-10m}"
 # Revisi release yang disimpan Helm (satu Secret sh.helm.release.v1.<release>.vN per revisi), untuk rollback.
 HISTORY_MAX="${HISTORY_MAX:-5}"
 ALL_SERVICES=(orchestrator guardrails extraction structuring scoring)
+PYTHON="${PYTHON:-python}"
+ENV_VALUES=""
+DOCKER_TMP_CONFIG=""
+cleanup() {
+  [[ -z "$ENV_VALUES" ]] || rm -f "$ENV_VALUES"
+  [[ -z "$DOCKER_TMP_CONFIG" ]] || rm -rf "$DOCKER_TMP_CONFIG"
+}
+trap cleanup EXIT
 
 usage() {
   cat <<EOF
@@ -153,9 +161,6 @@ if [[ $ASSUME_YES -eq 0 && $DRY_RUN -eq 0 ]]; then
 fi
 
 if [[ $SKIP_BUILD -eq 0 && $DRY_RUN -eq 0 ]]; then
-  if [[ " ${SERVICES[*]} " == *" guardrails "* && ! -f services/guardrails/weights/best_model.pt ]]; then
-    die "services/guardrails/weights/best_model.pt tidak ada; jalankan 'make weights' dulu"
-  fi
 
   for svc in "${SERVICES[@]}"; do
     log "Build $svc -> $(image_ref "$svc")"
@@ -163,7 +168,6 @@ if [[ $SKIP_BUILD -eq 0 && $DRY_RUN -eq 0 ]]; then
   done
 
   DOCKER_TMP_CONFIG="$(mktemp -d)"
-  trap 'rm -rf "$DOCKER_TMP_CONFIG"' EXIT
   log "Login ke ${REGISTRY%%/*}"
   gcloud auth print-access-token \
     | docker --config "$DOCKER_TMP_CONFIG" login -u oauth2accesstoken --password-stdin "https://${REGISTRY%%/*}" >/dev/null
@@ -181,17 +185,17 @@ fi
 
 HELM_ARGS=(upgrade "$RELEASE" "$CHART" -n "$NAMESPACE" --reset-then-reuse-values -f "$VALUES" --timeout "$TIMEOUT"
   --history-max "$HISTORY_MAX")
+command -v "$PYTHON" >/dev/null || die "Python tidak ditemukan; set PYTHON ke interpreter dengan python-dotenv"
+ENV_VALUES="$(mktemp)"
+"$PYTHON" "$ROOT/deploy/helm/env-values.py" --release "$RELEASE" --output "$ENV_VALUES"
+HELM_ARGS+=(-f "$ENV_VALUES")
 for svc in "${SERVICES[@]}"; do
   HELM_ARGS+=(--set "services.$svc.image.tag=$TAG")
 done
 
 if [[ $DRY_RUN -eq 1 ]]; then
-  log "Diff manifest (dry-run, tidak ada yang diubah)"
-  current="$(mktemp)"; planned="$(mktemp)"
-  helm get manifest "$RELEASE" -n "$NAMESPACE" > "$current"
-  helm "${HELM_ARGS[@]}" --dry-run=server | sed -n '/^MANIFEST:/,/^NOTES:/p' | sed '1d;/^NOTES:/d' > "$planned"
-  diff -u "$current" "$planned" && echo "  tidak ada perubahan"
-  rm -f "$current" "$planned"
+  log "Validasi manifest (dry-run; keluaran disembunyikan karena mengandung Secret)"
+  helm "${HELM_ARGS[@]}" --dry-run=server >/dev/null
   exit 0
 fi
 

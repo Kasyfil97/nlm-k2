@@ -1,5 +1,36 @@
 # Helm chart `nlm-k2`
 
+## Konfigurasi dari `.env` produksi
+
+`deploy.sh` membaca `services/<service>/.env` untuk kelima service, bukan `.env.local`.
+Python dengan paket `python-dotenv` diperlukan (`PYTHON` dapat menunjuk interpreter venv).
+Konfigurasi dimasukkan ke Secret per service; dalam mode ini ConfigMap dan Secret lama
+tidak menjadi sumber environment container. Perubahan `.env` me-restart service terkait,
+termasuk service yang tidak dipilih untuk build. Nilai disimpan dalam Secret Kubernetes
+dan riwayat release Helm; batasi akses keduanya.
+
+URL upstream yang kosong atau localhost diterjemahkan menjadi DNS Service release.
+URL eksternal yang sudah diisi dipertahankan. Nama release harus sesuai fullname chart
+(jangan gunakan `nameOverride`/`fullnameOverride` dalam mode ini).
+
+Untuk install pertama, generate values sementara dan tambahkan setelah values cluster:
+
+```bash
+umask 077
+env_values=$(mktemp)
+python deploy/helm/env-values.py --release nlm-k2 --output "$env_values"
+helm upgrade --install nlm-k2 deploy/helm/nlm-k2 -n nlm-k2 --create-namespace \
+  -f deploy/helm/nlm-k2/values-ddb-dev.yaml -f "$env_values" --set image.tag=<tag-valid>
+rm -f "$env_values"
+```
+
+File sementara berisi rahasia; jangan commit atau bagikan. Dry-run deploy script
+memvalidasi manifest tanpa mencetak Secret. Perintah Helm langsung tanpa generated values
+tetap memakai konfigurasi values/Secret lama yang dijelaskan di bawah.
+
+Setelah deploy memakai `.env`, migrasi dari cluster mengambil Secret extraction:
+`SECRET=nlm-k2-extraction-env DB_HOST=<alamat> deploy/helm/migrate-db.sh`.
+
 Satu Deployment, Service, ConfigMap, PodDisruptionBudget, dan NetworkPolicy per service:
 `orchestrator` (8040), `guardrails` (8041), `extraction` (8042), `structuring` (8043), `scoring`
 (8044). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nlm-k2-orchestrator`, dst.
