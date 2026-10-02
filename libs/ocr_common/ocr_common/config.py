@@ -58,6 +58,7 @@ class BaseServiceSettings(BaseSettings):
     # parser reads one page frame; the orchestrator refuses more than `MAX_DOCUMENT_PAGES`.
     allowed_content_types: list[str] = ["image/jpeg", "image/jpg", "image/png", "application/pdf"]
     file_url_allowed_hosts: str = ""
+    file_url_allow_http: bool = False
     field_confidence_threshold: float = Field(0.5, ge=0, le=1)
     # The `-test` endpoints (orchestrator `/v1/extract-ocr-test`, `/v1/<stage>/jobs-test`): the same pipeline on
     # the `testing_*` tables, without callbacks or writes to the orchestrator's tables. For the ML team's
@@ -96,7 +97,7 @@ class BaseServiceSettings(BaseSettings):
         return UrlPolicy(
             allowed_hosts=hosts,
             allow_private=self.is_local,
-            allow_http=self.is_local,
+            allow_http=self.is_local or self.file_url_allow_http,
             allow_any_host=self.is_local,
         )
 

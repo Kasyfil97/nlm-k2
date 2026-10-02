@@ -92,6 +92,7 @@ def test_https_is_required_outside_local():
     assert deployed(file_url_allowed_hosts="h").file_url_policy.scheme_allowed("http") is False
     assert deployed(file_url_allowed_hosts="h").file_url_policy.scheme_allowed("https") is True
     assert settings().file_url_policy.scheme_allowed("http") is True, "MinIO di laptop tanpa TLS"
+    assert deployed(file_url_allowed_hosts="h", file_url_allow_http=True).file_url_policy.scheme_allowed("http") is True
 
 
 async def test_fetch_refuses_http_under_a_strict_policy():

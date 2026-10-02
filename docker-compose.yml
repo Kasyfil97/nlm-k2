@@ -17,7 +17,7 @@ services:
       context: .
       dockerfile: services/orchestrator/Dockerfile
     image: nlm-k2-orchestrator:latest
-    env_file: services/orchestrator/.env
+    env_file: services/orchestrator/.env.local
     environment:
       PORT: "8040"
       GUARDRAILS_SERVICE_URL: http://guardrails:8041
@@ -36,7 +36,7 @@ services:
       context: .
       dockerfile: services/guardrails/Dockerfile
     image: nlm-k2-guardrails:latest
-    env_file: services/guardrails/.env
+    env_file: services/guardrails/.env.local
     environment:
       PORT: "8041"
     ports:
@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: services/structuring/Dockerfile
     image: nlm-k2-structuring:latest
-    env_file: services/structuring/.env
+    env_file: services/structuring/.env.local
     environment:
       PORT: "8043"
       SCORING_SERVICE_URL: http://scoring:8044
@@ -63,7 +63,7 @@ services:
       context: .
       dockerfile: services/scoring/Dockerfile
     image: nlm-k2-scoring:latest
-    env_file: services/scoring/.env
+    env_file: services/scoring/.env.local
     environment:
       PORT: "8044"
     ports:
@@ -75,7 +75,7 @@ services:
       context: .
       dockerfile: services/extraction/Dockerfile
     image: nlm-k2-extraction:latest
-    env_file: services/extraction/.env
+    env_file: services/extraction/.env.local
     environment:
       PORT: "8042"
       STRUCTURING_SERVICE_URL: http://structuring:8043
