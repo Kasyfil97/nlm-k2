@@ -12,7 +12,7 @@ Semua pemicu lewat nama berkas, dan sampai ke tahap yang dituju lewat backend `m
 | lengkap | `kk.jpg` | 200, sembilan field §3.3, `GET` identik |
 | jumlah anggota | `kk-MOCK:members=4.jpg` | 200 dengan 4 anggota, confidence milik masing-masing |
 | menunggu habis | `kk-delay20s.jpg` | 202, lalu `GET` 200 dengan sembilan field yang sama |
-| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 400 yang sama (dari `guardrails_results`) |
+| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 400 yang sama (dari `nilam_guardrails_results`) |
 | §7.4 aturan 1 | `kk-blank.jpg` | 400, `texts` kosong |
 | §7.4 aturan 2 | `kk-MOCK:blank_kk=1.jpg` | 400, `nomor_kk` kosong di hasil |
 | §7.4 aturan 3 | `kk-MOCK:members=0.jpg` | 400, `nomor_kk` terisi tetapi nol anggota |
@@ -42,6 +42,7 @@ from typing import Any
 import httpx
 
 from ocr_common.kk import DOC_FIELDS
+from ocr_common.pipeline.database import PIPELINE_SCHEMA, TABLE_PREFIX
 from ocr_common.synthetic_kk import member, nomor_kk
 
 
@@ -73,6 +74,7 @@ STAGES = ("extraction", "structuring", "scoring")
 
 #: Nama tahap sebagaimana tertulis di baris job dan baris outcome, per nama service.
 STAGE_NAMES = {"extraction": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
+
 
 def _psycopg_url(url: str) -> str:
     """Buang sufiks driver SQLAlchemy supaya psycopg bisa membacanya.
@@ -318,7 +320,7 @@ def guardrails_reject(client: httpx.Client) -> bool:
     body = response.json()
     print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
     print(f"  message={body.get('message')!r}")
-    # Tidak ada tahap yang jalan, tapi putusannya tersimpan di guardrails_results: GET menjawab 400 yang sama.
+    # Tidak ada tahap yang jalan, tapi putusannya tersimpan di nilam_guardrails_results: GET menjawab 400 yang sama.
     status = _status(client, request_id)
     print(f"  GET status -> {status.status_code} errors={status.json().get('errors')}")
     return (
@@ -495,11 +497,7 @@ def stage_failure(client: httpx.Client) -> bool:
         body = response.json()
     print(f"  {response.status_code} errors={body.get('errors')} stage={body.get('pipeline_last_stage')}")
     print(f"    message={body.get('message')!r}")
-    return (
-        response.status_code == 422
-        and str(body.get("errors", "")).endswith("_FAILED")
-        and body.get("data") is None
-    )
+    return response.status_code == 422 and str(body.get("errors", "")).endswith("_FAILED") and body.get("data") is None
 
 
 # --- handoff yang jadi dead letter ---------------------------------------------------------
@@ -605,19 +603,19 @@ def cleanup() -> None:
         cursor.execute(f"DELETE FROM {OUTCOME_TABLE} WHERE request_id = ANY(%s)", (minted,))
         outcome_rows = cursor.rowcount
         # Urutannya wajib: `*_results.request_id` punya foreign key ke `*_jobs`, jadi hasil dulu,
-        # baru jobnya. `pipeline_outbox` berdiri sendiri. Baris job ikut dihapus -- versi pertama
+        # baru jobnya. `nilam_pipeline_outbox` berdiri sendiri. Baris job ikut dihapus -- versi pertama
         # hanya menghapus hasilnya, dan meninggalkan 21/18/9 baris job setelah satu kali jalan.
         stage_rows = 0
         for table in (
-            "ocr_results",
-            "structuring_results",
-            "scoring_results",
-            "ocr_jobs",
-            "structuring_jobs",
-            "scoring_jobs",
-            "pipeline_outbox",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}pipeline_outbox",
             # Ditulis orchestrator untuk setiap putusan guardrails, termasuk yang menolak.
-            "guardrails_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}guardrails_results",
         ):
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))

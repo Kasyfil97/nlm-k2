@@ -70,7 +70,7 @@ app = create_app(
         "`{text, score, poly}` box per recognised line, plus the three document aggregates the trust model "
         "uses. It does not name fields and it does not judge the document.\n\n"
         "The orchestrator POSTs /v1/extraction/jobs once the guardrails model passed the document and gets "
-        "202; this service reads the image in the background, stores the result (`ocr_results`) and hands the "
+        "202; this service reads the image in the background, stores the result (`nilam_ocr_results`) and hands the "
         "job to the structuring service in the same transaction. /v1/extraction/extract runs the same OCR "
         "synchronously and stores nothing, for debugging. All endpoints except /health require an X-API-Key "
         "header."

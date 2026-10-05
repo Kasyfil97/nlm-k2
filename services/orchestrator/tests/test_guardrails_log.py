@@ -124,7 +124,10 @@ async def test_a_write_that_fails_is_logged_and_does_not_raise(tmp_path, caplog)
 
 
 def test_the_testing_endpoints_write_their_own_table():
-    assert SqlGuardrailsLog("sqlite+aiosqlite://", table_prefix="testing_")._table.name == "testing_guardrails_results"
+    assert (
+        SqlGuardrailsLog("sqlite+aiosqlite://", table_prefix="testing_")._table.name
+        == "nilam_testing_guardrails_results"
+    )
 
 
 async def test_the_sequence_is_written_and_the_last_verdict_read_back(database):

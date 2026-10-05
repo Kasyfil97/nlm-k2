@@ -421,9 +421,9 @@ paths:
 
 
         **No stage job.** A request that never reached a stage is answered from its last guardrails verdict
-        (`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report
-        as `data` when guardrails was its only service. **404** otherwise: refused before the check, still
-        being judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).
+        (`nilam_guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the
+        report as `data` when guardrails was its only service. **404** otherwise: refused before the check,
+        still being judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).
 
 
         **Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it
@@ -521,8 +521,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '400':
-          description: 'Rejected by the KK validity gate or, read from guardrails_results, by the guardrails
-            model (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`)'
+          description: 'Rejected by the KK validity gate or, read from nilam_guardrails_results, by the
+            guardrails model (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`)'
           content:
             application/json:
               example:
@@ -1101,7 +1101,7 @@ components:
 
         Structuring extracts 11 document fields and 15 per member; only these leave. The rest stay in
 
-        `structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.'
+        `nilam_structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.'
     KkMember:
       properties:
         nama_lengkap:
@@ -1515,7 +1515,7 @@ components:
       - kode_pos
       - tanggal_dikeluarkan
       title: StructuringPayload
-      description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
+      description: Result of the structuring stage (`nilam_structuring_results`), forwarded to scoring.
   securitySchemes:
     APIKeyHeader:
       type: apiKey

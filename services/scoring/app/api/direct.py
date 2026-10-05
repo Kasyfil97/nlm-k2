@@ -50,7 +50,7 @@ _RESULT_EXAMPLE = {
         "result (`data` of `POST /v1/structuring-direct`, or the `result` of a structuring job) and, like the "
         "pipeline, the OCR result and the guardrails report it depends on, builds the scoring payload from "
         "them, runs the trust model, and answers with the scoring result in the body. Nothing is recorded: no "
-        "`scoring_jobs` row, no callback, no outcome row, so it never touches the orchestrator's data.\n\n"
+        "`nilam_scoring_jobs` row, no callback, no outcome row, so it never touches the orchestrator's data.\n\n"
         "The answer is exactly what `GET /v1/scoring/jobs/{request_id}` reports as `result`: the probabilities "
         "per field (internal names), the trust model's own thresholds, the exact payload that was scored, and "
         "`decisions`, the 0/1 per contract field with the threshold used (`column_confidence_threshold` of the "

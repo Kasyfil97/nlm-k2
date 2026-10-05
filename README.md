@@ -41,7 +41,7 @@ structuring masih stub.
 [`docs/decisions/2026-09-29-selaras-nilam.md`](docs/decisions/2026-09-29-selaras-nilam.md):
 
 - `pipeline_name_sequence` menggantikan `skip_guardrails`. Nama tahap OCR-nya `extraction`.
-- Orchestrator mencatat setiap putusan guardrails di `guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
+- Orchestrator mencatat setiap putusan guardrails di `nilam_ocr_kk.nilam_guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
 - PDF diterima bawaan; hanya halaman 1 yang dinilai dan dibaca.
 - `EXTRACTION_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.
 - Ada endpoint OCR sinkron `POST /v1/extraction/extract` yang menjawab `OcrPayload` §7.1.

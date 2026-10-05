@@ -39,7 +39,7 @@ class OcrEngineResult(TypedDict):
 
 
 class OcrResult(OcrEngineResult):
-    """The stored result of the OCR stage (`ocr_results.result`), forwarded to structuring and scoring.
+    """The stored result of the OCR stage (`nilam_ocr_results.result`), forwarded to structuring and scoring.
 
     The aggregates are derived from `texts` rather than reported by the model, and are `None` for an
     empty `texts` -- an image with no readable text is a rejection at structuring, not a failure here.

@@ -436,7 +436,7 @@ async def extract_ocr(
         + _CONTRACT_TABLE
         + "Use it for a request that was answered `202`, e.g. when a callback did not arrive.\n\n"
         "**No stage job.** A request that never reached a stage is answered from its last guardrails verdict "
-        "(`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
+        "(`nilam_guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
         "`data` when guardrails was its only service. **404** otherwise: refused before the check, still being "
         "judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).\n\n"
         "**Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it became a "
@@ -459,7 +459,7 @@ async def extract_ocr(
         400: {
             "model": ExtractOcrResponse,
             "description": (
-                "Rejected by the KK validity gate or, read from guardrails_results, by the guardrails model "
+                "Rejected by the KK validity gate or, read from nilam_guardrails_results, by the guardrails model "
                 f"(`{REJECTED_CODE}`, `guardrails: 1`)"
             ),
             "content": {

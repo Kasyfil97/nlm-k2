@@ -72,7 +72,7 @@ class StructuringJobRequest(BaseModel):
         None,
         description=(
             "Result of the OCR stage. Left out when the OCR service hands off by reference "
-            "(`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `ocr_results` "
+            "(`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `nilam_ocr_results` "
             "of the shared database. Its `texts` MAY be empty -- an image with no readable text has to "
             "reach the validity gate to be rejected there, so this endpoint does not require at least one"
         ),

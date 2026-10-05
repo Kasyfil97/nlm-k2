@@ -46,7 +46,7 @@ class KkData(BaseModel):
     """`data` of a completed request: nine fields, and nothing else.
 
     Structuring extracts 11 document fields and 15 per member; only these leave. The rest stay in
-    `structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.
+    `nilam_structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.
     """
 
     no_kk: ContractField = Field(..., description="The 16-digit KK number")

@@ -230,13 +230,13 @@ def negative(client: httpx.Client, case: Case, content: bytes, results: list[tup
         and body.get("guardrails") == 1
         and body.get("data") is None,
     )
-    # GET membaca putusan yang tersimpan di guardrails_results, jadi jawabannya sama dengan POST-nya.
+    # GET membaca putusan yang tersimpan di nilam_guardrails_results, jadi jawabannya sama dengan POST-nya.
     status = smoke._status(client, request_id)
     read_back = status.json()
     same = ("status_code", "errors", "pipeline_last_stage", "guardrails", "data")
     _check(
         results,
-        f"{case.file}: GET menjawab penolakan yang sama dari guardrails_results",
+        f"{case.file}: GET menjawab penolakan yang sama dari nilam_guardrails_results",
         status.status_code == 400 and all(read_back.get(key) == body.get(key) for key in same),
         f"GET {status.status_code} {read_back.get('errors')} stage={read_back.get('pipeline_last_stage')}",
     )
