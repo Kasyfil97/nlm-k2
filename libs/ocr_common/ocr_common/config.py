@@ -205,6 +205,25 @@ class PipelineSettings(BaseServiceSettings):
 
     database_url: str | None = None
 
+    # Cloud SQL Python Connector — alternatif DATABASE_URL untuk deployment di GCP.
+    # Kosongkan DB_USER dan DB_PASS untuk IAM database authentication (service account identity).
+    cloudsql_instance: str | None = None
+    db_engine: str = "postgres"
+    db_name: str | None = None
+    db_user: str = ""
+    db_pass: str = ""
+    cloudsql_ip_type: str = "PRIVATE"
+
+    @model_validator(mode="after")
+    def _resolve_cloudsql(self) -> Self:
+        """Ketika CLOUDSQL_INSTANCE dan DB_NAME di-set tanpa DATABASE_URL, pasang sentinel
+        supaya semua guard dan factory yang memeriksa `database_url` tetap berjalan normal."""
+        from ocr_common.pipeline.database import CLOUDSQL_SENTINEL
+
+        if self.cloudsql_instance and self.db_name and not self.database_url:
+            self.database_url = CLOUDSQL_SENTINEL
+        return self
+
     orchestration_url: str | None = None
     orchestration_callback_path: str = "/v1/callbacks/stage"
     orchestration_api_key: str | None = None

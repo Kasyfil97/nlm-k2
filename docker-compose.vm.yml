@@ -1,0 +1,105 @@
+# Docker Compose untuk deployment di VM (bukan GKE).
+#
+# Perbedaan dari docker-compose.yml (lokal):
+#   - Membaca services/<nama>/.env (produksi), bukan .env.local
+#   - Tanpa container Postgres lokal — service terhubung ke Cloud SQL lewat connector
+#   - Menambahkan akses ke metadata server GCP (169.254.169.254) supaya ADC bekerja
+#     dari dalam container untuk IAM database authentication dan GCS pull weights
+#   - Port di-bind ke 0.0.0.0 (semua interface) agar bisa diakses dari luar VM
+#
+# Prasyarat di VM:
+#   1. Service account VM punya role Cloud SQL Client + Storage Object Viewer
+#   2. Image sudah dibangun: docker compose -f docker-compose.vm.yml build
+#   3. Migrasi DB sudah dijalankan sebelum services pertama kali naik
+#
+# Jalankan:
+#   docker compose -f docker-compose.vm.yml up -d
+#   docker compose -f docker-compose.vm.yml ps
+#   docker compose -f docker-compose.vm.yml logs -f orchestrator
+
+x-common: &common
+  restart: unless-stopped
+  extra_hosts:
+    # Metadata server GCP untuk Application Default Credentials (IAM auth Cloud SQL & GCS).
+    - "metadata.google.internal:169.254.169.254"
+
+services:
+  orchestrator:
+    <<: *common
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    image: nlm-k2-orchestrator:latest
+    env_file: services/orchestrator/.env
+    environment:
+      PORT: "8040"
+      GUARDRAILS_SERVICE_URL: http://guardrails:8041
+      EXTRACTION_SERVICE_URL: http://extraction:8042
+      STRUCTURING_SERVICE_URL: http://structuring:8043
+      SCORING_SERVICE_URL: http://scoring:8044
+    ports:
+      - "0.0.0.0:${ORCHESTRATOR_HOST_PORT:-8040}:8040"
+    depends_on:
+      - guardrails
+      - extraction
+
+  guardrails:
+    <<: *common
+    build:
+      context: .
+      dockerfile: services/guardrails/Dockerfile
+    image: nlm-k2-guardrails:latest
+    env_file: services/guardrails/.env
+    environment:
+      PORT: "8041"
+    ports:
+      - "127.0.0.1:${GUARDRAILS_HOST_PORT:-8041}:8041"
+
+  extraction:
+    <<: *common
+    build:
+      context: .
+      dockerfile: services/extraction/Dockerfile
+    image: nlm-k2-extraction:latest
+    env_file: services/extraction/.env
+    environment:
+      PORT: "8042"
+      STRUCTURING_SERVICE_URL: http://structuring:8043
+    ports:
+      - "127.0.0.1:${EXTRACTION_HOST_PORT:-8042}:8042"
+    depends_on:
+      - structuring
+
+  structuring:
+    <<: *common
+    build:
+      context: .
+      dockerfile: services/structuring/Dockerfile
+    image: nlm-k2-structuring:latest
+    env_file: services/structuring/.env
+    environment:
+      PORT: "8043"
+      SCORING_SERVICE_URL: http://scoring:8044
+    ports:
+      - "127.0.0.1:${STRUCTURING_HOST_PORT:-8043}:8043"
+    depends_on:
+      - scoring
+
+  scoring:
+    <<: *common
+    build:
+      context: .
+      dockerfile: services/scoring/Dockerfile
+    image: nlm-k2-scoring:latest
+    env_file: services/scoring/.env
+    environment:
+      PORT: "8044"
+    ports:
+      - "127.0.0.1:${SCORING_HOST_PORT:-8044}:8044"
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16

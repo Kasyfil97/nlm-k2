@@ -29,6 +29,15 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Jika WEIGHTS_DIR di-set (dalam container), semua artefak mendarat di sana.
+# Tanpa WEIGHTS_DIR (lokal), tiap service pakai {ROOT}/services/{service}/weights/.
+_WEIGHTS_DIR = os.environ.get("WEIGHTS_DIR")
+
+
+def _service_weights(service: str, filename: str | None = None) -> Path:
+    base = Path(_WEIGHTS_DIR) if _WEIGHTS_DIR else ROOT / "services" / service / "weights"
+    return (base / filename) if filename else base
+
 #: Berkas yang dihasilkan ekspor K2Quality. `model_hashes.json` ikut diambil dan dipakai untuk
 #: memverifikasi lima lainnya; ia sendiri tidak memuat hash dirinya, jadi tidak diverifikasi.
 K2QUALITY_FILES = (
@@ -44,9 +53,18 @@ MANIFEST = "model_hashes.json"
 MODELS: dict[str, dict[str, Any]] = {
     "guardrails": {
         "uri_env": "GUARDRAILS_MODEL_URI",
-        "target_dir": ROOT / "services" / "guardrails" / "weights",
+        "target_dir": _service_weights("guardrails"),
         "files": K2QUALITY_FILES,
         "manifest": MANIFEST,
+    },
+    "scoring": {
+        "uri_env": "SCORING_MODEL_URI",
+        "target": _service_weights("scoring", "kk_trust_model.joblib"),
+    },
+    "extraction": {
+        "uri_env": "EXTRACTION_WEIGHTS_URI",
+        "target_dir": _service_weights("extraction"),
+        "files": ("ppocrv5_server_det.pth", "ppocrv5_server_rec.pth"),
     },
 }
 
@@ -63,7 +81,7 @@ def _download(uri: str, target: Path) -> None:
         tmp = Path(handle.name)
     try:
         if uri.startswith("gs://"):
-            subprocess.run(["gsutil", "cp", uri, str(tmp)], check=True)
+            _download_gcs(uri, tmp)
         elif uri.startswith("s3://"):
             subprocess.run(["mc", "cp", uri[len("s3://") :], str(tmp)], check=True)
         elif uri.startswith(("http://", "https://")):
@@ -75,6 +93,20 @@ def _download(uri: str, target: Path) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def _download_gcs(uri: str, target: Path) -> None:
+    """Unduh satu objek GCS via Python client library; fallback ke subprocess gsutil jika library tidak ada."""
+    try:
+        from google.cloud import storage as gcs
+    except ImportError:
+        subprocess.run(["gsutil", "cp", uri, str(target)], check=True)
+        return
+    without_scheme = uri[len("gs://"):]
+    bucket_name, _, blob_name = without_scheme.partition("/")
+    client = gcs.Client()
+    blob = client.bucket(bucket_name).blob(blob_name)
+    blob.download_to_filename(str(target))
 
 
 def _local_path(uri: str) -> Path | None:

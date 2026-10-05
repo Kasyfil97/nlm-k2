@@ -13,17 +13,21 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY libs/ocr_common ./libs/ocr_common
 RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 
-COPY services/scoring/app ./app
-COPY services/scoring/weights ./weights
-RUN test -f weights/kk_trust_model.joblib || (echo "services/scoring/weights/kk_trust_model.joblib tidak ada di build context" && exit 1)
+RUN pip install --no-cache-dir google-cloud-storage
 
-RUN useradd --create-home --shell /bin/bash appuser
+COPY scripts/fetch_weights.py ./scripts/fetch_weights.py
+COPY services/scoring/app ./app
+
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p weights \
+    && chown appuser weights
 USER appuser
 
-ENV PORT=8044
+ENV PORT=8044 \
+    WEIGHTS_DIR=/app/weights
 EXPOSE 8044
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8044\")}/health', timeout=3)" || exit 1
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "python scripts/fetch_weights.py scoring && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
