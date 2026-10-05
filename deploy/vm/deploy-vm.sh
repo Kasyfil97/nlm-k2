@@ -145,7 +145,7 @@ $COMPOSE ps
 echo ""
 echo "=== Health check ==="
 sleep 5
-for port in 8040 8041 8042 8043 8044; do
+for port in 8060 8061 8062 8063 8064; do
   if curl -sf "http://localhost:$port/health" -o /dev/null 2>&1; then
     echo "  :$port  OK"
   else

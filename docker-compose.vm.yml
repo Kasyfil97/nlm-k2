@@ -32,13 +32,13 @@ services:
     image: nlm-k2-orchestrator:latest
     env_file: services/orchestrator/.env
     environment:
-      PORT: "8040"
-      GUARDRAILS_SERVICE_URL: http://guardrails:8041
-      EXTRACTION_SERVICE_URL: http://extraction:8042
-      STRUCTURING_SERVICE_URL: http://structuring:8043
-      SCORING_SERVICE_URL: http://scoring:8044
+      PORT: "8060"
+      GUARDRAILS_SERVICE_URL: http://guardrails:8061
+      EXTRACTION_SERVICE_URL: http://extraction:8062
+      STRUCTURING_SERVICE_URL: http://structuring:8063
+      SCORING_SERVICE_URL: http://scoring:8064
     ports:
-      - "0.0.0.0:${ORCHESTRATOR_HOST_PORT:-8040}:8040"
+      - "0.0.0.0:${ORCHESTRATOR_HOST_PORT:-8060}:8060"
     depends_on:
       - guardrails
       - extraction
@@ -51,9 +51,9 @@ services:
     image: nlm-k2-guardrails:latest
     env_file: services/guardrails/.env
     environment:
-      PORT: "8041"
+      PORT: "8061"
     ports:
-      - "127.0.0.1:${GUARDRAILS_HOST_PORT:-8041}:8041"
+      - "127.0.0.1:${GUARDRAILS_HOST_PORT:-8061}:8061"
 
   extraction:
     <<: *common
@@ -63,10 +63,10 @@ services:
     image: nlm-k2-extraction:latest
     env_file: services/extraction/.env
     environment:
-      PORT: "8042"
-      STRUCTURING_SERVICE_URL: http://structuring:8043
+      PORT: "8062"
+      STRUCTURING_SERVICE_URL: http://structuring:8063
     ports:
-      - "127.0.0.1:${EXTRACTION_HOST_PORT:-8042}:8042"
+      - "127.0.0.1:${EXTRACTION_HOST_PORT:-8062}:8062"
     depends_on:
       - structuring
 
@@ -78,10 +78,10 @@ services:
     image: nlm-k2-structuring:latest
     env_file: services/structuring/.env
     environment:
-      PORT: "8043"
-      SCORING_SERVICE_URL: http://scoring:8044
+      PORT: "8063"
+      SCORING_SERVICE_URL: http://scoring:8064
     ports:
-      - "127.0.0.1:${STRUCTURING_HOST_PORT:-8043}:8043"
+      - "127.0.0.1:${STRUCTURING_HOST_PORT:-8063}:8063"
     depends_on:
       - scoring
 
@@ -93,9 +93,9 @@ services:
     image: nlm-k2-scoring:latest
     env_file: services/scoring/.env
     environment:
-      PORT: "8044"
+      PORT: "8064"
     ports:
-      - "127.0.0.1:${SCORING_HOST_PORT:-8044}:8044"
+      - "127.0.0.1:${SCORING_HOST_PORT:-8064}:8064"
 
 networks:
   default:
