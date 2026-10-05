@@ -11,6 +11,7 @@
 #   - Repo di-clone ke VM (atau scp dari lokal)
 #   - Service account VM punya role: Cloud SQL Client, Storage Object Viewer
 #   - DB sudah dimigrasikan (bash deploy/vm/migrate-vm.sh)
+#   - File .env tiap service sudah ada (lihat pengecekan di bawah)
 
 set -euo pipefail
 
@@ -30,6 +31,81 @@ cd "$(dirname "$0")/../.."
 
 echo "=== nlm-k2 VM deploy ==="
 
+# ---------------------------------------------------------------------------
+# Cek .env — harus ada sebelum docker compose bisa inject env vars ke container
+# ---------------------------------------------------------------------------
+ALL_SERVICES=(orchestrator guardrails extraction structuring scoring)
+
+# Kalau deploy satu service, cek hanya service itu; kalau semua, cek semua.
+if [ -n "$SERVICE" ]; then
+  SERVICES_TO_CHECK=("$SERVICE")
+else
+  SERVICES_TO_CHECK=("${ALL_SERVICES[@]}")
+fi
+
+MISSING=()
+for svc in "${SERVICES_TO_CHECK[@]}"; do
+  ENV_FILE="services/$svc/.env"
+  if [ ! -f "$ENV_FILE" ]; then
+    MISSING+=("$ENV_FILE")
+  fi
+done
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo ""
+  echo "ERROR: File .env berikut tidak ditemukan:"
+  for f in "${MISSING[@]}"; do
+    echo "  - $f"
+  done
+  echo ""
+  echo "Buat file tersebut terlebih dahulu, lalu jalankan ulang script ini."
+  echo "Contoh isi minimal (salin dari services/<nama>/.env.example jika ada):"
+  echo ""
+  echo "  CLOUDSQL_INSTANCE=<project>:<region>:<instance>"
+  echo "  DB_NAME=bribrain_ocr"
+  echo "  DB_USER="
+  echo "  DB_PASS="
+  echo "  CLOUDSQL_IP_TYPE=PRIVATE"
+  echo "  API_KEY=<isi-api-key>"
+  echo "  ENVIRONMENT=production"
+  exit 1
+fi
+
+echo ">> Cek .env : OK (semua file ditemukan)"
+
+# ---------------------------------------------------------------------------
+# Cek variabel wajib di tiap .env yang sudah ada
+# ---------------------------------------------------------------------------
+INVALID=()
+for svc in "${SERVICES_TO_CHECK[@]}"; do
+  ENV_FILE="services/$svc/.env"
+  # Baca nilai; strip komentar dan baris kosong
+  get_val() {
+    grep -v '^#' "$ENV_FILE" | grep -v '^$' | grep "^${1}=" | cut -d'=' -f2- | tr -d '[:space:]'
+  }
+  CLOUDSQL_INSTANCE=$(get_val CLOUDSQL_INSTANCE)
+  DB_NAME=$(get_val DB_NAME)
+  API_KEY=$(get_val API_KEY)
+  if [ -z "$CLOUDSQL_INSTANCE" ] || [ -z "$DB_NAME" ] || [ -z "$API_KEY" ]; then
+    INVALID+=("$ENV_FILE (CLOUDSQL_INSTANCE / DB_NAME / API_KEY belum diisi)")
+  fi
+done
+
+if [ ${#INVALID[@]} -gt 0 ]; then
+  echo ""
+  echo "ERROR: Variabel wajib belum diisi di:"
+  for f in "${INVALID[@]}"; do
+    echo "  - $f"
+  done
+  exit 1
+fi
+
+echo ">> Validasi .env : OK (variabel wajib terisi)"
+echo ""
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
 if [ "$BUILD" = true ]; then
   if [ -n "$SERVICE" ]; then
     echo ">> Build: $SERVICE"
@@ -40,6 +116,9 @@ if [ "$BUILD" = true ]; then
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# Up
+# ---------------------------------------------------------------------------
 if [ -n "$SERVICE" ]; then
   echo ">> Restart: $SERVICE"
   $COMPOSE up -d --no-build "$SERVICE"
