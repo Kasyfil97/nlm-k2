@@ -14,7 +14,7 @@ membaca apa.
 
 Semua tabel milik repo ini tinggal di schema **`nilam_ocr_kk`**, bukan di `public`, dan setiap namanya
 berawalan **`nilam_`** (`nilam_ocr_kk.nilam_ocr_jobs`, `nilam_ocr_kk.nilam_testing_pipeline_outbox`, ...):
-penamaan klien, sama seperti `nilam_ocr_npwp` di nilam. Kode membaca keduanya dari
+penamaan klien, sama seperti schema nilam. Kode membaca keduanya dari
 `ocr_common.pipeline.database` (`PIPELINE_SCHEMA`, `TABLE_PREFIX`); tes SQLite memetakan schema itu ke tanpa
 schema.
 

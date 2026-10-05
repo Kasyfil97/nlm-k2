@@ -488,19 +488,19 @@ async def test_the_final_callback_carries_the_answer_of_the_request(pipeline):
     stage, _ = pipeline
 
     async def work():
-        return {"full_text": "NPWP"}
+        return {"texts": [{"text": "KARTU KELUARGA"}]}
 
     await stage.submit(
         RID,
         work,
         callback_result=lambda result: {"final": True},
-        outcome_data=lambda result: {"nomor_npwp": {"value": "1", "confidence": 1}},
+        outcome_data=lambda result: {"no_kk": {"value": "1", "confidence": 1}},
     )
     await stage.runner.drain(5)
 
     [row] = await _rows(stage.outbox)
     assert row["payload"]["final"] is True
-    assert row["payload"]["answer"] == {"nomor_npwp": {"value": "1", "confidence": 1}}
+    assert row["payload"]["answer"] == {"no_kk": {"value": "1", "confidence": 1}}
 
 
 async def test_a_callback_that_hands_on_carries_no_answer(pipeline):

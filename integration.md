@@ -1,8 +1,8 @@
 # Integrasi service OCR Kartu Keluarga (nlm-k2) di GKE
 
 Dokumen untuk tim Orkestrasi/Gateway pusat. Isinya cara memanggil pipeline OCR Kartu Keluarga (KK), apa
-yang dikirim balik, dan apa yang kami butuhkan dari kalian. Bentuknya sengaja sama dengan pipeline NPWP
-(`nilam-ocr-npwp`, `integration.md` di repo itu): satu pintu masuk, kontrak `extract-ocr` yang sama,
+yang dikirim balik, dan apa yang kami butuhkan dari kalian. Bentuknya sengaja sama dengan pipeline nilam
+(`integration.md` di repo nilam): satu pintu masuk, kontrak `extract-ocr` yang sama,
 callback hasil yang sama. Yang berbeda hanya isi `data`, port, dan beberapa aturan khusus KK; perbedaan
 itu ditandai **(KK)** di bawah.
 
@@ -83,7 +83,7 @@ Hasil sampai ke kalian lewat tiga jalur (boleh lebih dari satu): jawaban sinkron
 
 Bentuk jawaban: envelope standar ditambah `pipeline_last_stage` dan `guardrails`. Keadaan request dibaca
 dari kode HTTP (juga di `status_code`): 200 selesai, 202 masih berjalan, 4xx / 5xx gagal atau ditolak.
-Sejak 5 Oktober 2026 (seperti NPWP sejak 1 Oktober) jawaban tidak lagi membawa `document_type`,
+Sejak 5 Oktober 2026 (seperti nilam sejak 1 Oktober) jawaban tidak lagi membawa `document_type`,
 `job_status`, dan `params`, dan field `params` di request dihapus (kalau masih dikirim, diabaikan).
 
 **`pipeline_last_stage`** bernilai `null` pada jawaban sukses (200, 202) dan menyebut service asal
@@ -187,7 +187,7 @@ Kalian tidak memanggilnya; dicantumkan sebagai latar.
 Endpoint dari tim Orkestrasi, satu POST per request saat request selesai
 (`ORCHESTRATION_CALLBACK_FORMAT=result`), dengan header `X-Callback-Key`. Body dan aturan kirim ulang
 mengikuti kontrak kalian "Callback Hasil OCR" (2 Okt 2026) dan jawaban kalian tanggal 5 Okt 2026, sama
-dengan NPWP. Callback dikirim oleh tahap pipeline yang mengakhiri request, bukan oleh orchestrator, dan
+dengan nilam. Callback dikirim oleh tahap pipeline yang mengakhiri request, bukan oleh orchestrator, dan
 selalu dikirim (tahap tidak tahu apakah orchestrator menjawab 200 atau 202).
 
 Selesai: `result` **sama persis** dengan `data` jawaban 200 `extract-ocr` untuk request yang sama
@@ -214,7 +214,7 @@ dijawab langsung.
 
 **Perubahan untuk kalian (KK):** sebelum 5 Oktober 2026, callback hasil KK membawa probabilitas mentah
 trust model sebagai `confidence` dan laporan guardrails sebagai `guardrails`, dan kegagalan/penolakan
-memakai `error_message`. Sekarang bentuknya sama dengan NPWP seperti di atas.
+memakai `error_message`. Sekarang bentuknya sama dengan nilam seperti di atas.
 
 **Kirim ulang.** 5xx, timeout, dan koneksi gagal dicoba ulang dengan backoff selama
 `ORCHESTRATION_CALLBACK_MAX_AGE_SECONDS` (600 detik). `409 RESULT_NOT_READY` dicoba ulang tiap 1,5 detik,
@@ -235,7 +235,7 @@ error_message}`) masih ada dan dijelaskan di webhook `stageCallback` pada `api/g
    `GUARDRAILS_THRESHOLD_URL` + `GUARDRAILS_THRESHOLD_PATH` (default `/v1/thresholds/guardrails`), dengan
    jawaban `{"reject_threshold": 0.6}`: dokumen ditolak bila `probability_bad` ≥ nilai itu. Disimpan 60 detik
    per pod; bila endpoint mati, ambang terakhir yang valid tetap dipakai.
-3. **Tabel `ocr.orchestration_api_events`.** Tim NPWP mematikan double write ke tabel itu pada 5 Oktober
+3. **Tabel `ocr.orchestration_api_events`.** Tim nilam mematikan double write ke tabel itu pada 5 Oktober
    2026 karena tabelnya dihapus migrasi kalian. Konfirmasi apakah tabel itu masih ada di database KK; kalau
    tidak, kami matikan juga (`ORCHESTRATION_API_EVENTS_TABLE` kosong), karena tulisan itu berada di
    transaksi job dan tabel yang hilang menggagalkan setiap job.
@@ -243,7 +243,7 @@ error_message}`) masih ada dan dijelaskan di webhook `stageCallback` pada `api/g
 ## 8. Database
 
 Pipeline menyimpan job dan hasil tiap tahap ke PostgreSQL `bribrain_ocr_kk` (instans tersendiri, bukan
-instans NPWP). Sejak migrasi `0003` (5 Oktober 2026) semua tabel kami ada di schema **`nilam_ocr_kk`**
+instans nilam). Sejak migrasi `0003` (5 Oktober 2026) semua tabel kami ada di schema **`nilam_ocr_kk`**
 dan namanya berawalan **`nilam_`**; sebelumnya di `public` tanpa awalan.
 
 | Tabel | Isi |

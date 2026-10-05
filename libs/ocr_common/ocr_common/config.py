@@ -215,7 +215,7 @@ class PipelineSettings(BaseServiceSettings):
     orchestration_callback_format: Literal["stage", "result"] = "stage"
     orchestration_callback_key: str | None = None
     # The switch: false = no callback is sent or queued even with ORCHESTRATION_URL set, e.g. while the
-    # central orchestrator has NPWP in poll mode (it then answers every callback 409 CALLBACK_NOT_EXPECTED
+    # central orchestrator has KK in poll mode (it then answers every callback 409 CALLBACK_NOT_EXPECTED
     # and reads GET /v1/extract-ocr/{request_id} instead).
     orchestration_callback_enabled: bool = True
     # How long the outbox keeps retrying a callback (5xx / unreachable). The central orchestrator gives up on a

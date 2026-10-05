@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 JSON_TYPE = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 
 # The PostgreSQL schema every table of this repository lives in (0003 moved them out of `public`), and the prefix
-# of every table name (0003): the client's naming, `nilam_ocr_kk.nilam_ocr_jobs`, as nilam's `nilam_ocr_npwp`.
+# of every table name (0003): the client's naming, `nilam_ocr_kk.nilam_ocr_jobs`, as in nilam.
 PIPELINE_SCHEMA = "nilam_ocr_kk"
 TABLE_PREFIX = "nilam_"
 
