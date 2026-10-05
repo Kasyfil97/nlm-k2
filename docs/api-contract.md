@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 14, 29 September 2026.
+Status: draf 15, 5 Oktober 2026.
 
 ---
 
@@ -134,8 +134,9 @@ Setiap respons JSON, sukses maupun gagal, memakai bentuk yang sama:
 - `status_code` selalu sama dengan status HTTP.
 - Sukses: `errors` null. Gagal: `data` null.
 - `message` untuk manusia; **jangan** dijadikan cabang logika — pakai `errors`.
-- Endpoint `extract-ocr` menambah `document_type`, `job_status`, `guardrails`, dan `params` sejajar `data`.
-  Artinya di [3.2](#32-matriks-hasil-dan-arti-job_status--guardrails).
+- Endpoint `extract-ocr` menambah `pipeline_last_stage` dan `guardrails` sejajar `data` (draf 15, seperti
+  nilam: `document_type`, `job_status`, dan `params` tidak lagi dikembalikan). Artinya di
+  [3.2](#32-matriks-hasil-dan-arti-guardrails--pipeline_last_stage).
 
 ### 2.2 Autentikasi
 
@@ -170,7 +171,6 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 | 404 | `REQUEST_ID_NOT_FOUND` | `request_id` tidak dikenal (hanya di `GET`) | tidak |
 | 404 / 405 | `NOT_FOUND` / `METHOD_NOT_ALLOWED` | path tidak ada / method salah | tidak |
 | 413 | `FILE_TOO_LARGE` | berkas melebihi `MAX_UPLOAD_BYTES` | tidak |
-| 422 | `INVALID_PARAMS` | `params` bukan JSON object / string | tidak |
 | 422 | `INVALID_PIPELINE_SEQUENCE` | `pipeline_name_sequence` bukan urutan yang sah (3.1) | tidak |
 | 422 | `INVALID_THRESHOLD` | `guardrails_confidence_threshold` / `column_confidence_threshold` tidak terbaca (3.1) | tidak |
 | 422 | `VALIDATION_ERROR` | field wajib tidak dikirim atau salah tipe | tidak |
@@ -183,7 +183,8 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 Sejak draf 13 (seperti nilam) `errors` **selalu** kode stabil, tidak pernah salinan `message`; cabangkan
 logika padanya. Setiap jawaban error juga membawa **`pipeline_last_stage`**: service asal error itu —
 `orchestrator` untuk penolakan pintu masuk sendiri, atau `guardrails` / `extraction` / `structuring` /
-`scoring` bila service itu yang gagal atau tidak terjangkau.
+`scoring` bila service itu yang gagal atau tidak terjangkau. Pada jawaban sukses (200, 202) nilainya `null`
+(draf 15, seperti nilam).
 
 `status_desc` mengikuti reason phrase HTTP: `OK`, `Accepted`, `Bad Request`, `Unauthorized`, `Forbidden`,
 `Not Found`, `Payload Too Large`, `Unprocessable Entity`, `Internal Server Error`, `Service Unavailable`,
@@ -241,24 +242,31 @@ Konsekuensinya jalur 2 adalah kanal yang sungguh berfungsi, bukan cadangan teore
 `ORCHESTRATION_OUTCOME_TABLE` **diisi di produksi**, dan keadaan akhir sebuah request selalu punya tempat
 mendarat walaupun polling terlewat.
 
+**Jalur 3 — callback hasil.** Kalau `ORCHESTRATION_URL` diisi dan `ORCHESTRATION_CALLBACK_ENABLED` tidak
+`false`, tahap yang mengakhiri request mengirim satu callback ke Orkestrasi pusat
+([8.5](#85-menutup-request)). Saklar itu mengikuti mode di sisi mereka: di mode poll mereka menjawab
+setiap callback `409 CALLBACK_NOT_EXPECTED`.
+
 ### Peta kepemilikan tabel
 
-Satu database dipakai bersama, jadi penting jelas tabel mana milik siapa.
+Satu database dipakai bersama, jadi penting jelas tabel mana milik siapa. Semua tabel nlm-k2 tinggal di
+schema **`nilam_ocr_kk`** dan namanya berawalan **`nilam_`** (draf 15, migrasi `0003`, penamaan klien
+seperti `nilam_ocr_npwp` di nilam); sebelumnya di `public` tanpa awalan.
 
 | Tabel | Pemilik | Ditulis | Dibaca |
 |---|---|---|---|
-| `ocr_jobs` / `ocr_results` | **nlm-k2** | extraction | extraction lewat API-nya; orchestrator lewat API itu |
-| `structuring_jobs` / `structuring_results` | **nlm-k2** | structuring | idem |
-| `scoring_jobs` / `scoring_results` | **nlm-k2** | scoring | idem |
-| `pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
-| `guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
+| `nilam_ocr_jobs` / `nilam_ocr_results` | **nlm-k2** | extraction | extraction lewat API-nya; orchestrator lewat API itu |
+| `nilam_structuring_jobs` / `nilam_structuring_results` | **nlm-k2** | structuring | idem |
+| `nilam_scoring_jobs` / `nilam_scoring_results` | **nlm-k2** | scoring | idem |
+| `nilam_pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
+| `nilam_guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
 | tabel outcome (`ORCHESTRATION_OUTCOME_TABLE`) | **Orkestrasi pusat** | ketiga tahap, dalam transaksi job | Orkestrasi pusat |
 
 Tabel outcome **milik mereka**, jadi kolomnya mereka yang menambahkan dan migrasi nlm-k2 tidak pernah
 menyentuhnya. Yang dibutuhkan nlm-k2 dari tabel itu: `request_id` unik, plus kolom pada tabel di atas.
 Sediakan DDL tiruannya di repo (padanan `db/external/` di nilam) supaya bisa diuji di PostgreSQL lokal.
 
-Guardrails **tidak punya tabel**. Orchestrator hanya punya `guardrails_results` (draf 12, seperti nilam):
+Guardrails **tidak punya tabel**. Orchestrator hanya punya `nilam_guardrails_results` (draf 12, seperti nilam):
 setiap putusan guardrails, termasuk yang ditolak, dengan `pipeline_name_sequence` request-nya. Status tahap
 tetap dibacanya lewat API, bukan lewat database. Tanpa `DATABASE_URL` tidak ada yang dicatat, dan
 request tetap dijawab.
@@ -277,7 +285,6 @@ request tetap dijawab.
 | `document_type` | string | tidak | default `kk`; selain itu 400 `UNSUPPORTED_DOCUMENT_TYPE` |
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
-| `params` | string | tidak | JSON object; tidak ditafsirkan, dikembalikan apa adanya di `params`. JSON tidak valid → 422 `INVALID_PARAMS` |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
 | `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. Tidak dikirim = ambang milik service guardrails. |
 | `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
@@ -288,8 +295,7 @@ request tetap dijawab.
 keempatnya (bawaan), `[guardrails, extraction]`, `[extraction, structuring]`, `[guardrails]`. Tidak sah:
 `[extraction, scoring]`, `[structuring, scoring]`.
 Service terakhir mengakhiri request: hasilnya menjadi `data` **apa adanya** — laporan guardrails, hasil
-OCR (7.1), hasil structuring (7.3), atau sembilan field setelah scoring — dan `pipeline_last_stage`
-menyebut service itu. Tanpa `guardrails`, cek file tetap berjalan dan aturan structuring tetap menolak.
+OCR (7.1), hasil structuring (7.3), atau sembilan field setelah scoring. Tanpa `guardrails`, cek file tetap berjalan dan aturan structuring tetap menolak.
 Urutannya ikut ke setiap tahap (form ke extraction, badan handoff, `input` job), jadi job basi yang
 dijalankan ulang berhenti di tempat yang sama.
 
@@ -305,9 +311,16 @@ curl -X POST http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr \
   -H "X-API-Key: $API_KEY" \
   -F "request_id=REQ_001" \
   -F "document_type=kk" \
-  -F 'params={"branch":"0206","refno":"PK19039Y8U"}' \
   -F "file=@kk.jpg"
 ```
+
+`params` dihapus di draf 15 (seperti nilam): field itu kalau masih dikirim **diabaikan**, tidak lagi
+dikembalikan, dan tidak lagi bisa menghasilkan 422 `INVALID_PARAMS`.
+
+`file` yang tipe deklarasinya bukan salah satu tipe yang didukung (generik `application/octet-stream`,
+kosong, berparameter, `image/pjpeg`, ekstensi polos seperti `jpg`, atau `text/plain`) dibaca dari tanda
+tangan berkasnya: JPG/PNG/PDF sungguhan tetap diterima, berkas lain tetap 400 `UNSUPPORTED_FILE_TYPE`
+(draf 15, seperti nilam).
 
 **Kenapa `file_url` disarankan.** Kalau request memakai `file_url`, orchestrator meneruskan **URL**-nya
 (bukan byte-nya) ke `/v1/extraction/jobs`. Extraction menyimpan URL itu di kolom `input` job-nya, sehingga
@@ -315,23 +328,24 @@ job yang ditinggalkan pod mati bisa dijalankan ulang otomatis. Upload inline tid
 OCR-nya `FAILED` dan minta kirim ulang. Presigned URL karena itu harus hidup lebih lama dari
 `PIPELINE_JOB_LEASE_SECONDS`.
 
-### 3.2 Matriks hasil, dan arti `job_status` / `guardrails`
+### 3.2 Matriks hasil, dan arti `guardrails` / `pipeline_last_stage`
 
 Satu tabel untuk semua keadaan yang mungkin dijawab `POST /v1/extract-ocr`. Cabangkan logika pada
-`errors`, bukan pada `message`.
+kode HTTP (juga di `status_code`) dan `errors`, bukan pada `message`.
 
-| Keadaan | HTTP | `job_status` | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
-|---|---|---|---|---|---|---|
-| Selesai | 200 | `completed` | 9 field | `0` | null | service terakhir urutan (bawaan `scoring`) |
-| Masih berjalan | 202 | `processing` | null | null | null | service yang sedang berjalan |
-| Ditolak model guardrails | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
-| Ditolak aturan structuring | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
-| Satu tahap gagal | 422 | `failed` | null | `0` | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | tahap yang gagal |
-| Ditolak sebelum dinilai | 400 / 413 / 422 | null | null | null | kode masing-masing (2.4) | `orchestrator` |
-| Service di belakang tak terjangkau | 503 / 504 | null | null | null | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | service itu |
+| Keadaan | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
+|---|---|---|---|---|---|
+| Selesai | 200 | 9 field | `0` | null | null |
+| Masih berjalan | 202 | null | null | null | null |
+| Ditolak model guardrails | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
+| Ditolak aturan structuring | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
+| Satu tahap gagal | 422 | null | `0` | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | tahap yang gagal |
+| Ditolak sebelum dinilai | 400 / 413 / 422 | null | null | kode masing-masing (2.4) | `orchestrator` |
+| Service di belakang tak terjangkau | 503 / 504 | null | null | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | service itu |
 
-**`job_status`** — `completed`, `processing`, atau `failed`; `null` kalau request ditolak sebelum ada yang
-diproses (tipe file salah, `params` rusak, kunci API salah).
+**Kode HTTP** menyatakan di mana request berada: 200 selesai, 202 masih berjalan, 4xx / 5xx gagal atau
+ditolak. `job_status`, `document_type`, dan `params` tidak lagi ada di jawaban (draf 15, seperti nilam
+1 Okt 2026).
 
 **`guardrails`** — bukan skor, melainkan penanda tiga nilai:
 
@@ -342,10 +356,11 @@ diproses (tipe file salah, `params` rusak, kunci API salah).
 Dengan `pipeline_name_sequence` tanpa `guardrails` nilainya tetap `0` saat berhasil, walau model tidak
 pernah dijalankan; dalam mode itu `1` hanya bisa berasal dari aturan structuring.
 
-**`pipeline_last_stage`** — service tempat jawaban ini berasal, dengan nama seperti di
-`pipeline_name_sequence`: service terakhir urutan saat `completed`; yang menolak (`guardrails`,
-`structuring`) atau gagal; yang masih berjalan saat 202. `orchestrator` kalau request ditolak di pintu
-masuk sebelum service pipeline mana pun dipanggil (sejak draf 13; sebelumnya `null`).
+**`pipeline_last_stage`** — `null` pada jawaban sukses (200, 202); pada error, service asal error itu,
+dengan nama seperti di `pipeline_name_sequence`: yang menolak (`guardrails`, `structuring`), gagal, atau
+tidak terjangkau. `orchestrator` kalau request ditolak di pintu masuk sebelum service pipeline mana pun
+dipanggil (sejak draf 13). Sebelum draf 15 field ini juga menyebut service terakhir saat 200 dan service
+yang masih berjalan saat 202.
 
 ### 3.3 Response `200` — selesai dalam waktu tunggu
 
@@ -380,11 +395,8 @@ masuk sebelum service pipeline mana pun dipanggil (sejak draf 13; sebelumnya `nu
   },
   "errors": null,
   "request_id": "REQ_001",
-  "pipeline_last_stage": "scoring",
-  "document_type": "kk",
-  "job_status": "completed",
-  "guardrails": 0,
-  "params": {"branch": "0206", "refno": "PK19039Y8U"}
+  "pipeline_last_stage": null,
+  "guardrails": 0
 }
 ```
 
@@ -403,7 +415,8 @@ Aturan isi `data`:
   3. `FIELD_CONFIDENCE_THRESHOLD`, hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`).
 - Keputusan 0/1 itu **disimpan** tahap scoring bersama hasilnya (`decisions`, 8.3), dan respons `POST`,
   `GET`, dan baris outcome semuanya diproyeksikan dari sana — identik secara konstruksi.
-- Probabilitas mentahnya tetap tersedia: di hasil tahap scoring dan di callback hasil.
+- Probabilitas mentahnya tetap tersedia di hasil tahap scoring (`GET /v1/scoring/jobs/{request_id}`). Callback
+  hasil membawa `data` yang sama persis dengan jawaban ini, bukan probabilitasnya (draf 15, [8.5](#85-menutup-request)).
 - **100% bukan jaminan.** Presisi ambang model diukur pada data held-out; batas bawah Clopper-Pearson 95%-nya
   adalah angka yang boleh dijanjikan ke pemanggil.
 - **Kedua kunci dokumen dan ketujuh kunci tiap anggota selalu ada**, walau nilainya `""`.
@@ -412,7 +425,7 @@ Aturan isi `data`:
 ### 3.3.1 Proyeksi dari hasil structuring ke `data`
 
 Tahap structuring tetap mengextraction **11 field dokumen + 15 field per anggota** ([7.3](#73-hasil-tahap-structuring))
-— itu yang disimpan di `structuring_results` dan terbaca lewat `GET /v1/structuring/jobs/{request_id}`.
+— itu yang disimpan di `nilam_structuring_results` dan terbaca lewat `GET /v1/structuring/jobs/{request_id}`.
 Orchestrator memproyeksikan sebagian kecilnya ke `data`, sekaligus mengganti dua nama:
 
 | Kunci di `data` (kontrak keluar) | Field internal structuring |
@@ -446,8 +459,7 @@ Field yang **tidak** keluar tapi tetap diextraction dan tersimpan: `alamat`, `rt
 {"status_code": 202, "status_desc": "Accepted",
  "message": "OCR job accepted; still processing",
  "data": null, "errors": null, "request_id": "REQ_001",
- "document_type": "kk", "job_status": "processing", "guardrails": null,
- "params": {"branch": "0206"}}
+ "pipeline_last_stage": null, "guardrails": null}
 ```
 
 Pipeline **tetap berjalan**; orchestrator hanya berhenti menonton. Ambil hasilnya dengan
@@ -461,9 +473,7 @@ Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message` dan
 {"status_code": 400, "status_desc": "Bad Request",
  "message": "Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas",
  "data": null, "errors": "DOWNSTREAM_VALIDATION_ERROR", "request_id": "REQ_001",
- "pipeline_last_stage": "guardrails",
- "document_type": "kk", "job_status": "failed", "guardrails": 1,
- "params": {"branch": "0206"}}
+ "pipeline_last_stage": "guardrails", "guardrails": 1}
 ```
 
 | Sumber | Tahap | Contoh `message` |
@@ -474,7 +484,7 @@ Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message` dan
 
 Semua `message` berbahasa Indonesia dan boleh ditampilkan langsung ke pengguna akhir. Penolakan oleh
 guardrails terjadi **sebelum** tahap mana pun berjalan, jadi tidak ada baris job. Putusannya tetap
-tercatat di `guardrails_results`, dan `GET /v1/extract-ocr/{request_id}` menjawab `400` yang sama dari
+tercatat di `nilam_guardrails_results`, dan `GET /v1/extract-ocr/{request_id}` menjawab `400` yang sama dari
 sana ([4](#4-get-v1extract-ocrrequest_id--keadaan-request)). `404` hanya bila orchestrator berjalan tanpa
 `DATABASE_URL`.
 
@@ -487,16 +497,14 @@ tapi terbaca — lihat [1.1](#11-tidak-ada-penilaian-legibilitas-per-field).
 {"status_code": 422, "status_desc": "Unprocessable Entity",
  "message": "extraction OCR model is unavailable",
  "data": null, "errors": "OCR_FAILED", "request_id": "REQ_001",
- "pipeline_last_stage": "extraction",
- "document_type": "kk", "job_status": "failed", "guardrails": 0,
- "params": null}
+ "pipeline_last_stage": "extraction", "guardrails": 0}
 ```
 
 `errors` menyebut tahapnya: `OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`.
 
 ### 3.7 Anggaran waktu
 
-`received_at` diambil di baris pertama handler, sebelum `params` di-parse. Anggaran
+`received_at` diambil di baris pertama handler. Anggaran
 `PIPELINE_WAIT_SECONDS` (default **30 detik** untuk KK) dipakai berurutan oleh: baca/unduh file →
 guardrails → `POST /v1/extraction/jobs` → polling. Sisa untuk polling dihitung
 `PIPELINE_WAIT_SECONDS - (now - received_at)`, tidak di-reset. Satu `asyncio.timeout` membungkus polling
@@ -518,20 +526,19 @@ curl http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr/REQ_001 \
   -H "X-API-Key: $API_KEY"
 ```
 
-| Keadaan | HTTP | `job_status` | `guardrails` | `errors` | `pipeline_last_stage` |
+| Keadaan | HTTP | isi | `guardrails` | `errors` | `pipeline_last_stage` |
 |---|---|---|---|---|---|
-| selesai | 200 | `completed` + `data` | `0` | null | service terakhir urutan |
-| masih berjalan | 202 | `processing` | null | null | service yang sedang berjalan |
-| ditolak model guardrails (dari `guardrails_results`) | 400 | `failed` | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
-| ditolak aturan structuring | 400 | `failed` | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
-| satu tahap gagal | 422 | `failed` | `0` | `<TAHAP>_FAILED` | tahap yang gagal |
+| selesai | 200 | `data` | `0` | null | null |
+| masih berjalan | 202 | – | null | null | null |
+| ditolak model guardrails (dari `nilam_guardrails_results`) | 400 | – | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
+| ditolak aturan structuring | 400 | – | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
+| satu tahap gagal | 422 | – | `0` | `<TAHAP>_FAILED` | tahap yang gagal |
 | tidak dikenal | 404 | – | – | `REQUEST_ID_NOT_FOUND` | `orchestrator` |
 | sebuah tahap tak terbaca | 503 / 504 | – | – | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | tahap itu |
 
-- `params` **selalu** `null` di sini (tidak disimpan). `document_type` selalu `kk`.
 - Tahap yang dibaca berhenti di service terakhir `pipeline_name_sequence` yang tersimpan di job extraction.
 - Request yang **tidak punya job tahap** dijawab dari putusan guardrails terakhirnya di
-  `guardrails_results` (draf 12, seperti nilam), sama dengan jawaban `POST`-nya: `400` kalau ditolak
+  `nilam_guardrails_results` (draf 12, seperti nilam), sama dengan jawaban `POST`-nya: `400` kalau ditolak
   guardrails, `200` dengan laporan sebagai `data` kalau guardrails satu-satunya service-nya.
 - `404` berarti tidak ada job tahap **dan** tidak ada putusan yang menjawab: `POST`-nya belum dinilai,
   ditolak sebelum dinilai, lolos tetapi handoff ke extraction gagal, atau tidak ada `DATABASE_URL`.
@@ -688,14 +695,14 @@ muncul sebagai job `FAILED`, bukan 4xx. Yang langsung ditolak hanya bentuk reque
 
 ### 6.3 Yang dikerjakan tahap extraction
 
-1. Satu transaksi klaim: `INSERT ocr_jobs (PROCESSING, input: {document_type, guardrails, file_url})
+1. Satu transaksi klaim: `INSERT nilam_ocr_jobs (PROCESSING, input: {document_type, guardrails, file_url})
    ON CONFLICT DO NOTHING` + upsert baris outcome `{downstream_status: processing, stage: OCR}`.
 2. `file_url`? unduh; selain itu pakai byte dari payload.
 3. **PaddleOCR** (deteksi + rekognisi). Backend `paddle` (draf 12, sama dengan nilam) memanggil server
    PaddleOCR tim ML di `POST /ocr` dan meneruskan `poly` apa adanya — **tidak** dijadikan `bbox` tegak
    seperti di nilam, karena parser tata letak mengukur kemiringannya. `kk_ocr` menjalankan PP-OCRv5 di
    dalam proses. PDF: hanya halaman 1.
-4. Satu transaksi hasil: `UPSERT ocr_results` + `UPDATE ocr_jobs DONE` + `INSERT pipeline_outbox`
+4. Satu transaksi hasil: `UPSERT nilam_ocr_results` + `UPDATE nilam_ocr_jobs DONE` + `INSERT nilam_pipeline_outbox`
    (handoff ke structuring).
 
 **Tahap ini tidak pernah menolak dokumen.** Gambar yang tidak bisa dibuka, model OCR tidak terjangkau,
@@ -755,9 +762,9 @@ aturan structuring untuk ditolak di sana, bukan ditolak `422` di batas skema. En
 Saat `texts` kosong, keduanya `null`.
 
 **Handoff by reference.** Dengan `PIPELINE_HANDOFF_BY_REFERENCE=true` (butuh `DATABASE_URL` yang sama di
-ketiga tahap), blok `ocr` **dihilangkan** dan structuring membacanya sendiri dari `ocr_results`. Ini
+ketiga tahap), blok `ocr` **dihilangkan** dan structuring membacanya sendiri dari `nilam_ocr_results`. Ini
 penting untuk KK: satu kartu bisa menghasilkan 200+ kotak teks, dan payload sebesar itu ikut tersimpan di
-baris `pipeline_outbox`. Penerima menerima kedua bentuk; `ocr` yang tidak ada dan tidak ditemukan di
+baris `nilam_pipeline_outbox`. Penerima menerima kedua bentuk; `ocr` yang tidak ada dan tidak ditemukan di
 database membuat job `FAILED` dengan pesan yang menyebutkannya. Tanpa `DATABASE_URL`, body tanpa `ocr`
 ditolak `422`.
 
@@ -767,7 +774,7 @@ Sama dengan 6.2, dengan `"stage": "STRUCTURING"`.
 
 ### 7.3 Hasil tahap structuring
 
-Isi `structuring_results.result` adalah objek `data.ocr_result` K2Regex-v2 — struktur datar yang sama,
+Isi `nilam_structuring_results.result` adalah objek `data.ocr_result` K2Regex-v2 — struktur datar yang sama,
 tanpa penggantian nama — dengan **dua perubahan**: tiap field membawa dua skor (`ocr_conf`, `crf_conf`)
 menggantikan `conf` tunggal, dan ada satu kunci tingkat atas baru, `reject_reason`.
 
@@ -961,7 +968,7 @@ Handoff ini hanya pernah terjadi untuk dokumen dengan `reject_reason: null` — 
 di structuring.
 
 `ocr` dan `structuring` boleh dihilangkan kalau pengirim memakai handoff by reference; scoring membacanya
-dari `ocr_results` dan `structuring_results`.
+dari `nilam_ocr_results` dan `nilam_structuring_results`.
 
 ### 8.2 Response `202`
 
@@ -1116,7 +1123,7 @@ Tiga catatan untuk tim ML:
 ### 8.5 Menutup request
 
 Scoring adalah tahap terakhir: tidak ada handoff, tidak ada baris outbox. Dalam **satu transaksi**:
-`UPSERT scoring_results` + `UPDATE scoring_jobs DONE` + upsert baris outcome
+`UPSERT nilam_scoring_results` + `UPDATE nilam_scoring_jobs DONE` + upsert baris outcome
 `{status_code: 200, downstream_status: completed, downstream_stage: SCORING, result_data: <data kontrak
 extract-ocr>}`.
 
@@ -1130,6 +1137,51 @@ dan disertai blind index atas `nomor_kk` supaya baris tetap bisa dicari tanpa me
 bentuk terbaca. Audit bersifat *fail-closed*: kalau enkripsi tidak terkonfigurasi atau insert audit gagal,
 job ditandai `FAILED`, bukan diam-diam sukses. Tanggung jawab ini pindah dari orchestrator ke **scoring**,
 karena scoring yang memegang hasil akhir.
+
+#### Callback hasil ke Orkestrasi pusat (draf 15, seperti nilam)
+
+Dengan `ORCHESTRATION_CALLBACK_FORMAT=result`, tahap yang mengakhiri request mengirim **satu** POST ke
+`<ORCHESTRATION_URL><ORCHESTRATION_CALLBACK_PATH>` dengan header `X-Callback-Key`. Bentuknya mengikuti
+kontrak Orkestrasi pusat "Callback Hasil OCR" (2 Okt 2026) dan jawaban mereka tanggal 5 Okt 2026, sama
+dengan nilam:
+
+```json
+{"request_id": "REQ_001", "status": "completed",
+ "result": {"no_kk": {"value": "3273012345678901", "confidence": 1}, "nama_kepala_keluarga": {...},
+            "anggota_keluarga": [{...tujuh field...}]},
+ "guardrails": 0}
+```
+
+- **Selesai:** `result` **sama persis** dengan `data` jawaban 200 `extract-ocr` untuk request yang sama —
+  sembilan field dengan `confidence` 0/1 dari threshold request itu (bukan lagi probabilitas mentah seperti
+  sebelum draf 15). `pipeline_name_sequence` yang berakhir sebelum scoring: hasil service terakhirnya apa
+  adanya. Tahap membawa jawaban itu di body callback yang disimpan sebagai `answer`; callback per tahap
+  tidak pernah mengirimnya.
+- **Ditolak gerbang validitas KK** (setelah 202): `{"status": "completed", "result": null, "guardrails": 1,
+  "message": "<alasan>", "error_code": "DOWNSTREAM_VALIDATION_ERROR"}`. Orkestrasi mengenali penolakan dari
+  `result` null dengan `guardrails` 1.
+- **Gagal:** `{"status": "failed", "error_code": "<TAHAP>_FAILED", "message": "<alasan>"}`.
+- **Kirim ulang:** 5xx, timeout, koneksi gagal dicoba ulang dengan backoff selama
+  `ORCHESTRATION_CALLBACK_MAX_AGE_SECONDS` (600 detik, bukan 24 jam outbox: Orkestrasi menolak callback
+  setelah tenggatnya dengan `409 RESULT_CONFLICT`). `409 RESULT_NOT_READY` (callback tiba sebelum Orkestrasi
+  mencatat 202-nya) dicoba ulang tiap 1,5 detik, maksimal 5 kali. 4xx lain tidak dikirim ulang.
+- **Saklar:** `ORCHESTRATION_CALLBACK_ENABLED=false` (Helm `orchestration.callbackEnabled: false`) mematikan
+  callback walau `ORCHESTRATION_URL` terisi, untuk mode poll di sisi Orkestrasi.
+
+Dokumen yang ditolak model guardrails dan request `[guardrails]` saja tidak mendapat callback: keduanya
+dijawab langsung oleh `extract-ocr`.
+
+### 8.6 Endpoint direct: satu tahap saja, untuk QC (draf 15, seperti nilam)
+
+Sinkron, tidak ada yang dicatat (tanpa baris job, callback, handoff, atau baris outcome), dengan bentuk
+yang sama persis dengan hasil job, supaya QC bisa menyuapi tiap tahap dengan keluaran tahap sebelumnya:
+
+| Service | Path | Body | Jawaban |
+|---|---|---|---|
+| structuring | `POST /v1/structuring-direct` | `{request_id?, document_type?, ocr}`; `ocr` = `data` dari `/v1/extraction/extract` atau `result` job extraction | dokumen terstruktur (7.3), persis `result` job structuring. Selalu 200 kalau aturan jalan, termasuk dokumen yang ditolak gerbang validitas (`reject_reason`) dan OCR tanpa kotak sama sekali — berbeda dengan nilam, yang menjawab 400 untuk yang terakhir |
+| scoring | `POST /v1/scoring-direct` | `{request_id?, document_type?, guardrails?, ocr?, structuring, column_confidence_threshold?}`; `structuring` = `data` dari `/v1/structuring-direct` | persis `result` job scoring (8.3), termasuk `decisions` (0/1 per field kontrak dengan ambangnya) dan `payload` |
+
+`/v1/ocr_postprocess` dan `/v1/scoring/confidence` tetap ada untuk tim ML.
 
 ---
 
@@ -1213,8 +1265,8 @@ Bentuk K2Regex-v2: datar, 11 field dokumen sebagai kunci tingkat atas + `anggota
 
 Ada **dua daftar** yang tidak boleh tertukar.
 
-**A. Nama internal** — dipakai structuring dan scoring, tersimpan di `structuring_results` dan
-`scoring_results`, terbaca lewat `GET /v1/<tahap>/jobs/{request_id}`:
+**A. Nama internal** — dipakai structuring dan scoring, tersimpan di `nilam_structuring_results` dan
+`nilam_scoring_results`, terbaca lewat `GET /v1/<tahap>/jobs/{request_id}`:
 
 - Dokumen (11): `nomor_kk`, `nama_kepala_keluarga`, `alamat`, `desa_kelurahan`, `rt`, `rw`, `kecamatan`,
   `kabupaten_kota`, `provinsi`, `kode_pos`, `tanggal_dikeluarkan`.
@@ -1248,6 +1300,8 @@ Urutan di atas adalah urutan kontrak. Pemetaan A → B ada di [3.3.1](#331-proye
 | extraction | POST | `/v1/extraction/extract` | ya | Sinkron, debug (draf 12, seperti nilam `/v1/extraction/extract`). `file` atau `file_url`; menjawab `OcrPayload` 7.1 yang sama dengan hasil job, tanpa menyimpan apa pun, jadi `data`-nya bisa dikirim langsung ke `/v1/ocr_postprocess` |
 | structuring | POST | `/v1/ocr_postprocess` | ya | Sinkron, debug. Endpoint `K2Regex-v2` yang ada sekarang, dipertahankan apa adanya (`texts` tetap `min_length=1`) |
 | scoring | POST | `/v1/scoring/confidence` | ya | Sinkron, debug. Kalibrasi dan evaluasi trust model ([8.4](#84-endpoint-sinkron-untuk-tim-ml)) |
+| structuring | POST | `/v1/structuring-direct` | ya | Sinkron, QC: tahap structuring saja atas keluaran extraction ([8.6](#86-endpoint-direct-satu-tahap-saja-untuk-qc-draf-15-seperti-nilam)) |
+| scoring | POST | `/v1/scoring-direct` | ya | Sinkron, QC: tahap scoring saja atas keluaran structuring ([8.6](#86-endpoint-direct-satu-tahap-saja-untuk-qc-draf-15-seperti-nilam)) |
 
 Metrik: `http_requests_total{service,method,path,status}` dan `http_request_duration_seconds` berlabel
 template rute; di tahap pipeline `pipeline_jobs_total{stage,outcome=done|rejected|failed|crashed|interrupted}`,
@@ -1295,13 +1349,13 @@ kodenya sendiri.
 | Confidence | `conf` CRF mentah diteruskan apa adanya | tahap **scoring** mengkalibrasinya; kontrak keluar memakai `confidence` 0/1 | **ya** |
 | Penolakan | `422` untuk semua gerbang | `400` + `errors: DOWNSTREAM_VALIDATION_ERROR` + `guardrails: 1` | **ya** |
 | Status HTTP downstream mati | `502` untuk semua | `503` tidak terjangkau, `504` timeout, `500` jawaban ≥400 | **ya** |
-| Penyimpanan | orchestrator punya DB (`ocr_kk_orchestrator_log`, `..._request`) | orchestrator **stateless**; tiga tahap punya `*_jobs` / `*_results` + `pipeline_outbox`; keadaan akhir juga ditulis ke tabel outcome milik Orkestrasi pusat ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)) | **ya** |
+| Penyimpanan | orchestrator punya DB (`ocr_kk_orchestrator_log`, `..._request`) | orchestrator **stateless**; tiga tahap punya `*_jobs` / `*_results` + `nilam_pipeline_outbox`; keadaan akhir juga ditulis ke tabel outcome milik Orkestrasi pusat ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)) | **ya** |
 | Audit PII (Fernet + blind index, fail-closed) | di orchestrator | pindah ke **scoring**, tetap fail-closed | tidak (perilaku dipertahankan) |
 | Rate limit, CORS, Elastic APM | di orchestrator | dipertahankan apa adanya | tidak |
 
 **Yang perlu dibuat baru:** service `scoring` (8044), pustaka bersama padanan `ocr_common` (envelope,
-request_id, pipeline stage/outbox/repository, klien HTTP), dan tabel `ocr_jobs`/`ocr_results`,
-`structuring_jobs`/`_results`, `scoring_jobs`/`_results`, `pipeline_outbox`. Tabel outcome **tidak** dibuat
+request_id, pipeline stage/outbox/repository, klien HTTP), dan tabel `nilam_ocr_jobs`/`nilam_ocr_results`,
+`nilam_structuring_jobs`/`_results`, `nilam_scoring_jobs`/`_results`, `nilam_pipeline_outbox`. Tabel outcome **tidak** dibuat
 di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adalah nama tabel dan kolomnya
 ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)).
 
@@ -1347,8 +1401,8 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/extraction/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
 | `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `confidence` 0/1 di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`) dan request tidak mengirim `column_confidence_threshold` |
-| `DATABASE_URL` | tidak | kosong | hanya untuk `guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
-| `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `guardrails_results`; lewat = dicatat di log, request tetap dijawab |
+| `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
+| `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `nilam_guardrails_results`; lewat = dicatat di log, request tetap dijawab |
 | `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
 
 Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat API, bukan lewat database.
@@ -1357,12 +1411,12 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 
 | Variabel | Wajib? | Default | Keterangan |
 |---|---|---|---|
-| `DATABASE_URL` | produksi: ya | – | PostgreSQL untuk `*_jobs` / `*_results` / `pipeline_outbox`. Kosong = in-memory: hanya dev satu proses, tidak idempoten antar replika |
+| `DATABASE_URL` | produksi: ya | – | PostgreSQL untuk `*_jobs` / `*_results` / `nilam_pipeline_outbox`. Kosong = in-memory: hanya dev satu proses, tidak idempoten antar replika |
 | `PIPELINE_JOB_LEASE_SECONDS` | tidak | `300` | job `PROCESSING` yang lebih tua dari ini boleh diklaim ulang. Harus jauh di atas durasi job terlama |
 | `PIPELINE_STALE_JOBS` | tidak | `true` | tiap proses mengklaim ulang job basi dan menjalankannya lagi dari `input` + `*_results`. Butuh `DATABASE_URL` |
 | `PIPELINE_DRAIN_TIMEOUT_SECONDS` | tidak | `30` | saat shutdown, tunggu job yang masih jalan; sisanya `FAILED` |
 | `PIPELINE_HANDOFF_BY_REFERENCE` | tidak | `false` | `true` = handoff tidak membawa blok `ocr` / `structuring`; penerima membacanya dari database. Butuh `DATABASE_URL` yang sama di ketiga service. **Disarankan `true`** untuk KK |
-| `PIPELINE_OUTBOX` | tidak | `false` | `true` = handoff ditulis ke `pipeline_outbox` dalam transaksi job, lalu dikirim relay |
+| `PIPELINE_OUTBOX` | tidak | `false` | `true` = handoff ditulis ke `nilam_pipeline_outbox` dalam transaksi job, lalu dikirim relay |
 | `PIPELINE_OUTBOX_INTERVAL_SECONDS` / `_BATCH` / `_LEASE_SECONDS` | tidak | `1` / `20` / `30` | perilaku relay |
 | `PIPELINE_OUTBOX_MAX_BACKOFF_SECONDS` / `_MAX_AGE_SECONDS` | tidak | `300` / `86400` | batas backoff, dan umur sebelum pesan jadi dead letter |
 | `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` | tidak | `300` | relay menulis `WARNING` selama pesan tertua lebih tua dari ini |
@@ -1438,13 +1492,30 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 
 ## Riwayat revisi
 
+### draf 15 — 5 Oktober 2026
+
+Menyelaraskan dengan perubahan nilam-ocr-npwp 29 September – 5 Oktober 2026.
+
+1. **Jawaban `extract-ocr` tanpa `job_status`, `document_type`, dan `params`** (§2.1, §3.1–§3.6, §4).
+   Kode HTTP menyatakan keadaan request. Field form `params` dihapus; kalau masih dikirim, diabaikan, dan
+   `INVALID_PARAMS` hilang dari §2.4.
+2. **`pipeline_last_stage` `null` pada 200 dan 202** (§2.4, §3.2): hanya menyebut service asal error.
+3. **Callback hasil sesuai kontrak Orkestrasi pusat** (§2.6, §8.5): `result` = `data` jawaban 200 (0/1,
+   bukan probabilitas mentah), `guardrails` 0/1, penolakan sebagai `completed` + `result: null` +
+   `guardrails: 1`, kirim ulang `409 RESULT_NOT_READY`, batas umur 600 detik, saklar
+   `ORCHESTRATION_CALLBACK_ENABLED`.
+4. **Endpoint direct** `POST /v1/structuring-direct` dan `POST /v1/scoring-direct` (§8.6, §11).
+5. **Schema `nilam_ocr_kk`, tabel berawalan `nilam_`** (§2.6 dan seterusnya), migrasi `0003`.
+6. **Tipe upload dibaca dari tanda tangan berkas** bila tipe yang dideklarasikan bukan tipe yang didukung (§3.1).
+
 ### draf 14 — 29 September 2026
 
 1. **`pipeline_name_sequence` kosong = keempat service** (§3.1). Field form yang dikirim kosong (`""`) kini
    dianggap tidak dikirim, bukan 422 `INVALID_PIPELINE_SEQUENCE`. Ini **berbeda dari nilam**, yang masih
    menolaknya.
 2. **Penolakan guardrails terbaca lewat `GET`** (§3.5). Kalimat lama "`GET` menjawab `404`" bertentangan
-   dengan §4 sejak draf 12. Yang benar: `400` yang sama, dibaca dari `guardrails_results`.
+   dengan §4 sejak draf 12. Yang benar: `400` yang sama, dibaca dari `guardrails_results` (sejak draf 15
+   `nilam_guardrails_results`).
 3. **`pipeline_last_stage` di tabel dan contoh** (§3.2, §3.5, §3.6, §4). Tabel §4 masih menulis
    `errors = message` untuk 404 / 503 / 504, dan §3.2 masih menyebut `null` untuk penolakan pintu masuk.
    Keduanya sisa dari sebelum draf 13.
