@@ -27,6 +27,12 @@ sebelum revisi mana pun jalan. CI memeriksanya dengan `db/check_schema_move.py`.
 penggantiannya, dan query di luar repo ini (dashboard, tim Orkestrasi) harus memakai nama baru. Peran
 service juga butuh `USAGE` pada schema `nilam_ocr_kk`; hibah pada tabelnya ikut pindah.
 
+**Satu berkas DDL:** [`schema.sql`](schema.sql) membuat schema dan ke-16 tabel (plus indeks, foreign key, dan
+tabel versi Alembic yang dicap di `0003_nilam_naming`) untuk database **kosong**, tanpa Alembic:
+`psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql`. Idempoten. Skema hasilnya identik dengan
+`alembic upgrade head` (dibandingkan lewat `pg_dump --schema-only`). Untuk database yang sudah berisi tabel di
+`public`, tetap pakai migrasi: berkas ini tidak memindahkan baris. Buat ulang berkas ini setiap ada migrasi baru.
+
 ## Peta tabel
 
 | Tabel | Pemilik schema | Ditulis | Dibaca | Isi |
