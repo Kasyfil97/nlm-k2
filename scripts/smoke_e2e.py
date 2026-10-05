@@ -201,13 +201,13 @@ def async_pipeline(client: httpx.Client) -> bool:
     elapsed = time.monotonic() - started
     body = submitted.json()
     print(
-        f"orchestrator extract-ocr: {submitted.status_code} dalam {elapsed:.2f}s job_status={body.get('job_status')} "
+        f"orchestrator extract-ocr: {submitted.status_code} dalam {elapsed:.2f}s "
         f"guardrails={body.get('guardrails')} errors={body.get('errors')} message={body.get('message')!r}"
     )
     if submitted.status_code not in (200, 202):
         print("  pipeline tidak dimulai atau gagal")
         return False
-    finished_in_time = submitted.status_code == 200 and body.get("job_status") == "completed"
+    finished_in_time = submitted.status_code == 200
     if finished_in_time:
         print("  selesai dalam waktu tunggu; data di respons 200:")
         _print_contract_data(body["data"])
@@ -238,17 +238,18 @@ def async_pipeline(client: httpx.Client) -> bool:
 
     status = _status(client, request_id)
     read_back = status.json()
-    print(
-        f"GET status -> {status.status_code} job_status={read_back.get('job_status')} params={read_back.get('params')}"
-    )
-    ok = ok and status.status_code == 200 and read_back.get("job_status") == "completed"
+    print(f"GET status -> {status.status_code} errors={read_back.get('errors')}")
+    leftover = {"job_status", "document_type", "params"} & set(read_back)
+    if leftover:
+        print(f"  jawaban masih membawa {sorted(leftover)}")
+    ok = ok and status.status_code == 200 and not leftover
     if finished_in_time:
         ok = ok and read_back["data"] == body["data"]
 
     again = _submit(client, request_id, "kk.jpg", image)
     repeated = again.json()
-    print(f"kirim ulang request_id yang sama -> {again.status_code} job_status={repeated.get('job_status')}")
-    ok = ok and again.status_code == 200 and repeated.get("job_status") == "completed"
+    print(f"kirim ulang request_id yang sama -> {again.status_code}")
+    ok = ok and again.status_code == 200
     if finished_in_time:
         ok = ok and repeated["data"] == body["data"]
 
@@ -459,8 +460,8 @@ def wait_timeout(client: httpx.Client) -> bool:
     started = time.monotonic()
     response = _submit(client, request_id, f"kk-delay{delay}s.jpg", _image())
     body = response.json()
-    print(f"  {response.status_code} dalam {time.monotonic() - started:.1f}s job_status={body.get('job_status')}")
-    if response.status_code != 202 or body.get("job_status") != "processing":
+    print(f"  {response.status_code} dalam {time.monotonic() - started:.1f}s")
+    if response.status_code != 202:
         print("    bukan 202: naikkan SMOKE_DELAY_SECONDS di atas PIPELINE_WAIT_SECONDS")
         return False
     if body.get("data") is not None:
@@ -469,8 +470,8 @@ def wait_timeout(client: httpx.Client) -> bool:
     _poll(client, request_id)
     after = _status(client, request_id)
     finished = after.json()
-    print(f"  GET setelah selesai -> {after.status_code} job_status={finished.get('job_status')}")
-    if after.status_code != 200 or finished.get("job_status") != "completed":
+    print(f"  GET setelah selesai -> {after.status_code}")
+    if after.status_code != 200:
         return False
     data = finished.get("data") or {}
     shape = set(data) == {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
@@ -492,12 +493,11 @@ def stage_failure(client: httpx.Client) -> bool:
         _poll(client, request_id)
         response = _status(client, request_id)
         body = response.json()
-    print(f"  {response.status_code} errors={body.get('errors')} job_status={body.get('job_status')}")
+    print(f"  {response.status_code} errors={body.get('errors')} stage={body.get('pipeline_last_stage')}")
     print(f"    message={body.get('message')!r}")
     return (
         response.status_code == 422
         and str(body.get("errors", "")).endswith("_FAILED")
-        and body.get("job_status") == "failed"
         and body.get("data") is None
     )
 

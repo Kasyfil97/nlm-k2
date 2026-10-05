@@ -46,7 +46,7 @@ def test_finished_within_the_wait_is_200_with_the_final_result(client, auth, stu
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
+    assert (body["guardrails"], body["errors"], body["pipeline_last_stage"]) == (0, None, None)
     assert body["data"] == EXPECTED_DATA
     [(request_id, timeout)] = stub_waiter.calls
     assert request_id == RID
@@ -65,7 +65,7 @@ def test_still_running_when_the_wait_runs_out_is_202(client, auth, stub_waiter):
         "Accepted",
         "OCR job accepted; still processing",
     )
-    assert (body["job_status"], body["data"], body["guardrails"], body["errors"]) == ("processing", None, None, None)
+    assert (body["data"], body["guardrails"], body["errors"], body["pipeline_last_stage"]) == (None, None, None, None)
 
 
 def test_failure_within_the_wait_is_422_with_the_failed_stage(client, auth, stub_waiter):
@@ -76,7 +76,7 @@ def test_failure_within_the_wait_is_422_with_the_failed_stage(client, auth, stub
     assert response.status_code == 422
     body = response.json()
     assert (body["errors"], body["message"]) == ("OCR_FAILED", "extraction OCR model is unavailable")
-    assert (body["job_status"], body["data"], body["guardrails"]) == ("failed", None, 0)
+    assert (body["data"], body["guardrails"], body["pipeline_last_stage"]) == (None, 0, "extraction")
 
 
 def test_rejection_by_the_kk_validity_gate_is_400_with_its_reason(client, auth, stub_waiter):
@@ -88,7 +88,7 @@ def test_rejection_by_the_kk_validity_gate_is_400_with_its_reason(client, auth, 
     assert response.status_code == 400
     body = response.json()
     assert (body["errors"], body["message"]) == ("DOWNSTREAM_VALIDATION_ERROR", reason)
-    assert (body["job_status"], body["data"], body["guardrails"]) == ("failed", None, 1)
+    assert (body["data"], body["guardrails"], body["pipeline_last_stage"]) == (None, 1, "structuring")
 
 
 def test_rejected_document_answers_at_once_without_waiting(client, auth, stub_waiter):
@@ -107,7 +107,7 @@ def test_waiting_disabled_answers_202_right_after_the_handoff(client, auth, stub
         app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 202
-    assert response.json()["job_status"] == "processing"
+    assert response.json()["pipeline_last_stage"] is None
     assert stub_waiter.calls == []
 
 

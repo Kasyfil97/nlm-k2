@@ -37,11 +37,8 @@ def test_extract_ocr_follows_the_central_orchestrators_contract(client, auth, st
         "data": EXPECTED_DATA,
         "errors": None,
         "request_id": "OCR_1",
-        "document_type": "kk",
-        "job_status": "completed",
+        "pipeline_last_stage": None,
         "guardrails": 0,
-        "pipeline_last_stage": "scoring",
-        "params": None,
     }
     assert stub_guardrails.checked == [{"request_id": "OCR_1", "filename": "kk.jpg", "content_type": "image/jpeg"}]
     [handed] = stub_extraction.submitted
@@ -59,11 +56,8 @@ def test_rejection_by_the_guardrails_model_is_400_with_guardrails_0(client, auth
         "data": None,
         "errors": "DOWNSTREAM_VALIDATION_ERROR",
         "request_id": "OCR_1",
-        "document_type": "kk",
-        "job_status": "failed",
-        "guardrails": 1,
         "pipeline_last_stage": "guardrails",
-        "params": None,
+        "guardrails": 1,
     }
     assert stub_extraction.submitted == [] and stub_waiter.calls == []
 
@@ -88,7 +82,6 @@ def test_file_url_is_fetched_here_and_forwarded_as_url(client, auth, monkeypatch
         headers=auth,
     )
     assert response.status_code == 200
-    assert response.json()["job_status"] == "completed"
     assert stub_extraction.submitted[0]["file_url"] == "http://minio.local/bucket/kk.jpg"
 
 
@@ -255,7 +248,7 @@ def test_guardrails_only_answers_with_the_report_as_it_is(client, auth, stub_ext
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
+    assert (body["guardrails"], body["errors"]) == (0, None)
     assert body["data"] == ACCEPTED_REPORT
     assert stub_extraction.submitted == [] and stub_waiter.calls == []
 
@@ -273,7 +266,7 @@ def test_a_sequence_ending_at_extraction_answers_with_the_ocr_result_as_it_is(cl
     response = _submit(client, auth, pipeline_name_sequence=["guardrails", "extraction"])
 
     assert response.status_code == 200
-    assert (response.json()["job_status"], response.json()["data"]) == ("completed", OCR_RESULT)
+    assert response.json()["data"] == OCR_RESULT
 
 
 def test_a_sequence_ending_at_structuring_answers_with_its_result_as_it_is(client, auth, stub_waiter):
@@ -295,7 +288,7 @@ def test_without_guardrails_the_document_is_handed_on_without_a_report(client, a
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["job_status"], body["guardrails"], body["errors"]) == ("completed", 0, None)
+    assert (body["guardrails"], body["errors"]) == (0, None)
     assert stub_guardrails.checked == []
     [handed] = stub_extraction.submitted
     assert (handed["guardrails"], handed["sequence"]) == (None, NO_GUARDRAILS)
@@ -335,15 +328,15 @@ def test_without_guardrails_the_file_checks_still_run(client, auth, settings_ove
 @pytest.mark.parametrize(
     ("sequence", "outcome", "status", "stage"),
     [
-        (None, None, 200, "scoring"),
-        (["guardrails"], None, 200, "guardrails"),
-        (["guardrails", "extraction"], WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT}), 200, "extraction"),
+        (None, None, 200, None),
+        (["guardrails"], None, 200, None),
+        (["guardrails", "extraction"], WaitOutcome("OCR", "DONE", results={"OCR": OCR_RESULT}), 200, None),
         (None, WaitOutcome("OCR", "FAILED", "OCR model is unavailable"), 422, "extraction"),
         (None, WaitOutcome("STRUCTURING", STATUS_REJECTED, "dokumen blur / blank"), 400, "structuring"),
-        (None, WaitOutcome("STRUCTURING", "PROCESSING"), 202, "structuring"),
+        (None, WaitOutcome("STRUCTURING", "PROCESSING"), 202, None),
     ],
 )
-def test_pipeline_last_stage_names_the_service_the_answer_comes_from(
+def test_pipeline_last_stage_names_the_service_an_error_comes_from_and_is_null_on_success(
     client, auth, stub_waiter, sequence, outcome, status, stage
 ):
     if outcome is not None:
@@ -389,7 +382,7 @@ def test_the_get_returns_the_same_data_as_the_post_that_produced_it(client, auth
 
     assert (posted.status_code, fetched.status_code) == (200, 200)
     assert posted.json()["data"] == fetched.json()["data"]
-    assert fetched.json()["params"] is None, "params is not stored, so the GET cannot echo it"
+    assert not {"job_status", "document_type", "params"} & set(fetched.json())
 
 
 def test_a_guardrails_rejection_is_answered_again_by_the_get_from_guardrails_results(
@@ -442,7 +435,7 @@ def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardra
     stub = stub_guardrails if failing == "guardrails" else stub_extraction
     stub.error = UpstreamUnavailable(f"{failing} service is unavailable")
 
-    response = _submit(client, auth, params='{"refno": "X1"}')
+    response = _submit(client, auth)
 
     assert response.status_code == 503
     body = response.json()
@@ -451,4 +444,4 @@ def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardra
         f"{failing} service is unavailable",
         "DOWNSTREAM_UNAVAILABLE",
     )
-    assert (body["request_id"], body["params"]) == ("OCR_1", {"refno": "X1"})
+    assert body["request_id"] == "OCR_1"

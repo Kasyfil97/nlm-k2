@@ -1,6 +1,5 @@
 """The §3.3.1 projection: the nine fields that leave, and the four ways it can be got wrong."""
 
-import json
 from copy import deepcopy
 
 import pytest
@@ -159,27 +158,18 @@ def test_confidence_threshold_can_be_changed(client, auth):
     assert response.json()["data"] == _projected(0.9)
 
 
-@pytest.mark.parametrize(
-    "params",
-    ['{"nik": "9901011203850001", "refno": "PK19039Y8U"}', '"halo"'],
-)
-def test_params_are_returned_unchanged(client, auth, params):
-    response = _submit(client, auth, params=params)
+def test_the_answer_carries_no_job_status_document_type_or_params(client, auth):
+    response = _submit(client, auth)
+
     assert response.status_code == 200
-    assert response.json()["params"] == json.loads(params)
+    assert not {"job_status", "document_type", "params"} & set(response.json())
 
 
-@pytest.mark.parametrize("params", ["{not json", "[1, 2]", "42"])
-def test_invalid_params_are_422_before_anything_runs(client, auth, stub_guardrails, stub_extraction, params):
-    response = _submit(client, auth, params=params)
-    assert response.status_code == 422
-    body = response.json()
-    assert (body["errors"], body["message"]) == (
-        "INVALID_PARAMS",
-        "params must be valid JSON: an object, or a quoted string",
-    )
-    assert body["job_status"] is None
-    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
+def test_params_sent_by_an_old_caller_are_ignored(client, auth):
+    response = _submit(client, auth, params="{not json")
+
+    assert response.status_code == 200
+    assert "params" not in response.json()
 
 
 def test_unsupported_document_type_is_400_before_anything_runs(client, auth, stub_guardrails, stub_extraction):
@@ -190,7 +180,7 @@ def test_unsupported_document_type_is_400_before_anything_runs(client, auth, stu
         "UNSUPPORTED_DOCUMENT_TYPE",
         "Unsupported document_type: ktp. Supported: kk",
     )
-    assert body["document_type"] == "ktp"
+    assert "document_type" not in body
     assert stub_guardrails.checked == [] and stub_extraction.submitted == []
 
 

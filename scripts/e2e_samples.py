@@ -163,14 +163,13 @@ def positive(client: httpx.Client, case: Case, content: bytes, results: list[tup
     request_id = smoke._rid()
     body = _submit(client, request_id, case, content)
     print(
-        f"  POST -> {body.get('status_code')} job_status={body.get('job_status')} errors={body.get('errors')} "
+        f"  POST -> {body.get('status_code')} errors={body.get('errors')} "
         f"stage={body.get('pipeline_last_stage')} guardrails={body.get('guardrails')}"
     )
     completed = (
         body.get("status_code") == 200
-        and body.get("job_status") == "completed"
         and body.get("errors") is None
-        and body.get("pipeline_last_stage") == "scoring"
+        and body.get("pipeline_last_stage") is None
         and body.get("guardrails") == 0
     )
     if not _check(results, f"{case.file}: 200 selesai sampai scoring", completed, body.get("message") or ""):
