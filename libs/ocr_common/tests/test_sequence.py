@@ -88,7 +88,7 @@ def test_the_result_callback_completes_on_the_final_stage_with_its_result_as_it_
     not_final = stage_callback_body(RID, "OCR", "DONE", result=ocr)
 
     assert final["final"] is True and "final" not in not_final
-    assert result_callback_body(final) == {"request_id": RID, "status": "completed", "result": ocr, "guardrails": {}}
+    assert result_callback_body(final) == {"request_id": RID, "status": "completed", "result": ocr, "guardrails": 0}
     assert result_callback_body(not_final) is None
 
 
