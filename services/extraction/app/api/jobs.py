@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
+from ocr_common.content_types import upload_content_type
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json, ocr_aggregates
 from ocr_common.pipeline import EXTRACTION, InvalidSequence, StagePipeline, checked_sequence
 from ocr_common.pipeline.outbox_status import (
@@ -212,7 +213,8 @@ async def submit_job(
     upload, url = resolve_intake(file, file_url)
     source: Source
     if upload is not None:
-        source = (await upload.read(), upload.filename or "", upload.content_type)
+        content = await upload.read()
+        source = (content, upload.filename or "", upload_content_type(upload.content_type, content))
     else:
         assert url is not None
         source = url

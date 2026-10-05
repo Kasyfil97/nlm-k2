@@ -4,6 +4,7 @@ from fastapi import File, Form, Request, UploadFile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from ocr_common.clients.fetch_url import FetchUrlError, fetch
+from ocr_common.content_types import upload_content_type
 from ocr_common.errors import FILE_URL_REJECTED, INVALID_FILE_SOURCE, BadRequest
 
 FileField = File(
@@ -45,4 +46,5 @@ async def read_image(
         except FetchUrlError as exc:
             raise BadRequest(str(exc), FILE_URL_REJECTED) from exc
     assert upload is not None
-    return await upload.read(), upload.filename or "", upload.content_type
+    content = await upload.read()
+    return content, upload.filename or "", upload_content_type(upload.content_type, content)
