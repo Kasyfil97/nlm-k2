@@ -75,20 +75,31 @@ echo ">> Cek .env : OK (semua file ditemukan)"
 
 # ---------------------------------------------------------------------------
 # Cek variabel wajib di tiap .env yang sudah ada
+# get_val: baca nilai key dari ENV_FILE; kembalikan string kosong kalau tidak ada
 # ---------------------------------------------------------------------------
+get_val() {
+  grep -v '^#' "$1" | grep -v '^$' | grep "^${2}=" | cut -d'=' -f2- | tr -d '[:space:]' || true
+}
+
+# Service yang butuh koneksi database (Cloud SQL)
+DB_SERVICES=(orchestrator extraction structuring scoring)
+
 INVALID=()
 for svc in "${SERVICES_TO_CHECK[@]}"; do
   ENV_FILE="services/$svc/.env"
-  # Baca nilai; strip komentar dan baris kosong
-  get_val() {
-    grep -v '^#' "$ENV_FILE" | grep -v '^$' | grep "^${1}=" | cut -d'=' -f2- | tr -d '[:space:]'
-  }
-  CLOUDSQL_INSTANCE=$(get_val CLOUDSQL_INSTANCE)
-  DB_NAME=$(get_val DB_NAME)
-  API_KEY=$(get_val API_KEY)
-  if [ -z "$CLOUDSQL_INSTANCE" ] || [ -z "$DB_NAME" ] || [ -z "$API_KEY" ]; then
-    INVALID+=("$ENV_FILE (CLOUDSQL_INSTANCE / DB_NAME / API_KEY belum diisi)")
-  fi
+  API_KEY=$(get_val "$ENV_FILE" API_KEY)
+  [ -z "$API_KEY" ] && INVALID+=("$ENV_FILE — API_KEY belum diisi")
+
+  # Cek DB vars hanya untuk service yang pakai database
+  for db_svc in "${DB_SERVICES[@]}"; do
+    if [ "$svc" = "$db_svc" ]; then
+      CLOUDSQL=$(get_val "$ENV_FILE" CLOUDSQL_INSTANCE)
+      DBNAME=$(get_val "$ENV_FILE" DB_NAME)
+      [ -z "$CLOUDSQL" ] && INVALID+=("$ENV_FILE — CLOUDSQL_INSTANCE belum diisi")
+      [ -z "$DBNAME"   ] && INVALID+=("$ENV_FILE — DB_NAME belum diisi")
+      break
+    fi
+  done
 done
 
 if [ ${#INVALID[@]} -gt 0 ]; then
