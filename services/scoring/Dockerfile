@@ -20,7 +20,7 @@ COPY services/scoring/app ./app
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p weights \
-    && chown appuser weights
+    && chown -R appuser /app
 USER appuser
 
 ENV PORT=8044 \

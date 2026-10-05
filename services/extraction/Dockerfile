@@ -20,7 +20,7 @@ COPY services/extraction/app ./app
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p weights \
-    && chown appuser weights
+    && chown -R appuser /app
 USER appuser
 
 ENV PORT=8042 \
@@ -30,4 +30,4 @@ EXPOSE 8042
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8042\")}/health', timeout=3)" || exit 1
 
-CMD ["sh", "-c", "python scripts/fetch_weights.py extraction && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "if [ \"${EXTRACTION_BACKEND:-}\" = \"paddle\" ]; then python scripts/fetch_weights.py extraction; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
