@@ -56,9 +56,19 @@ class RecordingCallback:
         self.calls: list[dict] = []
 
     async def notify(
-        self, request_id, stage, status, *, result=None, error_message=None, error_code=None, final=False
+        self,
+        request_id,
+        stage,
+        status,
+        *,
+        result=None,
+        error_message=None,
+        error_code=None,
+        final=False,
+        answer=None,
     ) -> bool:
-        """Record the callback, in the body shape a stage sends (`error_code` and `final` only when set)."""
+        """Record the callback, in the body shape a stage sends (`error_code`, `final` and `answer` only when
+        set)."""
         self.calls.append(
             stage_callback_body(
                 request_id,
@@ -68,6 +78,7 @@ class RecordingCallback:
                 error_message=error_message,
                 error_code=error_code,
                 final=final,
+                answer=answer,
             )
         )
         return True

@@ -163,14 +163,13 @@ def positive(client: httpx.Client, case: Case, content: bytes, results: list[tup
     request_id = smoke._rid()
     body = _submit(client, request_id, case, content)
     print(
-        f"  POST -> {body.get('status_code')} job_status={body.get('job_status')} errors={body.get('errors')} "
+        f"  POST -> {body.get('status_code')} errors={body.get('errors')} "
         f"stage={body.get('pipeline_last_stage')} guardrails={body.get('guardrails')}"
     )
     completed = (
         body.get("status_code") == 200
-        and body.get("job_status") == "completed"
         and body.get("errors") is None
-        and body.get("pipeline_last_stage") == "scoring"
+        and body.get("pipeline_last_stage") is None
         and body.get("guardrails") == 0
     )
     if not _check(results, f"{case.file}: 200 selesai sampai scoring", completed, body.get("message") or ""):
@@ -231,13 +230,13 @@ def negative(client: httpx.Client, case: Case, content: bytes, results: list[tup
         and body.get("guardrails") == 1
         and body.get("data") is None,
     )
-    # GET membaca putusan yang tersimpan di guardrails_results, jadi jawabannya sama dengan POST-nya.
+    # GET membaca putusan yang tersimpan di nilam_guardrails_results, jadi jawabannya sama dengan POST-nya.
     status = smoke._status(client, request_id)
     read_back = status.json()
     same = ("status_code", "errors", "pipeline_last_stage", "guardrails", "data")
     _check(
         results,
-        f"{case.file}: GET menjawab penolakan yang sama dari guardrails_results",
+        f"{case.file}: GET menjawab penolakan yang sama dari nilam_guardrails_results",
         status.status_code == 400 and all(read_back.get(key) == body.get(key) for key in same),
         f"GET {status.status_code} {read_back.get('errors')} stage={read_back.get('pipeline_last_stage')}",
     )

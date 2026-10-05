@@ -40,7 +40,7 @@ def _get(client, auth, request_id=RID):
 # --- the endpoint -----------------------------------------------------------------------------------
 
 
-def test_finished_request_is_200_with_its_data_and_no_params(client, auth, stub_waiter, stub_guardrails):
+def test_finished_request_is_200_with_its_data(client, auth, stub_waiter, stub_guardrails):
     response = _get(client, auth)
 
     assert response.status_code == 200
@@ -51,11 +51,8 @@ def test_finished_request_is_200_with_its_data_and_no_params(client, auth, stub_
         "data": EXPECTED_DATA,
         "errors": None,
         "request_id": RID,
-        "document_type": "kk",
-        "job_status": "completed",
+        "pipeline_last_stage": None,
         "guardrails": 0,
-        "pipeline_last_stage": "scoring",
-        "params": None,
     }
     assert stub_waiter.snapshots == [RID]
     assert stub_waiter.calls == [], "the status is read, not waited for"
@@ -68,7 +65,7 @@ def test_running_request_is_202(client, auth, stub_waiter):
     response = _get(client, auth)
 
     assert response.status_code == 202
-    assert (response.json()["job_status"], response.json()["guardrails"]) == ("processing", None)
+    assert (response.json()["data"], response.json()["guardrails"]) == (None, None)
 
 
 def test_failed_stage_is_422(client, auth, stub_waiter):
@@ -277,8 +274,8 @@ def test_a_request_that_ended_before_scoring_is_answered_with_that_result(client
     response = _get(client, auth)
 
     assert response.status_code == 200
-    assert (response.json()["job_status"], response.json()["data"]) == ("completed", structuring)
-    assert response.json()["pipeline_last_stage"] == "structuring"
+    assert response.json()["data"] == structuring
+    assert response.json()["pipeline_last_stage"] is None
 
 
 async def test_the_snapshot_carries_the_thresholds_stored_with_the_first_job():

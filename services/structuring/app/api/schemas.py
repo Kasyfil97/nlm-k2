@@ -72,7 +72,7 @@ class StructuringJobRequest(BaseModel):
         None,
         description=(
             "Result of the OCR stage. Left out when the OCR service hands off by reference "
-            "(`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `ocr_results` "
+            "(`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `nilam_ocr_results` "
             "of the shared database. Its `texts` MAY be empty -- an image with no readable text has to "
             "reach the validity gate to be rejected there, so this endpoint does not require at least one"
         ),
@@ -116,3 +116,25 @@ class StructuringJobStatus(JobStatusBase):
 
 class StructuringJobStatusResponse(SuccessEnvelope):
     data: StructuringJobStatus
+
+
+class StructuringDirectRequest(BaseModel):
+    """`POST /v1/structuring-direct`: the previous stage's output, nothing of the pipeline run."""
+
+    request_id: str | None = Field(
+        None,
+        description="Echoed in the response; optional, nothing is recorded under it",
+        examples=[REQUEST_ID_EXAMPLE],
+    )
+    document_type: str = Field("kk", description="Only `kk` is supported; anything else is 400", examples=["kk"])
+    ocr: OcrPayload = Field(
+        ...,
+        description=(
+            "The extraction service's output: `data` of its `POST /v1/extraction/extract`, or the `result` of "
+            "`GET /v1/extraction/jobs/{request_id}`. Only `texts` is read, and it may be empty"
+        ),
+    )
+
+
+class StructuringDirectResponse(SuccessEnvelope):
+    data: StructuringPayload

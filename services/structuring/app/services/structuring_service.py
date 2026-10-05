@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from typing import Any
+
 from ocr_common.types import OcrBox, StructuringResult
 
 from app.ml.base import Structurer
@@ -17,6 +20,18 @@ class StructuringService:
 
     def __init__(self, structurer: Structurer):
         self._structurer = structurer
+
+    @staticmethod
+    def boxes_from_ocr(ocr: Mapping[str, Any]) -> list[OcrBox]:
+        """The OCR stage's result (`texts`, §7.1) as the boxes the structurer reads, defaults filled in."""
+        return [
+            {
+                "text": box.get("text") or "",
+                "score": box.get("score", 1.0),
+                "poly": box.get("poly") or [],
+            }
+            for box in ocr.get("texts") or []
+        ]
 
     def structure(self, texts: list[OcrBox]) -> StructuringResult:
         return self._structurer.structure([box for box in texts if (box.get("text") or "").strip()])

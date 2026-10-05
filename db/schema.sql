@@ -1,0 +1,256 @@
+-- nlm-k2: skema dan semua tabel milik repo ini, dalam satu berkas.
+--
+-- Isinya sama dengan hasil `alembic upgrade head` (revisi 0003_nilam_naming): schema `nilam_ocr_kk`,
+-- 16 tabel berawalan `nilam_` (tahap OCR / structuring / scoring, outbox, putusan guardrails, masing-masing
+-- juga versi `testing_` untuk endpoint -test), indeks, foreign key, dan tabel versi Alembic yang sudah
+-- dicap di head, supaya `alembic upgrade head` berikutnya hanya menjalankan migrasi yang lebih baru.
+--
+-- Dihasilkan dari `ocr_common.pipeline.tables.repo_metadata()`; kalau tabelnya berubah lewat migrasi baru,
+-- berkas ini harus dibuat ulang. Idempoten (IF NOT EXISTS), satu transaksi.
+-- Tabel milik Orkestrasi pusat (orchestration_extract_ocr, ocr.orchestration_api_events) TIDAK ada di sini;
+-- tiruannya untuk lokal ada di db/external/.
+--
+--     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
+
+BEGIN;
+
+CREATE SCHEMA IF NOT EXISTS nilam_ocr_kk;
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_guardrails_results (
+    id BIGSERIAL NOT NULL,
+    request_id TEXT NOT NULL,
+    passed BOOLEAN NOT NULL,
+    verdict TEXT,
+    confidence FLOAT,
+    threshold FLOAT,
+    threshold_target TEXT,
+    threshold_source TEXT NOT NULL,
+    n_pages INTEGER,
+    reason TEXT,
+    pipeline_name_sequence JSONB,
+    report JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_guardrails_results_ds ON nilam_ocr_kk.nilam_guardrails_results (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_guardrails_results_request_id ON nilam_ocr_kk.nilam_guardrails_results (request_id);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_ocr_jobs_ds ON nilam_ocr_kk.nilam_ocr_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_ocr_jobs_status ON nilam_ocr_kk.nilam_ocr_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_pipeline_outbox (
+    id BIGSERIAL NOT NULL,
+    request_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    attempts INTEGER DEFAULT 0 NOT NULL,
+    next_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    failed_at TIMESTAMP WITH TIME ZONE,
+    last_error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_pipeline_outbox_dead ON nilam_ocr_kk.nilam_pipeline_outbox (stage) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nilam_pipeline_outbox_due ON nilam_ocr_kk.nilam_pipeline_outbox (stage, next_attempt_at, id) WHERE failed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_nilam_pipeline_outbox_request_id ON nilam_ocr_kk.nilam_pipeline_outbox (request_id);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_scoring_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_scoring_jobs_ds ON nilam_ocr_kk.nilam_scoring_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_scoring_jobs_status ON nilam_ocr_kk.nilam_scoring_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_structuring_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_structuring_jobs_ds ON nilam_ocr_kk.nilam_structuring_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_structuring_jobs_status ON nilam_ocr_kk.nilam_structuring_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_guardrails_results (
+    id BIGSERIAL NOT NULL,
+    request_id TEXT NOT NULL,
+    passed BOOLEAN NOT NULL,
+    verdict TEXT,
+    confidence FLOAT,
+    threshold FLOAT,
+    threshold_target TEXT,
+    threshold_source TEXT NOT NULL,
+    n_pages INTEGER,
+    reason TEXT,
+    pipeline_name_sequence JSONB,
+    report JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_guardrails_results_ds ON nilam_ocr_kk.nilam_testing_guardrails_results (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_guardrails_results_request_id ON nilam_ocr_kk.nilam_testing_guardrails_results (request_id);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_ocr_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_jobs_ds ON nilam_ocr_kk.nilam_testing_ocr_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_jobs_status ON nilam_ocr_kk.nilam_testing_ocr_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_pipeline_outbox (
+    id BIGSERIAL NOT NULL,
+    request_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    attempts INTEGER DEFAULT 0 NOT NULL,
+    next_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    failed_at TIMESTAMP WITH TIME ZONE,
+    last_error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_pipeline_outbox_dead ON nilam_ocr_kk.nilam_testing_pipeline_outbox (stage) WHERE failed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_pipeline_outbox_due ON nilam_ocr_kk.nilam_testing_pipeline_outbox (stage, next_attempt_at, id) WHERE failed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_pipeline_outbox_request_id ON nilam_ocr_kk.nilam_testing_pipeline_outbox (request_id);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_scoring_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_scoring_jobs_ds ON nilam_ocr_kk.nilam_testing_scoring_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_scoring_jobs_status ON nilam_ocr_kk.nilam_testing_scoring_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_structuring_jobs (
+    request_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    attempts INTEGER DEFAULT 1 NOT NULL,
+    input JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_structuring_jobs_ds ON nilam_ocr_kk.nilam_testing_structuring_jobs (ds);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_structuring_jobs_status ON nilam_ocr_kk.nilam_testing_structuring_jobs (status);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_ocr_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_ocr_results_ds ON nilam_ocr_kk.nilam_ocr_results (ds);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_scoring_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_scoring_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_scoring_results_ds ON nilam_ocr_kk.nilam_scoring_results (ds);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_structuring_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_structuring_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_structuring_results_ds ON nilam_ocr_kk.nilam_structuring_results (ds);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_ocr_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_testing_ocr_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_results_ds ON nilam_ocr_kk.nilam_testing_ocr_results (ds);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_scoring_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_testing_scoring_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_scoring_results_ds ON nilam_ocr_kk.nilam_testing_scoring_results (ds);
+
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_structuring_results (
+    request_id TEXT NOT NULL,
+    result JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+    ds TEXT NOT NULL,
+    PRIMARY KEY (request_id),
+    FOREIGN KEY(request_id) REFERENCES nilam_ocr_kk.nilam_testing_structuring_jobs (request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_structuring_results_ds ON nilam_ocr_kk.nilam_testing_structuring_results (ds);
+
+-- Tabel versi Alembic (env.py: version_table_schema = nilam_ocr_kk), dicap di head.
+CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_kk_alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT nilam_ocr_kk_alembic_version_pkc PRIMARY KEY (version_num)
+);
+INSERT INTO nilam_ocr_kk.nilam_ocr_kk_alembic_version (version_num)
+SELECT '0003_nilam_naming'
+WHERE NOT EXISTS (SELECT 1 FROM nilam_ocr_kk.nilam_ocr_kk_alembic_version);
+
+COMMIT;

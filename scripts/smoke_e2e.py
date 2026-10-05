@@ -12,7 +12,7 @@ Semua pemicu lewat nama berkas, dan sampai ke tahap yang dituju lewat backend `m
 | lengkap | `kk.jpg` | 200, sembilan field §3.3, `GET` identik |
 | jumlah anggota | `kk-MOCK:members=4.jpg` | 200 dengan 4 anggota, confidence milik masing-masing |
 | menunggu habis | `kk-delay20s.jpg` | 202, lalu `GET` 200 dengan sembilan field yang sama |
-| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 400 yang sama (dari `guardrails_results`) |
+| guardrails | `notkk.jpg` | 400 §3.5, dan `GET` berikutnya 400 yang sama (dari `nilam_guardrails_results`) |
 | §7.4 aturan 1 | `kk-blank.jpg` | 400, `texts` kosong |
 | §7.4 aturan 2 | `kk-MOCK:blank_kk=1.jpg` | 400, `nomor_kk` kosong di hasil |
 | §7.4 aturan 3 | `kk-MOCK:members=0.jpg` | 400, `nomor_kk` terisi tetapi nol anggota |
@@ -42,6 +42,7 @@ from typing import Any
 import httpx
 
 from ocr_common.kk import DOC_FIELDS
+from ocr_common.pipeline.database import PIPELINE_SCHEMA, TABLE_PREFIX
 from ocr_common.synthetic_kk import member, nomor_kk
 
 
@@ -73,6 +74,7 @@ STAGES = ("extraction", "structuring", "scoring")
 
 #: Nama tahap sebagaimana tertulis di baris job dan baris outcome, per nama service.
 STAGE_NAMES = {"extraction": "OCR", "structuring": "STRUCTURING", "scoring": "SCORING"}
+
 
 def _psycopg_url(url: str) -> str:
     """Buang sufiks driver SQLAlchemy supaya psycopg bisa membacanya.
@@ -201,13 +203,13 @@ def async_pipeline(client: httpx.Client) -> bool:
     elapsed = time.monotonic() - started
     body = submitted.json()
     print(
-        f"orchestrator extract-ocr: {submitted.status_code} dalam {elapsed:.2f}s job_status={body.get('job_status')} "
+        f"orchestrator extract-ocr: {submitted.status_code} dalam {elapsed:.2f}s "
         f"guardrails={body.get('guardrails')} errors={body.get('errors')} message={body.get('message')!r}"
     )
     if submitted.status_code not in (200, 202):
         print("  pipeline tidak dimulai atau gagal")
         return False
-    finished_in_time = submitted.status_code == 200 and body.get("job_status") == "completed"
+    finished_in_time = submitted.status_code == 200
     if finished_in_time:
         print("  selesai dalam waktu tunggu; data di respons 200:")
         _print_contract_data(body["data"])
@@ -238,17 +240,18 @@ def async_pipeline(client: httpx.Client) -> bool:
 
     status = _status(client, request_id)
     read_back = status.json()
-    print(
-        f"GET status -> {status.status_code} job_status={read_back.get('job_status')} params={read_back.get('params')}"
-    )
-    ok = ok and status.status_code == 200 and read_back.get("job_status") == "completed"
+    print(f"GET status -> {status.status_code} errors={read_back.get('errors')}")
+    leftover = {"job_status", "document_type", "params"} & set(read_back)
+    if leftover:
+        print(f"  jawaban masih membawa {sorted(leftover)}")
+    ok = ok and status.status_code == 200 and not leftover
     if finished_in_time:
         ok = ok and read_back["data"] == body["data"]
 
     again = _submit(client, request_id, "kk.jpg", image)
     repeated = again.json()
-    print(f"kirim ulang request_id yang sama -> {again.status_code} job_status={repeated.get('job_status')}")
-    ok = ok and again.status_code == 200 and repeated.get("job_status") == "completed"
+    print(f"kirim ulang request_id yang sama -> {again.status_code}")
+    ok = ok and again.status_code == 200
     if finished_in_time:
         ok = ok and repeated["data"] == body["data"]
 
@@ -317,7 +320,7 @@ def guardrails_reject(client: httpx.Client) -> bool:
     body = response.json()
     print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
     print(f"  message={body.get('message')!r}")
-    # Tidak ada tahap yang jalan, tapi putusannya tersimpan di guardrails_results: GET menjawab 400 yang sama.
+    # Tidak ada tahap yang jalan, tapi putusannya tersimpan di nilam_guardrails_results: GET menjawab 400 yang sama.
     status = _status(client, request_id)
     print(f"  GET status -> {status.status_code} errors={status.json().get('errors')}")
     return (
@@ -459,8 +462,8 @@ def wait_timeout(client: httpx.Client) -> bool:
     started = time.monotonic()
     response = _submit(client, request_id, f"kk-delay{delay}s.jpg", _image())
     body = response.json()
-    print(f"  {response.status_code} dalam {time.monotonic() - started:.1f}s job_status={body.get('job_status')}")
-    if response.status_code != 202 or body.get("job_status") != "processing":
+    print(f"  {response.status_code} dalam {time.monotonic() - started:.1f}s")
+    if response.status_code != 202:
         print("    bukan 202: naikkan SMOKE_DELAY_SECONDS di atas PIPELINE_WAIT_SECONDS")
         return False
     if body.get("data") is not None:
@@ -469,8 +472,8 @@ def wait_timeout(client: httpx.Client) -> bool:
     _poll(client, request_id)
     after = _status(client, request_id)
     finished = after.json()
-    print(f"  GET setelah selesai -> {after.status_code} job_status={finished.get('job_status')}")
-    if after.status_code != 200 or finished.get("job_status") != "completed":
+    print(f"  GET setelah selesai -> {after.status_code}")
+    if after.status_code != 200:
         return False
     data = finished.get("data") or {}
     shape = set(data) == {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
@@ -492,14 +495,9 @@ def stage_failure(client: httpx.Client) -> bool:
         _poll(client, request_id)
         response = _status(client, request_id)
         body = response.json()
-    print(f"  {response.status_code} errors={body.get('errors')} job_status={body.get('job_status')}")
+    print(f"  {response.status_code} errors={body.get('errors')} stage={body.get('pipeline_last_stage')}")
     print(f"    message={body.get('message')!r}")
-    return (
-        response.status_code == 422
-        and str(body.get("errors", "")).endswith("_FAILED")
-        and body.get("job_status") == "failed"
-        and body.get("data") is None
-    )
+    return response.status_code == 422 and str(body.get("errors", "")).endswith("_FAILED") and body.get("data") is None
 
 
 # --- handoff yang jadi dead letter ---------------------------------------------------------
@@ -605,19 +603,19 @@ def cleanup() -> None:
         cursor.execute(f"DELETE FROM {OUTCOME_TABLE} WHERE request_id = ANY(%s)", (minted,))
         outcome_rows = cursor.rowcount
         # Urutannya wajib: `*_results.request_id` punya foreign key ke `*_jobs`, jadi hasil dulu,
-        # baru jobnya. `pipeline_outbox` berdiri sendiri. Baris job ikut dihapus -- versi pertama
+        # baru jobnya. `nilam_pipeline_outbox` berdiri sendiri. Baris job ikut dihapus -- versi pertama
         # hanya menghapus hasilnya, dan meninggalkan 21/18/9 baris job setelah satu kali jalan.
         stage_rows = 0
         for table in (
-            "ocr_results",
-            "structuring_results",
-            "scoring_results",
-            "ocr_jobs",
-            "structuring_jobs",
-            "scoring_jobs",
-            "pipeline_outbox",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}pipeline_outbox",
             # Ditulis orchestrator untuk setiap putusan guardrails, termasuk yang menolak.
-            "guardrails_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}guardrails_results",
         ):
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))

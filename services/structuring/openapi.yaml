@@ -4,8 +4,9 @@ info:
   description: 'Pipeline step 3 for Indonesian Kartu Keluarga: turns raw OCR text lines into named fields
     (nomor_kk, nama, nama_badan) with per-field confidence. **Async pipeline:** the OCR service POSTs
     /v1/structuring/jobs and gets 202; this service structures in the background, stores the result, POSTs
-    a stage callback to the orchestrator, and hands the job to the scoring service. /v1/structuring/structure
-    is the same work, synchronous. All endpoints except /health require an X-API-Key header.
+    a stage callback to the orchestrator, and hands the job to the scoring service. /v1/structuring-direct
+    runs the same rules on an OCR result synchronously, for testing this stage alone; /v1/ocr_postprocess
+    is the K2Regex-v2 endpoint on raw boxes. All endpoints except /health require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -177,8 +178,8 @@ paths:
       description: '**Step 3 of the pipeline, asynchronous. Called by the OCR service, not by the orchestrator.**
 
 
-        Records the job (`structuring_jobs`, idempotent per request_id), answers **202 immediately**,
-        then in the background: turns the OCR lines into named fields, stores the result (`structuring_results`),
+        Records the job (`nilam_structuring_jobs`, idempotent per request_id), answers **202 immediately**,
+        then in the background: turns the OCR lines into named fields, stores the result (`nilam_structuring_results`),
         POSTs the `STRUCTURING` callback, and hands the job (guardrails + OCR + structuring results) to
         the scoring service.
 
@@ -445,9 +446,9 @@ paths:
       summary: Backlog of this stage's undelivered callbacks and hand-offs
       description: 'Operational view of the transactional outbox (`PIPELINE_OUTBOX`): how many callbacks
         and hand-offs of this stage are still to be delivered, how old the oldest one is, and how many
-        were given up on (dead letters). No other service watches the `pipeline_outbox` table, so this
-        is where a monitor should look; the relay also logs a warning when the backlog is older than `PIPELINE_OUTBOX_STALE_AFTER_SECONDS`
-        or a dead letter is waiting.'
+        were given up on (dead letters). No other service watches the `nilam_pipeline_outbox` table, so
+        this is where a monitor should look; the relay also logs a warning when the backlog is older than
+        `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` or a dead letter is waiting.'
       operationId: getStructuringOutboxStatus
       responses:
         '200':
@@ -598,6 +599,214 @@ paths:
                 pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/structuring-direct:
+    post:
+      tags:
+      - Direct
+      summary: Structure an OCR result now, synchronous (no job, no callback, no hand-off)
+      description: '**For testing one stage on its own (QC).** Takes the output of the previous stage,
+        the extraction service''s OCR result (`data` of its `POST /v1/extraction/extract`, or the `result`
+        of its job), runs the same parser and KK validity gate the pipeline runs, and answers with the
+        structured document in the body. Nothing is recorded: no `nilam_structuring_jobs` row, no callback,
+        no hand-off to scoring, so it never touches the orchestrator''s data.
+
+
+        The answer is exactly what `GET /v1/structuring/jobs/{request_id}` reports as `result`, and what
+        the scoring stage receives as `structuring`: paste it into `POST /v1/scoring-direct` to test the
+        next stage. Always 200 when the rules ran, also for a document the validity gate rejects (an OCR
+        result without a single box included): read `reject_reason` (in the pipeline that rejection stops
+        the job and gives the client a 400).
+
+
+        Unlike `POST /v1/ocr_postprocess` (the K2Regex-v2 endpoint on a bare `texts` list), this takes
+        the whole OCR payload as the pipeline hands it on.'
+      operationId: structureDirect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StructuringDirectRequest'
+        required: true
+      responses:
+        '200':
+          description: The OCR result was structured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StructuringDirectResponse'
+              examples:
+                accepted:
+                  summary: A readable card
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      nomor_kk:
+                        value: '9924187486671285'
+                        ocr_conf: 0.9991
+                      nama_kepala_keluarga:
+                        value: BUDI SANTOSO
+                        ocr_conf: 0.9873
+                      alamat:
+                        value: JL. MERDEKA NO. 12
+                        ocr_conf: 0.9642
+                      desa_kelurahan:
+                        value: CIHAPIT
+                        ocr_conf: 0.981
+                      rt:
+                        value: '003'
+                        ocr_conf: 0.9755
+                      rw:
+                        value: '007'
+                        ocr_conf: 0.9755
+                      kecamatan:
+                        value: BANDUNG WETAN
+                        ocr_conf: 0.9888
+                      kabupaten_kota:
+                        value: KOTA BANDUNG
+                        ocr_conf: 0.9901
+                      provinsi:
+                        value: JAWA BARAT
+                        ocr_conf: 0.9934
+                      kode_pos:
+                        value: '40114'
+                        ocr_conf: 0.9702
+                      tanggal_dikeluarkan:
+                        value: 12-03-2019
+                        ocr_conf: 0.9219
+                      anggota_keluarga:
+                      - nama_lengkap:
+                          value: BUDI SANTOSO
+                          ocr_conf: 0.9954
+                          crf_conf: 0.9931
+                        nik:
+                          value: '9908680101601956'
+                          ocr_conf: 0.9975
+                          crf_conf: 0.9887
+                        jenis_kelamin:
+                          value: LAKI-LAKI
+                          ocr_conf: 0.9968
+                          crf_conf: 0.9954
+                        tempat_lahir:
+                          value: BANDUNG
+                          ocr_conf: 0.9891
+                          crf_conf: 0.9803
+                        tanggal_lahir:
+                          value: 01-01-1960
+                          ocr_conf: 0.9903
+                          crf_conf: 0.9877
+                        agama:
+                          value: ISLAM
+                          ocr_conf: 0.9944
+                          crf_conf: 0.9912
+                        pendidikan:
+                          value: SD/SEDERAJAT
+                          ocr_conf: 0.984
+                          crf_conf: 0.9102
+                        jenis_pekerjaan:
+                          value: KARYAWAN SWASTA
+                          ocr_conf: 0.9611
+                          crf_conf: 0.8774
+                        golongan_darah:
+                          value: '-'
+                          ocr_conf: 0.712
+                          crf_conf: 0.4415
+                        status_perkawinan:
+                          value: KAWIN
+                          ocr_conf: 0.9821
+                          crf_conf: 0.9688
+                        tanggal_perkawinan:
+                          value: 08-08-2010
+                          ocr_conf: 0.956
+                          crf_conf: 0.9341
+                        status_hubungan_dalam_keluarga:
+                          value: KEPALA KELUARGA
+                          ocr_conf: 0.9788
+                          crf_conf: 0.944
+                        kewarganegaraan:
+                          value: WNI
+                          ocr_conf: 0.9972
+                          crf_conf: 0.9955
+                        ayah:
+                          value: RIZKY SANTOSO
+                          ocr_conf: 0.9705
+                          crf_conf: 0.8312
+                        ibu:
+                          value: NURUL NURHALIZA
+                          ocr_conf: 0.9682
+                          crf_conf: 0.819
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+                rejected:
+                  summary: 'A document the validity gate rejects: `reject_reason` says why'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      nomor_kk:
+                        value: ''
+                      nama_kepala_keluarga:
+                        value: ''
+                      alamat:
+                        value: ''
+                      desa_kelurahan:
+                        value: ''
+                      rt:
+                        value: ''
+                      rw:
+                        value: ''
+                      kecamatan:
+                        value: ''
+                      kabupaten_kota:
+                        value: ''
+                      provinsi:
+                        value: ''
+                      kode_pos:
+                        value: ''
+                      tanggal_dikeluarkan:
+                        value: ''
+                      anggota_keluarga: []
+                      reject_reason: Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: An unsupported `document_type`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: 'Unsupported document_type: ktp. Supported: [''kk'']'
+                errors: BAD_REQUEST
+                pipeline_last_stage: structuring
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: structuring
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.ocr: Field required'
+                errors: VALIDATION_ERROR
+                pipeline_last_stage: structuring
+      security:
+      - APIKeyHeader: []
   /v1/ocr_postprocess:
     post:
       tags:
@@ -1289,7 +1498,7 @@ components:
       additionalProperties: true
       type: object
       title: OcrPayload
-      description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
+      description: Result of the OCR stage (`nilam_ocr_results`), forwarded to structuring and scoring.
     OutboxRelease:
       properties:
         stage:
@@ -1406,8 +1615,8 @@ components:
           type: integer
           title: Dead Letters
           description: Messages given up on (a 4xx from the receiver, or 5xx for longer than `PIPELINE_OUTBOX_MAX_AGE_SECONDS`).
-            They stay in `pipeline_outbox` with `failed_at` and `last_error` for inspection and are never
-            retried; anything above 0 needs a human
+            They stay in `nilam_pipeline_outbox` with `failed_at` and `last_error` for inspection and
+            are never retried; anything above 0 needs a human
           examples:
           - 0
       type: object
@@ -1719,6 +1928,76 @@ components:
       - ibu
       title: StructuredMemberPayload
       description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
+    StructuringDirectRequest:
+      properties:
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Echoed in the response; optional, nothing is recorded under it
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        document_type:
+          type: string
+          title: Document Type
+          description: Only `kk` is supported; anything else is 400
+          default: kk
+          examples:
+          - kk
+        ocr:
+          $ref: '#/components/schemas/OcrPayload'
+          description: 'The extraction service''s output: `data` of its `POST /v1/extraction/extract`,
+            or the `result` of `GET /v1/extraction/jobs/{request_id}`. Only `texts` is read, and it may
+            be empty'
+      type: object
+      required:
+      - ocr
+      title: StructuringDirectRequest
+      description: '`POST /v1/structuring-direct`: the previous stage''s output, nothing of the pipeline
+        run.'
+    StructuringDirectResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/StructuringPayload'
+      type: object
+      required:
+      - data
+      title: StructuringDirectResponse
     StructuringJobRequest:
       properties:
         request_id:
@@ -1745,7 +2024,7 @@ components:
           - $ref: '#/components/schemas/OcrPayload'
           - type: 'null'
           description: 'Result of the OCR stage. Left out when the OCR service hands off by reference
-            (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `ocr_results`
+            (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `nilam_ocr_results`
             of the shared database. Its `texts` MAY be empty -- an image with no readable text has to
             reach the validity gate to be rejected there, so this endpoint does not require at least one'
         pipeline_name_sequence:
@@ -1977,7 +2256,7 @@ components:
       - kode_pos
       - tanggal_dikeluarkan
       title: StructuringPayload
-      description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
+      description: Result of the structuring stage (`nilam_structuring_results`), forwarded to scoring.
   securitySchemes:
     APIKeyHeader:
       type: apiKey
@@ -1989,6 +2268,8 @@ tags:
   description: 'Asynchronous pipeline stage: 202, background work, callback, hand-off'
 - name: Callbacks
   description: Requests this service SENDS to the orchestrator (see Webhooks)
+- name: Direct
+  description: 'This stage alone on the previous stage''s output, synchronous: nothing recorded (QC)'
 - name: Structuring
   description: Raw text -> named fields, synchronous
 - name: Health

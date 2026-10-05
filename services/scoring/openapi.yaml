@@ -5,7 +5,8 @@ info:
     fusing the two structuring scores. There is no document score and no approve/reject decision -- the
     threshold belongs to the caller. **Async pipeline:** the structuring service POSTs /v1/scoring/jobs
     and gets 202; this service scores in the background, stores the result, and POSTs the stage callback
-    carrying the final result to the orchestrator. /v1/scoring/confidence is the same work, synchronous.
+    carrying the final result to the orchestrator. /v1/scoring-direct scores a structuring result synchronously,
+    for testing this stage alone; /v1/scoring/confidence runs the trust model alone on a prepared payload.
     All endpoints except /health require an X-API-Key header.
 
 
@@ -179,10 +180,10 @@ paths:
         service, not by the orchestrator.**
 
 
-        Records the job (`scoring_jobs`, idempotent per request_id), answers **202 immediately**, then
-        in the background: builds the ML team''s scoring payload from the chained guardrails + OCR + structuring
-        results, runs the trust model, stores the result (`scoring_results`), and POSTs the `SCORING`
-        callback, which carries the **final result** of the request.
+        Records the job (`nilam_scoring_jobs`, idempotent per request_id), answers **202 immediately**,
+        then in the background: builds the ML team''s scoring payload from the chained guardrails + OCR
+        + structuring results, runs the trust model, stores the result (`nilam_scoring_results`), and
+        POSTs the `SCORING` callback, which carries the **final result** of the request.
 
 
         The outcome is two per-field confidences. There is no document-level score and no approve / reject
@@ -360,9 +361,9 @@ paths:
       summary: Backlog of this stage's undelivered callbacks and hand-offs
       description: 'Operational view of the transactional outbox (`PIPELINE_OUTBOX`): how many callbacks
         and hand-offs of this stage are still to be delivered, how old the oldest one is, and how many
-        were given up on (dead letters). No other service watches the `pipeline_outbox` table, so this
-        is where a monitor should look; the relay also logs a warning when the backlog is older than `PIPELINE_OUTBOX_STALE_AFTER_SECONDS`
-        or a dead letter is waiting.'
+        were given up on (dead letters). No other service watches the `nilam_pipeline_outbox` table, so
+        this is where a monitor should look; the relay also logs a warning when the backlog is older than
+        `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` or a dead letter is waiting.'
       operationId: getScoringOutboxStatus
       responses:
         '200':
@@ -513,6 +514,148 @@ paths:
                 pipeline_last_stage: scoring
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/scoring-direct:
+    post:
+      tags:
+      - Direct
+      summary: Score a structured document now, synchronous (no job, no callback)
+      description: '**For testing one stage on its own (QC).** Takes the output of the previous stages,
+        the structuring result (`data` of `POST /v1/structuring-direct`, or the `result` of a structuring
+        job) and, like the pipeline, the OCR result and the guardrails report it depends on, builds the
+        scoring payload from them, runs the trust model, and answers with the scoring result in the body.
+        Nothing is recorded: no `nilam_scoring_jobs` row, no callback, no outcome row, so it never touches
+        the orchestrator''s data.
+
+
+        The answer is exactly what `GET /v1/scoring/jobs/{request_id}` reports as `result`: the probabilities
+        per field (internal names), the trust model''s own thresholds, the exact payload that was scored,
+        and `decisions`, the 0/1 per contract field with the threshold used (`column_confidence_threshold`
+        of the request, else the trust model''s own). `ocr` left out gives null document scores, `guardrails`
+        left out a null guardrails probability; the model works with that input missing.'
+      operationId: scoreDirect
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoringDirectRequest'
+        required: true
+      responses:
+        '200':
+          description: The structured document was scored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoringDirectResponse'
+              examples:
+                scored:
+                  summary: A household of one
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: Success
+                    data:
+                      document_type: kk
+                      fields:
+                        nomor_kk: 0.9412
+                        nama_kepala_keluarga: 0.8871
+                      anggota_keluarga:
+                      - nama_lengkap: 0.9702
+                        nik: 0.9655
+                        pendidikan: 0.841
+                        jenis_pekerjaan: 0.7733
+                        status_hubungan_dalam_keluarga: 0.9218
+                        ayah: 0.8064
+                        ibu: 0.7951
+                      - nama_lengkap: 0.9333
+                        nik: 0.951
+                        pendidikan: 0.7126
+                        status_hubungan_dalam_keluarga: 0.9047
+                        ayah: 0.7702
+                        ibu: 0.7588
+                      model: kk-trust-mock-v1
+                      payload:
+                        structuring: '{...the §7.3 structuring result, whole...}'
+                        guardrail_probability: 0.0287
+                        guardrail_verdict: accepted
+                        avg_doc_score: 0.814
+                        min_doc_score: 0.2822
+                        text_regions_count: 177
+                      decisions:
+                        no_kk:
+                          value: '9901012609260001'
+                          confidence: 0
+                        nama_kepala_keluarga:
+                          value: BUDI SANTOSO
+                          confidence: 1
+                          threshold: 0.8
+                        anggota_keluarga:
+                        - nama_lengkap:
+                            value: BUDI SANTOSO
+                            confidence: 1
+                            threshold: 0.9
+                          nik:
+                            value: '9901011203850001'
+                            confidence: 1
+                            threshold: 0.9637
+                          pendidikan:
+                            value: S1
+                            confidence: 0
+                            threshold: 0.9929
+                          jenis_pekerjaan:
+                            value: KARYAWAN SWASTA
+                            confidence: 0
+                            threshold: 0.9
+                          status_hubungan_dalam_rumah_tangga:
+                            value: KEPALA KELUARGA
+                            confidence: 1
+                            threshold: 0.9
+                          ayah:
+                            value: SUTRISNO
+                            confidence: 0
+                            threshold: 0.9353
+                          ibu:
+                            value: SITI AMINAH
+                            confidence: 0
+                            threshold: 0.9
+                    request_id: REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        '400':
+          description: An unsupported `document_type`
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 400
+                status_desc: Bad Request
+                message: 'Unsupported document_type: ktp. Supported: [''kk'']'
+                errors: BAD_REQUEST
+                pipeline_last_stage: scoring
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 401
+                status_desc: Unauthorized
+                message: Invalid or missing API key
+                errors: UNAUTHORIZED
+                pipeline_last_stage: scoring
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                status_code: 422
+                status_desc: Unprocessable Entity
+                message: 'body.structuring: Field required'
+                errors: VALIDATION_ERROR
+                pipeline_last_stage: scoring
+      security:
+      - APIKeyHeader: []
   /v1/scoring/confidence:
     post:
       tags:
@@ -1177,7 +1320,7 @@ components:
       additionalProperties: true
       type: object
       title: OcrPayload
-      description: Result of the OCR stage (`ocr_results`), forwarded to structuring and scoring.
+      description: Result of the OCR stage (`nilam_ocr_results`), forwarded to structuring and scoring.
     OutboxRelease:
       properties:
         stage:
@@ -1294,8 +1437,8 @@ components:
           type: integer
           title: Dead Letters
           description: Messages given up on (a 4xx from the receiver, or 5xx for longer than `PIPELINE_OUTBOX_MAX_AGE_SECONDS`).
-            They stay in `pipeline_outbox` with `failed_at` and `last_error` for inspection and are never
-            retried; anything above 0 needs a human
+            They stay in `nilam_pipeline_outbox` with `failed_at` and `last_error` for inspection and
+            are never retried; anything above 0 needs a human
           examples:
           - 0
       type: object
@@ -1378,6 +1521,106 @@ components:
       - checks
       title: ReadyResponse
       description: '`GET /ready`.'
+    ScoringDirectRequest:
+      properties:
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: Echoed in the response; optional, nothing is recorded under it
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        document_type:
+          type: string
+          title: Document Type
+          description: Only `kk` is supported; anything else is 400
+          default: kk
+          examples:
+          - kk
+        guardrails:
+          anyOf:
+          - $ref: '#/components/schemas/GuardrailsResult'
+          - type: 'null'
+          description: 'The guardrails report (`data` of `POST /v1/guardrails/check`): its `document.probability_bad`
+            is the model''s guardrails feature. Left out: null, as when the pipeline runs without guardrails'
+        ocr:
+          anyOf:
+          - $ref: '#/components/schemas/OcrPayload'
+          - type: 'null'
+          description: 'The extraction service''s output (`data` of `POST /v1/extraction/extract`): `avg_doc_score`,
+            `min_doc_score` and `text_regions_count` are read from it. Left out: null'
+        structuring:
+          $ref: '#/components/schemas/StructuringPayload'
+          description: 'The structuring service''s output: `data` of `POST /v1/structuring-direct`, or
+            the `result` of `GET /v1/structuring/jobs/{request_id}`'
+        column_confidence_threshold:
+          anyOf:
+          - additionalProperties:
+              type: number
+            type: object
+          - type: 'null'
+          title: Column Confidence Threshold
+          description: 'Per field, from the central orchestrator: the trust model''s probability that
+            the field''s value is correct must reach it for the field''s `confidence` to be `1` (else
+            `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
+            (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
+            `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
+            threshold for every field; a key for a single field overrides it. A field left out (or the
+            whole map omitted) uses the trust model''s own threshold for that field; a field the model
+            has none for (`no_kk`) is then `0`. Decides the 0/1 `confidence` of `decisions` in the answer'
+          examples:
+          - all_field: 0.8
+          - nik: 0.8
+            no_kk: 0.9
+      type: object
+      required:
+      - structuring
+      title: ScoringDirectRequest
+      description: '`POST /v1/scoring-direct`: the previous stages'' outputs, nothing of the pipeline
+        run.'
+    ScoringDirectResponse:
+      properties:
+        status_code:
+          type: integer
+          title: Status Code
+          description: Same as the HTTP status code
+          default: 200
+          examples:
+          - 200
+        status_desc:
+          type: string
+          title: Status Desc
+          description: Reason phrase of `status_code`
+          default: OK
+          examples:
+          - OK
+        message:
+          type: string
+          title: Message
+          description: Human-readable outcome
+          default: Success
+          examples:
+          - Success
+        errors:
+          type: 'null'
+          title: Errors
+          description: Always null on success
+        request_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Request Id
+          description: 'The request_id this response belongs to: the one sent in the form / body / path,
+            otherwise the `X-Request-ID` header, otherwise one generated by the service'
+          examples:
+          - REQ_9cb01af2-493d-446d-b191-af120333f6d0
+        data:
+          $ref: '#/components/schemas/ScoringJobResult'
+      type: object
+      required:
+      - data
+      title: ScoringDirectResponse
     ScoringJobRequest:
       properties:
         request_id:
@@ -1410,7 +1653,7 @@ components:
           - type: 'null'
           description: 'Result of the structuring stage. Left out when the structuring service hands off
             by reference (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads
-            `structuring_results` (and `ocr_results`) of the shared database'
+            `nilam_structuring_results` (and `nilam_ocr_results`) of the shared database'
         pipeline_name_sequence:
           anyOf:
           - items:
@@ -2012,7 +2255,7 @@ components:
       - kode_pos
       - tanggal_dikeluarkan
       title: StructuringPayload
-      description: Result of the structuring stage (`structuring_results`), forwarded to scoring.
+      description: Result of the structuring stage (`nilam_structuring_results`), forwarded to scoring.
   securitySchemes:
     APIKeyHeader:
       type: apiKey
@@ -2024,6 +2267,8 @@ tags:
   description: 'Asynchronous pipeline stage: 202, background work, callback'
 - name: Callbacks
   description: Requests this service SENDS to the orchestrator (see Webhooks)
+- name: Direct
+  description: 'This stage alone on the previous stages'' outputs, synchronous: nothing recorded (QC)'
 - name: Scoring
   description: Per-field confidence from the trust model, synchronous
 - name: Health

@@ -13,15 +13,21 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY libs/ocr_common ./libs/ocr_common
 RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 
+RUN pip install --no-cache-dir google-cloud-storage
+
+COPY scripts/fetch_weights.py ./scripts/fetch_weights.py
 COPY services/extraction/app ./app
 
-RUN useradd --create-home --shell /bin/bash appuser
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p weights \
+    && chown appuser weights
 USER appuser
 
-ENV PORT=8042
+ENV PORT=8042 \
+    WEIGHTS_DIR=/app/weights
 EXPOSE 8042
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8042\")}/health', timeout=3)" || exit 1
 
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "python scripts/fetch_weights.py extraction && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 
+from ocr_common.content_types import upload_content_type
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json, ocr_aggregates
 from ocr_common.pipeline import EXTRACTION, InvalidSequence, StagePipeline, checked_sequence
 from ocr_common.pipeline.outbox_status import (
@@ -126,9 +127,9 @@ def _parse_sequence(raw: str | None) -> list[str] | None:
         "**Step 2 of the pipeline, asynchronous: the start of the OCR -> structuring -> scoring chain.** "
         "Called by the orchestrator from its `POST /v1/extract-ocr` once the guardrails model passed the "
         "document; the central orchestrator does not call it. Calling it directly skips the guardrails check.\n\n"
-        "Records the job (`ocr_jobs`, idempotent per request_id), answers **202 immediately**, then in the "
+        "Records the job (`nilam_ocr_jobs`, idempotent per request_id), answers **202 immediately**, then in the "
         "background: reads the document (`file`, or downloads `file_url`), runs detection + recognition, stores "
-        "`{text, score, poly}` per line (`ocr_results`), and hands the job to the structuring service -- result, "
+        "`{text, score, poly}` per line (`nilam_ocr_results`), and hands the job to the structuring service -- result, "
         "hand-off and the orchestrator's outcome row in one transaction.\n\n"
         "**This stage never rejects a document.** An image with no readable text is a successful job whose "
         "`texts` is empty; it is the structuring rules that reject it, so every content-based rejection has one "
@@ -212,7 +213,8 @@ async def submit_job(
     upload, url = resolve_intake(file, file_url)
     source: Source
     if upload is not None:
-        source = (await upload.read(), upload.filename or "", upload.content_type)
+        content = await upload.read()
+        source = (content, upload.filename or "", upload_content_type(upload.content_type, content))
     else:
         assert url is not None
         source = url

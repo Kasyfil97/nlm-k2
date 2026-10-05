@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Extract OCR"], dependencies=[Depends(verify_api_key)])
 
 RID = "OCR_9cb01af2-493d-446d-b191-af120333f6d0"
-INVALID_PARAMS_MESSAGE = "params must be valid JSON: an object, or a quoted string"
 INVALID_SEQUENCE_CODE = "INVALID_PIPELINE_SEQUENCE"
 INVALID_THRESHOLD_CODE = "INVALID_THRESHOLD"
 # `pipeline_last_stage` of a request this service refuses itself, before calling any pipeline service.
@@ -53,7 +52,6 @@ ENTRY = "orchestrator"
 #: dokumentasinya tidak bisa menyimpang lagi dari nilainya.
 UPLOAD_LIMIT = upload_limit_label(DEFAULT_MAX_UPLOAD_BYTES)
 
-_PARAMS = {"nik": "9901011203850001", "refno": "PK19039Y8U"}
 _DATA = {
     "no_kk": {"value": "9901012609260001", "confidence": 1},
     "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "confidence": 1},
@@ -78,57 +76,41 @@ _DATA = {
         },
     ],
 }
-_COMPLETED = extract_body(
-    200,
-    COMPLETED_MESSAGE,
-    data=_DATA,
-    job_status="completed",
-    guardrails=0,
-    errors=None,
-    request_id=RID,
-    document_type="kk",
-    params=_PARAMS,
-)
-_PROCESSING = extract_body(
-    202,
-    PROCESSING_MESSAGE,
-    job_status="processing",
-    request_id=RID,
-    document_type="kk",
-    params=_PARAMS,
-)
+_COMPLETED = extract_body(200, COMPLETED_MESSAGE, data=_DATA, guardrails=0, request_id=RID)
+_PROCESSING = extract_body(202, PROCESSING_MESSAGE, request_id=RID)
 _REJECTED = extract_body(
     400,
     "Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga",
     errors=REJECTED_CODE,
-    job_status="failed",
     guardrails=1,
     request_id=RID,
-    document_type="kk",
-    params=_PARAMS,
     pipeline_last_stage="guardrails",
 )
 _FAILED = extract_body(
     422,
     "structuring stage failed: parser raised on an unexpected layout",
     errors="STRUCTURING_FAILED",
-    job_status="failed",
     guardrails=0,
     request_id=RID,
-    document_type="kk",
-    params=_PARAMS,
     pipeline_last_stage="structuring",
 )
 
 _CONTRACT_TABLE = (
-    "| Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |\n"
+    "| Outcome | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |\n"
     "|---|---|---|---|---|---|\n"
-    "| Finished | 200 | `completed` | the fields | `0` | null |\n"
-    "| Still running | 202 | `processing` | null | null | null |\n"
-    f"| Rejected by the guardrails model | 400 | `failed` | null | `1` | `{REJECTED_CODE}` |\n"
-    f"| Rejected by the KK validity gate | 400 | `failed` | null | `1` | `{REJECTED_CODE}` |\n"
-    "| A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or "
-    "`SCORING_FAILED` |\n\n"
+    "| Finished | 200 | the fields | `0` | null | null |\n"
+    "| Still running | 202 | null | null | null | null |\n"
+    f"| Rejected by the guardrails model | 400 | null | `1` | `{REJECTED_CODE}` | `guardrails` |\n"
+    f"| Rejected by the KK validity gate | 400 | null | `1` | `{REJECTED_CODE}` | `structuring` |\n"
+    "| A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or "
+    "`SCORING_FAILED` | the service that failed |\n\n"
+    "The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running, "
+    "4xx / 5xx failed or refused.\n\n"
+    "`pipeline_last_stage` is null on a success answer (200, 202) and names the service an error comes from: "
+    "a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`, "
+    "`scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this service "
+    "refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`, thresholds, "
+    "`document_type`, an unknown request_id).\n\n"
 )
 
 
@@ -150,7 +132,7 @@ STAGE_ERROR_CODES = {
 }
 
 
-def _stage_error_body(exc: StageError, *, request_id: str, document_type: str, params: Any) -> dict[str, Any]:
+def _stage_error_body(exc: StageError, *, request_id: str) -> dict[str, Any]:
     """The answer when calling a pipeline service failed (unreachable, timed out, refused the file, answered
     wrongly): the error envelope's status and message, in the extract-ocr shape, naming that service."""
     if exc.status_code >= 500:
@@ -160,25 +142,17 @@ def _stage_error_body(exc: StageError, *, request_id: str, document_type: str, p
         exc.message,
         errors=STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
         request_id=request_id,
-        document_type=document_type,
-        params=params,
         pipeline_last_stage=exc.service,
     )
 
 
 def _stage_error_response(code: int, description: str, service: str, message: str) -> dict[str, Any]:
-    example = extract_body(
-        code, message, errors=STAGE_ERROR_CODES[code], request_id=RID, document_type="kk", pipeline_last_stage=service
-    )
+    example = extract_body(code, message, errors=STAGE_ERROR_CODES[code], request_id=RID, pipeline_last_stage=service)
     return {
         "model": ExtractOcrResponse,
         "description": description,
         "content": {"application/json": {"example": example}},
     }
-
-
-class _InvalidParams(Exception):
-    pass
 
 
 class _InvalidThreshold(Exception):
@@ -234,18 +208,6 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
     return validate_sequence(values)
 
 
-def _parse_params(raw: str | None) -> Any:
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except ValueError as exc:
-        raise _InvalidParams from exc
-    if not isinstance(value, dict | str):
-        raise _InvalidParams
-    return value
-
-
 @router.post(
     "/v1/extract-ocr",
     response_model=ExtractOcrResponse,
@@ -265,12 +227,12 @@ def _parse_params(raw: str | None) -> Any:
         "threshold, else `0`. The threshold is `column_confidence_threshold` for that field when sent, else the "
         "trust model's own (the point above which every held-out sample of the field was correct); `no_kk` has "
         f"none, so it is `0` unless the request gives it one. An unreadable threshold is `422` "
-        f"`{INVALID_THRESHOLD_CODE}` and nothing runs. `params` is returned as sent.\n\n"
+        f"`{INVALID_THRESHOLD_CODE}` and nothing runs.\n\n"
         "**Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring. "
         "Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member with "
         "both a NIK and a name. `message` is the gate's Indonesian reason. A rejected document is still a "
         "`DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.\n\n"
-        "**Refused before anything runs** (plain error envelope, no `job_status`): a document above "
+        "**Refused before anything runs** (plain error envelope, no `guardrails`): a document above "
         f"`MAX_UPLOAD_BYTES` ({UPLOAD_LIMIT} by default) answers `413`, and a PDF with more than "
         "`MAX_DOCUMENT_PAGES` (2) pages answers `400`. Both carry an Indonesian `message` the client can show "
         "as is. JPEG, PNG and PDF are accepted; of a PDF only the first page is judged and read.\n\n"
@@ -278,10 +240,9 @@ def _parse_params(raw: str | None) -> Any:
         "`structuring`, `scoring`: guardrails may be left out at the front and the end cut off, but nothing in "
         f"the middle may be skipped and the order may not change (else `422` `{INVALID_SEQUENCE_CODE}` and "
         "nothing runs). Omitted: all four. The last one ends the request and its result is `data`, as it is: the "
-        "guardrails report, the OCR result, the structuring result, or the nine fields after scoring; "
-        "`pipeline_last_stage` names it. Without `guardrails` the file checks above still run and the KK "
-        "validity gate still rejects; the trust model gets no guardrails probability and works with that input "
-        "missing.\n\n"
+        "guardrails report, the OCR result, the structuring result, or the nine fields after scoring. Without "
+        "`guardrails` the file checks above still run and the KK validity gate still rejects; the trust model "
+        "gets no guardrails probability and works with that input missing.\n\n"
         "On 202 the result arrives by callback (sent by the pipeline stages), and can be read with "
         "`GET /v1/extract-ocr/{request_id}`. Give this call an HTTP timeout well above `PIPELINE_WAIT_SECONDS` "
         "(e.g. +15 s) to cover a slow guardrails check or hand-off.\n\n"
@@ -328,7 +289,7 @@ def _parse_params(raw: str | None) -> Any:
             "model": ExtractOcrResponse,
             "description": (
                 "A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`; "
-                "`message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence` is "
+                "`message` says why), `pipeline_name_sequence` is "
                 f"not a valid sequence (`{INVALID_SEQUENCE_CODE}`), a threshold cannot be read "
                 f"(`{INVALID_THRESHOLD_CODE}`), or a required field is missing (`VALIDATION_ERROR`)"
             ),
@@ -364,13 +325,6 @@ async def extract_ocr(
     document_type: str = Form(
         DOCUMENT_TYPE, description="Document type chosen by the client. Only `kk` is supported", examples=["kk"]
     ),
-    params: str | None = Form(
-        None,
-        description=(
-            "Client metadata as JSON: an object, or a quoted string. Not interpreted; returned unchanged in `params`"
-        ),
-        examples=['{"nik": "9901011203850001", "refno": "PK19039Y8U"}'],
-    ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
     pipeline_name_sequence: list[str] | None = Form(
@@ -401,18 +355,6 @@ async def extract_ocr(
     settings: Settings = Depends(get_settings),
 ):
     received_at = time.monotonic()
-    try:
-        parsed_params = _parse_params(params)
-    except _InvalidParams:
-        response.status_code = 422
-        return extract_body(
-            422,
-            INVALID_PARAMS_MESSAGE,
-            errors="INVALID_PARAMS",
-            request_id=request_id,
-            document_type=document_type,
-            pipeline_last_stage=ENTRY,
-        )
     if document_type != DOCUMENT_TYPE:
         response.status_code = 400
         return extract_body(
@@ -420,7 +362,6 @@ async def extract_ocr(
             f"Unsupported document_type: {document_type}. Supported: {DOCUMENT_TYPE}",
             errors="UNSUPPORTED_DOCUMENT_TYPE",
             request_id=request_id,
-            document_type=document_type,
             pipeline_last_stage=ENTRY,
         )
     try:
@@ -432,7 +373,6 @@ async def extract_ocr(
             f"Invalid pipeline_name_sequence: {exc}",
             errors=INVALID_SEQUENCE_CODE,
             request_id=request_id,
-            document_type=document_type,
             pipeline_last_stage=ENTRY,
         )
     try:
@@ -448,7 +388,6 @@ async def extract_ocr(
             str(exc),
             errors=INVALID_THRESHOLD_CODE,
             request_id=request_id,
-            document_type=document_type,
             pipeline_last_stage=ENTRY,
         )
 
@@ -472,14 +411,12 @@ async def extract_ocr(
         )
     except StageError as exc:
         response.status_code = exc.status_code
-        return _stage_error_body(exc, request_id=request_id, document_type=document_type, params=parsed_params)
+        return _stage_error_body(exc, request_id=request_id)
     finally:
         reset_request_id(token)
     status_code, body = extract_response(
         outcome,
         request_id=request_id,
-        document_type=document_type,
-        params=parsed_params,
         threshold=settings.field_confidence_threshold,
         column_thresholds=column_thresholds,
     )
@@ -497,10 +434,9 @@ async def extract_ocr(
         "`pipeline_name_sequence` stored with its extraction job, and answers in "
         'the same contract as `POST /v1/extract-ocr` ("Finished" meaning finished by now):\n\n'
         + _CONTRACT_TABLE
-        + "Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is always "
-        "null here (it is not stored) and `document_type` is `kk`.\n\n"
+        + "Use it for a request that was answered `202`, e.g. when a callback did not arrive.\n\n"
         "**No stage job.** A request that never reached a stage is answered from its last guardrails verdict "
-        "(`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
+        "(`nilam_guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report as "
         "`data` when guardrails was its only service. **404** otherwise: refused before the check, still being "
         "judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).\n\n"
         "**Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it became a "
@@ -511,19 +447,19 @@ async def extract_ocr(
     responses={
         200: success_examples(
             "Finished",
-            completed=("The OCR result", {**_COMPLETED, "params": None}),
+            completed=("The OCR result", _COMPLETED),
         ),
         202: {
             **success_examples(
                 "Still running",
-                processing=("Still processing", {**_PROCESSING, "params": None}),
+                processing=("Still processing", _PROCESSING),
             ),
             "model": ExtractOcrResponse,
         },
         400: {
             "model": ExtractOcrResponse,
             "description": (
-                "Rejected by the KK validity gate or, read from guardrails_results, by the guardrails model "
+                "Rejected by the KK validity gate or, read from nilam_guardrails_results, by the guardrails model "
                 f"(`{REJECTED_CODE}`, `guardrails: 1`)"
             ),
             "content": {
@@ -531,7 +467,6 @@ async def extract_ocr(
                     "example": {
                         **_REJECTED,
                         "message": "Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap",
-                        "params": None,
                     }
                 }
             },
@@ -548,7 +483,7 @@ async def extract_ocr(
         422: {
             "model": ExtractOcrResponse,
             "description": "A pipeline stage failed (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`)",
-            "content": {"application/json": {"example": {**_FAILED, "params": None}}},
+            "content": {"application/json": {"example": _FAILED}},
         },
         500: _stage_error_response(
             500,
@@ -576,14 +511,12 @@ async def get_extract_ocr(
         outcome = await service.status(request_id)
     except StageError as exc:
         response.status_code = exc.status_code
-        return _stage_error_body(exc, request_id=request_id, document_type=DOCUMENT_TYPE, params=None)
+        return _stage_error_body(exc, request_id=request_id)
     finally:
         reset_request_id(token)
     status_code, body = extract_response(
         outcome,
         request_id=request_id,
-        document_type=DOCUMENT_TYPE,
-        params=None,
         threshold=settings.field_confidence_threshold,
         column_thresholds=outcome.get("column_thresholds"),
     )

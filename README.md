@@ -41,7 +41,7 @@ structuring masih stub.
 [`docs/decisions/2026-09-29-selaras-nilam.md`](docs/decisions/2026-09-29-selaras-nilam.md):
 
 - `pipeline_name_sequence` menggantikan `skip_guardrails`. Nama tahap OCR-nya `extraction`.
-- Orchestrator mencatat setiap putusan guardrails di `guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
+- Orchestrator mencatat setiap putusan guardrails di `nilam_ocr_kk.nilam_guardrails_results` (butuh `DATABASE_URL`, migrasi `0002`).
 - PDF diterima bawaan; hanya halaman 1 yang dinilai dan dibaca.
 - `EXTRACTION_BACKEND=paddle` memanggil server PaddleOCR di `POST /ocr`, dengan `poly` diteruskan utuh.
 - Ada endpoint OCR sinkron `POST /v1/extraction/extract` yang menjawab `OcrPayload` §7.1.
@@ -51,6 +51,20 @@ structuring masih stub.
 - Tiap field `data` kini `{"value", "confidence": 0 | 1}` seperti nilam; `bin` dan `auto` dihapus.
 - Threshold per request: `column_confidence_threshold` (per field kontrak), `guardrails_confidence_threshold`.
 - `errors` selalu kode stabil (mis. `EMPTY_FILE`, `DOWNSTREAM_UNAVAILABLE`), dan setiap error membawa `pipeline_last_stage`.
+
+**Draf 15 (update nilam 29 September – 5 Oktober)**, rinciannya di
+[`docs/api-contract.md`](docs/api-contract.md) dan [`integration.md`](integration.md):
+
+- Jawaban `extract-ocr` tanpa `job_status`, `document_type`, `params`; kode HTTP yang menyatakan keadaan.
+  `pipeline_last_stage` `null` pada 200/202, hanya menyebut asal error. Field form `params` diabaikan.
+- Callback hasil sesuai kontrak Orkestrasi pusat: `result` = `data` jawaban 200, `guardrails` 0/1, penolakan
+  sebagai `completed` + `result: null` + `guardrails: 1`, `409 RESULT_NOT_READY` dikirim ulang, batas umur
+  `ORCHESTRATION_CALLBACK_MAX_AGE_SECONDS` (600), saklar `ORCHESTRATION_CALLBACK_ENABLED`.
+- Endpoint QC satu tahap: `POST /v1/structuring-direct` dan `POST /v1/scoring-direct`.
+- Semua tabel di schema `nilam_ocr_kk` dengan awalan `nilam_` (migrasi `0003`, lihat [`db/README.md`](db/README.md)).
+- Upload dengan tipe yang tidak didukung (`application/octet-stream`, `jpg`, ...) dibaca dari tanda tangan berkasnya.
+- Tools laptop: [`tools/tracker`](tools/tracker) (UI pipeline, outbox, callback, skenario gagal) dan
+  [`tools/load-tester`](tools/load-tester) (k6).
 
 - Requirements: [`docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md`](docs/brainstorms/2026-09-26-nlm-k2-tiga-service-pertama-requirements.md)
 - Rencana implementasi: [`docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md`](docs/plans/2026-09-26-001-feat-nlm-k2-tiga-service-pertama-plan.md)

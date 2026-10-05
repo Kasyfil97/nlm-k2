@@ -2,8 +2,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-JobStatus = Literal["pending", "processing", "completed", "failed"]
-
 
 class ContractField(BaseModel):
     value: str = Field(
@@ -48,7 +46,7 @@ class KkData(BaseModel):
     """`data` of a completed request: nine fields, and nothing else.
 
     Structuring extracts 11 document fields and 15 per member; only these leave. The rest stay in
-    `structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.
+    `nilam_structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.
     """
 
     no_kk: ContractField = Field(..., description="The 16-digit KK number")
@@ -69,7 +67,7 @@ class ExtractOcrResponse(BaseModel):
     data: KkData | dict[str, Any] | None = Field(
         None,
         description=(
-            "The result when `job_status` is `completed`; null otherwise. The nine fields when scoring ended the "
+            "The result on 200 (finished); null otherwise. The nine fields when scoring ended the "
             "request; the result of the last service of `pipeline_name_sequence`, as it is, when the sequence "
             "ends earlier (the guardrails report, the OCR result, or the structuring result)"
         ),
@@ -81,22 +79,13 @@ class ExtractOcrResponse(BaseModel):
     pipeline_last_stage: Literal["orchestrator", "guardrails", "extraction", "structuring", "scoring"] | None = Field(
         None,
         description=(
-            "The service this answer comes from, named as in `pipeline_name_sequence`: the last service of the "
-            "sequence when `completed`; the one that rejected (`guardrails`, `structuring`) or failed; the one "
-            "still running on 202; the one that could not be reached or answered an error. `orchestrator` when "
-            "this service refused the request itself before calling any pipeline service (file checks, "
-            "`pipeline_name_sequence`, thresholds, `params`, `document_type`)"
+            "Null on a success answer (200 finished, 202 still running). On an error, the service it comes "
+            "from, named as in `pipeline_name_sequence`: the one that rejected (`guardrails`, `structuring`) or "
+            "failed; the one that could not be reached or answered an error. `orchestrator` when this service "
+            "refused the request itself before calling any pipeline service (file checks, "
+            "`pipeline_name_sequence`, thresholds, `document_type`, an unknown request_id)"
         ),
-        examples=["scoring"],
-    )
-    document_type: str | None = Field(None, description="Document type of the request", examples=["kk"])
-    job_status: JobStatus | None = Field(
-        None,
-        description=(
-            "`completed` (200), `processing` (202), or `failed`; null when the request was refused before "
-            "anything was processed"
-        ),
-        examples=["completed"],
+        examples=["structuring"],
     )
     guardrails: Literal[0, 1] | None = Field(
         None,
@@ -106,12 +95,4 @@ class ExtractOcrResponse(BaseModel):
             "the check"
         ),
         examples=[0],
-    )
-    params: Any = Field(
-        None,
-        description=(
-            "The `params` sent with `POST /v1/extract-ocr`, returned unchanged; null when not sent. Not stored, so "
-            "always null on `GET /v1/extract-ocr/{request_id}`"
-        ),
-        examples=[{"nik": "9901011203850001", "refno": "PK19039Y8U"}],
     )

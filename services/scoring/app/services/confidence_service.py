@@ -1,5 +1,9 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
+
+from ocr_common.errors import BadRequest
+from ocr_common.kk import DOCUMENT_TYPE, scored_fields
+from ocr_common.types import ScoringResult
 
 from app.ml.base import TrustModel
 
@@ -17,6 +21,41 @@ class ConfidenceService:
 
     def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._model.predict(payload)
+
+    def score(
+        self,
+        document_type: str,
+        guardrails: dict[str, Any] | None,
+        ocr: dict[str, Any] | None,
+        structuring: dict[str, Any],
+        threshold: float,
+        column_thresholds: Mapping[str, float] | None = None,
+    ) -> ScoringResult:
+        """The scoring stage's result for the chained stage results: the payload built from them, the trust
+        model's probabilities, and the 0/1 decision per contract field with the threshold that decided it. The
+        same for a job and for `/v1/scoring-direct`."""
+        if document_type != DOCUMENT_TYPE:
+            raise BadRequest(f"Unsupported document_type: {document_type}. Supported: ['{DOCUMENT_TYPE}']")
+        payload = self.payload_from_chain(guardrails, ocr, structuring)
+        result = self.predict(payload)
+        stored: dict[str, Any] = {
+            "document_type": document_type,
+            "fields": result["fields"],
+            "anggota_keluarga": result["anggota_keluarga"],
+            "model": result.get("model"),
+            "payload": payload,
+        }
+        # The thresholds and bin edges are STORED with the scores, not just used here. The
+        # orchestrator rebuilds the same `data` from this row through `contract_fields`, and §8.5
+        # requires the two to agree exactly; carrying the model's own numbers in the result makes
+        # that true by construction, where a shared env var would only make it likely.
+        for key in ("thresholds", "bin_edges"):
+            if result.get(key):
+                stored[key] = result[key]
+        # The 0/1 decision per contract field, with the threshold that decided it (as nilam stores its
+        # `fields`): the outcome row and the orchestrator's POST / GET all project from this one place.
+        stored["decisions"] = scored_fields(structuring, stored, threshold, column_thresholds)
+        return cast(ScoringResult, stored)
 
     @staticmethod
     def payload_from_chain(

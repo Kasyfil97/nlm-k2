@@ -124,7 +124,10 @@ async def test_a_write_that_fails_is_logged_and_does_not_raise(tmp_path, caplog)
 
 
 def test_the_testing_endpoints_write_their_own_table():
-    assert SqlGuardrailsLog("sqlite+aiosqlite://", table_prefix="testing_")._table.name == "testing_guardrails_results"
+    assert (
+        SqlGuardrailsLog("sqlite+aiosqlite://", table_prefix="testing_")._table.name
+        == "nilam_testing_guardrails_results"
+    )
 
 
 async def test_the_sequence_is_written_and_the_last_verdict_read_back(database):
@@ -163,10 +166,9 @@ def test_the_get_of_a_document_rejected_by_guardrails_answers_like_its_post(clie
 
     assert response.status_code == 400
     body = response.json()
-    assert (body["errors"], body["guardrails"], body["job_status"], body["pipeline_last_stage"]) == (
+    assert (body["errors"], body["guardrails"], body["pipeline_last_stage"]) == (
         "DOWNSTREAM_VALIDATION_ERROR",
         1,
-        "failed",
         "guardrails",
     )
     assert body["message"] == posted.json()["message"]
@@ -180,7 +182,7 @@ def test_the_get_of_a_guardrails_only_request_answers_with_the_report(client, au
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["job_status"], body["guardrails"], body["pipeline_last_stage"]) == ("completed", 0, "guardrails")
+    assert (body["guardrails"], body["pipeline_last_stage"]) == (0, None)
     assert body["data"] == posted.json()["data"] == ACCEPTED_REPORT
 
 

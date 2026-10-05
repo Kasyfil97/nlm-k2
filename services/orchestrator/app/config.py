@@ -40,6 +40,22 @@ class Settings(BaseServiceSettings):
     database_url: str | None = None
     guardrails_log_timeout_seconds: float = Field(2.0, gt=0)
 
+    # Cloud SQL Python Connector — alternatif DATABASE_URL untuk deployment di GCP.
+    cloudsql_instance: str | None = None
+    db_engine: str = "postgres"
+    db_name: str | None = None
+    db_user: str = ""
+    db_pass: str = ""
+    cloudsql_ip_type: str = "PRIVATE"
+
+    @model_validator(mode="after")
+    def _resolve_cloudsql(self) -> Self:
+        from ocr_common.pipeline.database import CLOUDSQL_SENTINEL
+
+        if self.cloudsql_instance and self.db_name and not self.database_url:
+            self.database_url = CLOUDSQL_SENTINEL
+        return self
+
     # Rate limit and CORS. Kontrak §12 mendaftarkan keduanya "dipertahankan apa adanya", tetapi struktur
     # yang disalin tidak punya keduanya -- ditemukan saat Unit 4. Orchestrator satu-satunya service yang
     # terekspos ke luar jaringan, jadi keduanya hidup di sini saja.

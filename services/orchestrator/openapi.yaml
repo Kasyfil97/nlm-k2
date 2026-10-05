@@ -186,22 +186,33 @@ paths:
         within the wait):
 
 
-        | Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |
+        | Outcome | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
 
         |---|---|---|---|---|---|
 
-        | Finished | 200 | `completed` | the fields | `0` | null |
+        | Finished | 200 | the fields | `0` | null | null |
 
-        | Still running | 202 | `processing` | null | null | null |
+        | Still running | 202 | null | null | null | null |
 
-        | Rejected by the guardrails model | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        | Rejected by the guardrails model | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails`
         |
 
-        | Rejected by the KK validity gate | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        | Rejected by the KK validity gate | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring`
         |
 
-        | A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
-        |
+        | A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED` |
+        the service that failed |
+
+
+        The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running,
+        4xx / 5xx failed or refused.
+
+
+        `pipeline_last_stage` is null on a success answer (200, 202) and names the service an error comes
+        from: a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`,
+        `scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this
+        service refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`,
+        thresholds, `document_type`, an unknown request_id).
 
 
         `data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven
@@ -212,7 +223,7 @@ paths:
         `0`. The threshold is `column_confidence_threshold` for that field when sent, else the trust model''s
         own (the point above which every held-out sample of the field was correct); `no_kk` has none,
         so it is `0` unless the request gives it one. An unreadable threshold is `422` `INVALID_THRESHOLD`
-        and nothing runs. `params` is returned as sent.
+        and nothing runs.
 
 
         **Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring.
@@ -221,7 +232,7 @@ paths:
         still a `DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.
 
 
-        **Refused before anything runs** (plain error envelope, no `job_status`): a document above `MAX_UPLOAD_BYTES`
+        **Refused before anything runs** (plain error envelope, no `guardrails`): a document above `MAX_UPLOAD_BYTES`
         (5 MB by default) answers `413`, and a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers
         `400`. Both carry an Indonesian `message` the client can show as is. JPEG, PNG and PDF are accepted;
         of a PDF only the first page is judged and read.
@@ -232,9 +243,8 @@ paths:
         in the middle may be skipped and the order may not change (else `422` `INVALID_PIPELINE_SEQUENCE`
         and nothing runs). Omitted: all four. The last one ends the request and its result is `data`,
         as it is: the guardrails report, the OCR result, the structuring result, or the nine fields after
-        scoring; `pipeline_last_stage` names it. Without `guardrails` the file checks above still run
-        and the KK validity gate still rejects; the trust model gets no guardrails probability and works
-        with that input missing.
+        scoring. Without `guardrails` the file checks above still run and the KK validity gate still rejects;
+        the trust model gets no guardrails probability and works with that input missing.
 
 
         On 202 the result arrives by callback (sent by the pipeline stages), and can be read with `GET
@@ -325,12 +335,7 @@ paths:
                           value: RATNA SARI
                           confidence: 0
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                    document_type: kk
-                    job_status: completed
                     guardrails: 0
-                    params:
-                      nik: '9901011203850001'
-                      refno: PK19039Y8U
         '202':
           description: 'Accepted, but still running when the wait ran out: the result follows by callback'
           content:
@@ -345,11 +350,6 @@ paths:
                     status_desc: Accepted
                     message: OCR job accepted; still processing
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                    document_type: kk
-                    job_status: processing
-                    params:
-                      nik: '9901011203850001'
-                      refno: PK19039Y8U
         '400':
           description: 'Rejected by the guardrails model or by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`,
             `guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above `MAX_DOCUMENT_PAGES`
@@ -365,13 +365,8 @@ paths:
                 message: Gambar terlalu buram untuk diproses, mohon unggah ulang foto Kartu Keluarga
                 errors: DOWNSTREAM_VALIDATION_ERROR
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
-                job_status: failed
-                guardrails: 1
                 pipeline_last_stage: guardrails
-                params:
-                  nik: '9901011203850001'
-                  refno: PK19039Y8U
+                guardrails: 1
         '401':
           description: Missing or invalid X-API-Key
           content:
@@ -412,9 +407,8 @@ paths:
                 pipeline_last_stage: orchestrator
         '422':
           description: A pipeline stage failed within the wait (`OCR_FAILED`, `STRUCTURING_FAILED`, `SCORING_FAILED`;
-            `message` says why), `params` is not valid JSON (`INVALID_PARAMS`), `pipeline_name_sequence`
-            is not a valid sequence (`INVALID_PIPELINE_SEQUENCE`), a threshold cannot be read (`INVALID_THRESHOLD`),
-            or a required field is missing (`VALIDATION_ERROR`)
+            `message` says why), `pipeline_name_sequence` is not a valid sequence (`INVALID_PIPELINE_SEQUENCE`),
+            a threshold cannot be read (`INVALID_THRESHOLD`), or a required field is missing (`VALIDATION_ERROR`)
           content:
             application/json:
               schema:
@@ -425,13 +419,8 @@ paths:
                 message: 'structuring stage failed: parser raised on an unexpected layout'
                 errors: STRUCTURING_FAILED
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
-                job_status: failed
-                guardrails: 0
                 pipeline_last_stage: structuring
-                params:
-                  nik: '9901011203850001'
-                  refno: PK19039Y8U
+                guardrails: 0
         '500':
           description: The guardrails or extraction service failed, or answered in an unexpected shape
             (`DOWNSTREAM_SERVER_ERROR`); `pipeline_last_stage` names it
@@ -445,7 +434,6 @@ paths:
                 message: guardrails service returned an unexpected response
                 errors: DOWNSTREAM_SERVER_ERROR
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: guardrails
         '503':
           description: The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
@@ -460,7 +448,6 @@ paths:
                 message: extraction service is unavailable
                 errors: DOWNSTREAM_UNAVAILABLE
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: extraction
         '504':
           description: The guardrails service, its model, or the extraction service did not answer in
@@ -475,7 +462,6 @@ paths:
                 message: extraction service timed out after 10.0s
                 errors: DOWNSTREAM_TIMEOUT
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: extraction
       security:
       - APIKeyHeader: []
@@ -489,32 +475,42 @@ paths:
         as `POST /v1/extract-ocr` ("Finished" meaning finished by now):
 
 
-        | Outcome | HTTP | `job_status` | `data` | `guardrails` | `errors` |
+        | Outcome | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
 
         |---|---|---|---|---|---|
 
-        | Finished | 200 | `completed` | the fields | `0` | null |
+        | Finished | 200 | the fields | `0` | null | null |
 
-        | Still running | 202 | `processing` | null | null | null |
+        | Still running | 202 | null | null | null | null |
 
-        | Rejected by the guardrails model | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        | Rejected by the guardrails model | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails`
         |
 
-        | Rejected by the KK validity gate | 400 | `failed` | null | `1` | `DOWNSTREAM_VALIDATION_ERROR`
+        | Rejected by the KK validity gate | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring`
         |
 
-        | A stage failed | 422 | `failed` | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
-        |
+        | A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED` |
+        the service that failed |
 
 
-        Use it for a request that was answered `202`, e.g. when a callback did not arrive. `params` is
-        always null here (it is not stored) and `document_type` is `kk`.
+        The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running,
+        4xx / 5xx failed or refused.
+
+
+        `pipeline_last_stage` is null on a success answer (200, 202) and names the service an error comes
+        from: a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`,
+        `scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this
+        service refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`,
+        thresholds, `document_type`, an unknown request_id).
+
+
+        Use it for a request that was answered `202`, e.g. when a callback did not arrive.
 
 
         **No stage job.** A request that never reached a stage is answered from its last guardrails verdict
-        (`guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the report
-        as `data` when guardrails was its only service. **404** otherwise: refused before the check, still
-        being judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).
+        (`nilam_guardrails_results`), as its POST was: `400` when guardrails rejected it, `200` with the
+        report as `data` when guardrails was its only service. **404** otherwise: refused before the check,
+        still being judged, passed but its hand-off to extraction failed, or no verdict kept (no `DATABASE_URL`).
 
 
         **Limitation.** A hand-off between two stages that failed for good (its retries ran out, or it
@@ -596,8 +592,6 @@ paths:
                           value: RATNA SARI
                           confidence: 0
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                    document_type: kk
-                    job_status: completed
                     guardrails: 0
         '202':
           description: Still running
@@ -611,13 +605,11 @@ paths:
                     status_desc: Accepted
                     message: OCR job accepted; still processing
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                    document_type: kk
-                    job_status: processing
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '400':
-          description: 'Rejected by the KK validity gate or, read from guardrails_results, by the guardrails
-            model (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`)'
+          description: 'Rejected by the KK validity gate or, read from nilam_guardrails_results, by the
+            guardrails model (`DOWNSTREAM_VALIDATION_ERROR`, `guardrails: 1`)'
           content:
             application/json:
               example:
@@ -626,10 +618,8 @@ paths:
                 message: Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap
                 errors: DOWNSTREAM_VALIDATION_ERROR
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
-                job_status: failed
-                guardrails: 1
                 pipeline_last_stage: guardrails
+                guardrails: 1
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '401':
@@ -681,10 +671,8 @@ paths:
                 message: 'structuring stage failed: parser raised on an unexpected layout'
                 errors: STRUCTURING_FAILED
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
-                job_status: failed
-                guardrails: 0
                 pipeline_last_stage: structuring
+                guardrails: 0
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
         '500':
@@ -698,7 +686,6 @@ paths:
                 message: 'structuring service error (401): Invalid or missing API key'
                 errors: DOWNSTREAM_SERVER_ERROR
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
@@ -712,7 +699,6 @@ paths:
                 message: structuring service is unavailable
                 errors: DOWNSTREAM_UNAVAILABLE
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
@@ -726,7 +712,6 @@ paths:
                 message: structuring service timed out after 10.0s
                 errors: DOWNSTREAM_TIMEOUT
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
-                document_type: kk
                 pipeline_last_stage: structuring
               schema:
                 $ref: '#/components/schemas/ExtractOcrResponse'
@@ -747,15 +732,6 @@ components:
           default: kk
           examples:
           - kk
-        params:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Params
-          description: 'Client metadata as JSON: an object, or a quoted string. Not interpreted; returned
-            unchanged in `params`'
-          examples:
-          - '{"nik": "9901011203850001", "refno": "PK19039Y8U"}'
         file:
           anyOf:
           - type: string
@@ -929,10 +905,9 @@ components:
             type: object
           - type: 'null'
           title: Data
-          description: The result when `job_status` is `completed`; null otherwise. The nine fields when
-            scoring ended the request; the result of the last service of `pipeline_name_sequence`, as
-            it is, when the sequence ends earlier (the guardrails report, the OCR result, or the structuring
-            result)
+          description: The result on 200 (finished); null otherwise. The nine fields when scoring ended
+            the request; the result of the last service of `pipeline_name_sequence`, as it is, when the
+            sequence ends earlier (the guardrails report, the OCR result, or the structuring result)
         errors:
           anyOf:
           - type: string
@@ -958,35 +933,13 @@ components:
             - scoring
           - type: 'null'
           title: Pipeline Last Stage
-          description: 'The service this answer comes from, named as in `pipeline_name_sequence`: the
-            last service of the sequence when `completed`; the one that rejected (`guardrails`, `structuring`)
-            or failed; the one still running on 202; the one that could not be reached or answered an
-            error. `orchestrator` when this service refused the request itself before calling any pipeline
-            service (file checks, `pipeline_name_sequence`, thresholds, `params`, `document_type`)'
+          description: 'Null on a success answer (200 finished, 202 still running). On an error, the service
+            it comes from, named as in `pipeline_name_sequence`: the one that rejected (`guardrails`,
+            `structuring`) or failed; the one that could not be reached or answered an error. `orchestrator`
+            when this service refused the request itself before calling any pipeline service (file checks,
+            `pipeline_name_sequence`, thresholds, `document_type`, an unknown request_id)'
           examples:
-          - scoring
-        document_type:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Document Type
-          description: Document type of the request
-          examples:
-          - kk
-        job_status:
-          anyOf:
-          - type: string
-            enum:
-            - pending
-            - processing
-            - completed
-            - failed
-          - type: 'null'
-          title: Job Status
-          description: '`completed` (200), `processing` (202), or `failed`; null when the request was
-            refused before anything was processed'
-          examples:
-          - completed
+          - structuring
         guardrails:
           anyOf:
           - type: integer
@@ -1000,13 +953,6 @@ components:
             was refused before the check'
           examples:
           - 0
-        params:
-          title: Params
-          description: The `params` sent with `POST /v1/extract-ocr`, returned unchanged; null when not
-            sent. Not stored, so always null on `GET /v1/extract-ocr/{request_id}`
-          examples:
-          - nik: '9901011203850001'
-            refno: PK19039Y8U
       type: object
       required:
       - status_code
@@ -1076,7 +1022,7 @@ components:
 
         Structuring extracts 11 document fields and 15 per member; only these leave. The rest stay in
 
-        `structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.'
+        `nilam_structuring_results` and are readable through `GET /v1/structuring/jobs/{request_id}`.'
     KkMember:
       properties:
         nama_lengkap:
