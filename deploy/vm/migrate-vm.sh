@@ -31,16 +31,20 @@ echo "=== Migrasi DB ==="
 echo "Command  : alembic $ALEMBIC_CMD"
 echo ""
 
+# Pakai image migrasi khusus (db/Dockerfile) — satu-satunya yang punya alembic + folder db/.
+# Image service (extraction, dll) sengaja ramping dan tidak memuat alembic.
+docker compose -f docker-compose.vm.yml build migrate
+
 docker compose -f docker-compose.vm.yml run --rm \
   --no-deps \
   -e DATABASE_URL="$DATABASE_URL" \
-  extraction \
-  sh -c "python -m alembic -c /app/db/alembic.ini $ALEMBIC_CMD" 2>&1 \
+  migrate \
+  python -m alembic -c db/alembic.ini $ALEMBIC_CMD \
   || {
     echo ""
     echo "GAGAL. Pastikan:"
     echo "  1. DATABASE_URL benar dan VM bisa menjangkau private IP-nya (port 5432)"
-    echo "  2. Image sudah dibangun: docker compose -f docker-compose.vm.yml build extraction"
+    echo "  2. User DB punya hak CREATE pada database (untuk membuat schema nilam_ocr_kk)"
     exit 1
   }
 

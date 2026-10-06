@@ -97,6 +97,17 @@ services:
     ports:
       - "127.0.0.1:${SCORING_HOST_PORT:-8064}:8064"
 
+  # Migrasi DB (alembic) — image khusus db/Dockerfile, satu-satunya yang memuat alembic + folder db/.
+  # Profile "migrate" supaya TIDAK ikut `docker compose up`. Dijalankan via deploy/vm/migrate-vm.sh.
+  # DATABASE_URL dibaca dari services/extraction/.env (env_file), jadi tidak di-source di shell.
+  migrate:
+    profiles: ["migrate"]
+    build:
+      context: .
+      dockerfile: db/Dockerfile
+    image: nlm-k2-migrate:latest
+    env_file: services/extraction/.env
+
 networks:
   default:
     driver: bridge
