@@ -21,3 +21,4 @@ README.md
 requirements-dev.txt
 scripts
 !scripts/fetch_weights.py
+!scripts/gcs_wif.py
