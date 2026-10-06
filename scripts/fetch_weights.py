@@ -96,7 +96,15 @@ def _download(uri: str, target: Path) -> None:
 
 
 def _download_gcs(uri: str, target: Path) -> None:
-    """Unduh satu objek GCS via Python client library; fallback ke subprocess gsutil jika library tidak ada."""
+    """Unduh satu objek GCS. Urutan: WIF (kalau env WIF lengkap -- untuk VM yang metadata server-nya
+    menolak service account dengan 403), lalu google-cloud-storage via ADC, lalu subprocess gsutil."""
+    try:
+        import gcs_wif
+    except ImportError:
+        gcs_wif = None  # modul tidak ikut di-copy ke image; pakai jalur ADC di bawah
+    if gcs_wif is not None and gcs_wif.wif_configured():
+        gcs_wif.download(uri, target)
+        return
     try:
         from google.cloud import storage as gcs
     except ImportError:

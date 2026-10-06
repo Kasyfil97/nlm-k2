@@ -61,11 +61,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   echo "Buat file tersebut terlebih dahulu, lalu jalankan ulang script ini."
   echo "Contoh isi minimal (salin dari services/<nama>/.env.example jika ada):"
   echo ""
-  echo "  CLOUDSQL_INSTANCE=<project>:<region>:<instance>"
-  echo "  DB_NAME=bribrain_ocr"
-  echo "  DB_USER="
-  echo "  DB_PASS="
-  echo "  CLOUDSQL_IP_TYPE=PRIVATE"
+  echo "  DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<private-ip>:5432/bribrain_ocr"
   echo "  API_KEY=<isi-api-key>"
   echo "  ENVIRONMENT=production"
   exit 1
@@ -93,10 +89,8 @@ for svc in "${SERVICES_TO_CHECK[@]}"; do
   # Cek DB vars hanya untuk service yang pakai database
   for db_svc in "${DB_SERVICES[@]}"; do
     if [ "$svc" = "$db_svc" ]; then
-      CLOUDSQL=$(get_val "$ENV_FILE" CLOUDSQL_INSTANCE)
-      DBNAME=$(get_val "$ENV_FILE" DB_NAME)
-      [ -z "$CLOUDSQL" ] && INVALID+=("$ENV_FILE — CLOUDSQL_INSTANCE belum diisi")
-      [ -z "$DBNAME"   ] && INVALID+=("$ENV_FILE — DB_NAME belum diisi")
+      DBURL=$(get_val "$ENV_FILE" DATABASE_URL)
+      [ -z "$DBURL" ] && INVALID+=("$ENV_FILE — DATABASE_URL belum diisi")
       break
     fi
   done
