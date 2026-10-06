@@ -16,14 +16,13 @@ cd "$(dirname "$0")/../.."
 
 ALEMBIC_CMD="${1:-upgrade head}"
 
-# Baca env dari extraction/.env kalau tidak di-set dari luar.
-# `tr -d '\r'` lebih dulu: .env yang dibuat/di-scp dari Windows berakhiran CRLF, dan tanpa ini
-# baris kosongnya tersisa sebagai `\r` yang di-source jadi perintah ("$'\r': command not found").
-if [ -f services/extraction/.env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source <(tr -d '\r' < services/extraction/.env | grep -v '^#' | grep -v '^$')
-  set +a
+# Ambil DATABASE_URL dari extraction/.env kalau belum di-set dari luar. Dibaca baris-per-baris,
+# BUKAN `source`: .env berisi nilai dengan spasi/JSON (mis. EXTRACTION_OCR_QUERY={...}) yang akan
+# dieksekusi sebagai perintah kalau di-source, dan berakhiran CRLF kalau dibuat di Windows --
+# `tr -d '\r'` membuang CR itu.
+if [ -z "${DATABASE_URL:-}" ] && [ -f services/extraction/.env ]; then
+  DATABASE_URL=$(tr -d '\r' < services/extraction/.env | grep '^DATABASE_URL=' | head -n1 | cut -d= -f2-)
+  export DATABASE_URL
 fi
 
 : "${DATABASE_URL:?DATABASE_URL harus di-set (lihat services/extraction/.env)}"
