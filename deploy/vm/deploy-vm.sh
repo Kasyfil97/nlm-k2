@@ -61,7 +61,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   echo "Buat file tersebut terlebih dahulu, lalu jalankan ulang script ini."
   echo "Contoh isi minimal (salin dari services/<nama>/.env.example jika ada):"
   echo ""
-  echo "  DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<private-ip>:5432/bribrain_ocr"
+  echo "  DATABASE_URL=postgresql+asyncpg://<user>:<pass>@<private-ip>:5432/nilam"
   echo "  API_KEY=<isi-api-key>"
   echo "  ENVIRONMENT=production"
   exit 1
