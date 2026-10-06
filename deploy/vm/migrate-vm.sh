@@ -16,11 +16,13 @@ cd "$(dirname "$0")/../.."
 
 ALEMBIC_CMD="${1:-upgrade head}"
 
-# Baca env dari extraction/.env kalau tidak di-set dari luar
+# Baca env dari extraction/.env kalau tidak di-set dari luar.
+# `tr -d '\r'` lebih dulu: .env yang dibuat/di-scp dari Windows berakhiran CRLF, dan tanpa ini
+# baris kosongnya tersisa sebagai `\r` yang di-source jadi perintah ("$'\r': command not found").
 if [ -f services/extraction/.env ]; then
   set -a
   # shellcheck disable=SC1091
-  source <(grep -v '^#' services/extraction/.env | grep -v '^$')
+  source <(tr -d '\r' < services/extraction/.env | grep -v '^#' | grep -v '^$')
   set +a
 fi
 
