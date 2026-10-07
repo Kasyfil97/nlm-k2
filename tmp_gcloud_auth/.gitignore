@@ -1,0 +1,14 @@
+# Secrets — this folder contains live Entra ID client secrets.
+# Nothing credential-bearing may ever be committed.
+
+*.env
+!*.env.example
+
+# The spreadsheet holds client secrets for ALL 11 service accounts.
+*.xlsx
+
+# Generated credential configs (ADC / external account)
+credential_config*.json
+
+__pycache__/
+*.pyc

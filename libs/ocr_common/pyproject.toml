@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-db = ["sqlalchemy>=2.0", "greenlet>=3.0"]
+db = ["sqlalchemy>=2.0", "greenlet>=3.0", "cloud-sql-python-connector[asyncpg]>=1.22"]
 elastic = ["elasticsearch>=8.0,<9"]  # pinned in requirements.txt: elasticsearch==8.19.3
 
 [tool.setuptools.packages.find]

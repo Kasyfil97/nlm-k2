@@ -12,7 +12,11 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 
 COPY db ./db
 
-RUN useradd --create-home --shell /bin/bash appuser
+# chown -R: file di-COPY sebagai root dengan mode sumbernya (0640 kalau repo di-clone dengan umask
+# 027), jadi appuser tak bisa baca db/alembic.ini -> alembic diam-diam menganggap config kosong
+# ("No 'script_location' key found"). Samakan dengan Dockerfile service lain.
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser /app
 USER appuser
 
 CMD ["python", "-m", "alembic", "-c", "db/alembic.ini", "upgrade", "head"]

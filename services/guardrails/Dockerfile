@@ -25,11 +25,12 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 RUN pip install --no-cache-dir google-cloud-storage
 
 COPY scripts/fetch_weights.py ./scripts/fetch_weights.py
+COPY scripts/gcs_wif.py ./scripts/gcs_wif.py
 COPY services/guardrails/app ./app
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p weights \
-    && chown appuser weights
+    && chown -R appuser /app
 USER appuser
 
 ENV PORT=8041 \

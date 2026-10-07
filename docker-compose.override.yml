@@ -1,0 +1,9 @@
+# Lokal saja (auto-dimuat `docker compose`): lewati langkah fetch_weights di entrypoint untuk
+# service yang dijalankan dengan backend `mock`/tanpa bobot. fetch_weights.py keluar 1 saat bobot
+# hilang (tanpa peduli backend), sehingga `fetch_weights && uvicorn` di CMD tak pernah sampai uvicorn.
+# Di sini uvicorn dijalankan langsung. JANGAN dipakai di VM/produksi.
+services:
+  guardrails:
+    command: ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port $${PORT}"]
+  scoring:
+    command: ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port $${PORT}"]

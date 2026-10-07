@@ -39,7 +39,7 @@ def _create_cloudsql_engine() -> AsyncEngine:
     DB_PASS diisi = password authentication biasa.
     """
     try:
-        from google.cloud.sql.connector import Connector, IPTypes
+        from google.cloud.sql.connector import IPTypes, create_async_connector
     except ImportError as exc:
         raise RuntimeError(
             "google-cloud-sql-connector tidak terinstall. "
@@ -58,9 +58,16 @@ def _create_cloudsql_engine() -> AsyncEngine:
     ip_type = IPTypes.PRIVATE if ip_type_str == "PRIVATE" else IPTypes.PUBLIC
     use_iam_auth = db_pass is None
 
-    connector = Connector()
+    # Connector dibuat lazy di dalam _creator, bukan di sini: Connector() default memulai event loop
+    # sendiri di thread background (agar .connect() sync bekerja), sehingga connect_async() dari app
+    # loop melempar ConnectorLoopError. create_async_connector() mengikat Connector ke event loop yang
+    # sedang berjalan — yaitu app loop tempat SQLAlchemy memanggil creator ini.
+    connector: Any = None
 
     async def _creator() -> Any:
+        nonlocal connector
+        if connector is None:
+            connector = await create_async_connector()
         return await connector.connect_async(
             instance,
             "asyncpg",

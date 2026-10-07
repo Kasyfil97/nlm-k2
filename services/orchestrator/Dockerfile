@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir --no-deps --no-build-isolation ./libs/ocr_common
 
 COPY services/orchestrator/app ./app
 
-RUN useradd --create-home --shell /bin/bash appuser
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser /app
 USER appuser
 
 ENV PORT=8040
