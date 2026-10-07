@@ -1,6 +1,8 @@
-"""CI check of migration 0003: a database at 0002, with its rows and its version table in `public`, ends up with
-every table and every row in `nilam_ocr_kk` under the `nilam_` names, keeps counting its ids where it left off, and
-survives a downgrade and an upgrade again. Ported from nilam.
+"""CI check of migrations 0003 and 0004. 0003: a database at 0002, with its rows and its version table in `public`,
+ends up with every table and every row in `nilam_ocr_kk` under the `nilam_` names, keeps counting its ids where it
+left off, and survives a downgrade and an upgrade again. Ported from nilam. 0004: the OCR stage's tables, rows
+included, become `nilam_ocr_extraction_*`, the new final-result tables take `nilam_ocr_results`, and the database
+matches `tables.py` (`alembic check`); back to 0003 and up again.
 
     DATABASE_URL=postgresql+asyncpg://... python db/check_schema_move.py   # an EMPTY database: it is rebuilt
 """
@@ -17,6 +19,7 @@ SCHEMA = "nilam_ocr_kk"
 PREFIX = "nilam_"
 VERSION_TABLE = "nilam_ocr_kk_alembic_version"
 OLD_VERSION_TABLE = "ocr_kk_alembic_version"
+NILAM_NAMING = "0003_nilam_naming"
 # The names before 0003; from 0003 on each one carries PREFIX.
 TABLES = [
     f"{lane}{name}"
@@ -28,6 +31,14 @@ TABLES = [
     )
 ]
 NEW_TABLES = [f"{PREFIX}{table}" for table in TABLES]
+# 0004: the OCR stage's tables are renamed, then `nilam_ocr_results` is created again as the final-result table.
+OCR_RENAMES = {
+    f"{PREFIX}{lane}ocr_{kind}": f"{PREFIX}{lane}ocr_extraction_{kind}"
+    for lane in ("", "testing_")
+    for kind in ("jobs", "results")
+}
+FINAL_TABLES = {f"{PREFIX}{lane}ocr_results" for lane in ("", "testing_")}
+HEAD_TABLES = {OCR_RENAMES.get(table, table) for table in NEW_TABLES} | FINAL_TABLES
 
 
 def alembic(*args: str) -> None:
@@ -78,8 +89,8 @@ async def counts(conn: asyncpg.Connection, schema: str, prefix: str = "") -> dic
 
 
 async def check_head(before: dict[str, int]) -> None:
-    alembic("upgrade", "head")
-    alembic("check")
+    """The state at 0003 (0004 has its own check, `check_ocr_extraction`)."""
+    alembic("upgrade", NILAM_NAMING)
     conn = await connect()
     try:
         old_names = set(TABLES) | set(NEW_TABLES) | {VERSION_TABLE, OLD_VERSION_TABLE}
@@ -123,6 +134,45 @@ async def check_head(before: dict[str, int]) -> None:
         await conn.close()
 
 
+async def check_ocr_extraction(before: dict[str, int]) -> None:
+    """0004 on the database 0003 left: renamed OCR tables with their rows, empty final tables, no drift."""
+    alembic("upgrade", "head")
+    alembic("check")
+    conn = await connect()
+    try:
+        assert await tables_in(conn, SCHEMA) == HEAD_TABLES | {VERSION_TABLE}
+        for old, new in OCR_RENAMES.items():
+            table = old.removeprefix(PREFIX)
+            rows = int(await conn.fetchval(f'SELECT count(*) FROM "{SCHEMA}"."{new}"'))
+            assert rows == before[table], (new, rows, before[table])
+        for table in FINAL_TABLES:
+            assert await conn.fetchval(f'SELECT count(*) FROM "{SCHEMA}"."{table}"') == 0, table
+        names = await conn.fetch(
+            "SELECT relname AS name FROM pg_class WHERE relnamespace = $1::regnamespace AND relkind = 'i' "
+            "UNION ALL SELECT conname FROM pg_constraint WHERE connamespace = $1::regnamespace",
+            SCHEMA,
+        )
+        # Nothing of the OCR stage is still named after its old tables; only the final tables' own objects are.
+        stale = [
+            row["name"]
+            for row in names
+            if any(old in row["name"] for old in OCR_RENAMES)
+            and not any(row["name"] in (f"{t}_pkey", f"idx_{t}_ds") for t in FINAL_TABLES)
+        ]
+        assert not stale, stale
+        try:
+            await conn.execute(
+                f"INSERT INTO {SCHEMA}.{PREFIX}ocr_extraction_results (request_id, result, ds) "
+                "VALUES ('NOPE', '{}', '')"
+            )
+        except asyncpg.ForeignKeyViolationError:
+            pass
+        else:
+            raise AssertionError("nilam_ocr_extraction_results lost its foreign key to nilam_ocr_extraction_jobs")
+    finally:
+        await conn.close()
+
+
 async def main() -> None:
     alembic("upgrade", "0002_guardrails_results")
     conn = await connect()
@@ -143,7 +193,12 @@ async def main() -> None:
     finally:
         await conn.close()
     await check_head(before)
+    await check_ocr_extraction(before)
+    alembic("downgrade", NILAM_NAMING)
+    await check_head(before)
+    await check_ocr_extraction(before)
     print(f"0003 moves every table and row from public to {SCHEMA} under {PREFIX}*, and back")
+    print("0004 renames the OCR stage's tables to *_ocr_extraction_* and adds the final results, and back")
 
 
 asyncio.run(main())

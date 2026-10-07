@@ -92,10 +92,6 @@ logger = logging.getLogger(__name__)
 #: of these from running at the same time.
 _PARSE_LOCK = threading.Lock()
 
-#: `rt` and `rw` are one printed cell ("016/004") that the parser splits. They share the recognition
-#: score of the box they came from, so both read `_meta.conf` under the parser's own key.
-DOC_CONF_KEY = {"rt": "rt_rw", "rw": "rt_rw"}
-
 
 class KKRegexStructurer:
     """Layout-aware structuring of a Kartu Keluarga from the boxes of §7.1."""
@@ -145,7 +141,7 @@ class KKRegexStructurer:
         document: dict[str, object] = {
             name: field(
                 _text(parsed.get(name)),
-                _score(doc_conf.get(DOC_CONF_KEY.get(name, name))),
+                _score(doc_conf.get(name)),
                 features=doc_vectors.get(name),
             )
             for name in DOC_FIELDS

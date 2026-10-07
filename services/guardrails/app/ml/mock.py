@@ -6,14 +6,13 @@ and R25 all send a file named after the outcome they expect -- so they are liste
 numbers they produce are fixed. `notkk` replaces the trigger the previous pipeline used for "not the
 expected document type".
 
-`reject_threshold` is None on purpose. The mock has no checkpoint, so it must not occupy the
-checkpoint rung of the R15 chain; leaving a 0.5 here would make that rung indistinguishable from the
-0.5 floor below it and hide a broken chain.
+The trigger words give a bad probability; like any bad image they are rejected only when the request
+sends a threshold (without one every document passes). `reject_threshold` is None: the mock has no checkpoint.
 """
 
 from typing import Any
 
-#: A file name containing any of these is judged bad. Lower-cased before matching.
+#: A file name containing any of these gets the bad probability. Lower-cased before matching.
 REJECT_TRIGGERS = ("blur", "invalid", "notkk")
 
 #: The two probabilities the mock ever returns. They are the contract's own example numbers, so a

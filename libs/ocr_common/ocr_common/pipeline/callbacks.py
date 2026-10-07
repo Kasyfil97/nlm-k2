@@ -177,8 +177,6 @@ _FINAL_STAGE = "SCORING"
 # `guardrails` of the result callback, as in the extract-ocr answer: 1 = rejected, 0 = passed.
 GUARDRAILS_PASSED = 0
 GUARDRAILS_REJECTED = 1
-# FIELD_CONFIDENCE_THRESHOLD's default: only for a SCORING body queued before `answer` and `decisions` existed.
-_LEGACY_THRESHOLD = 0.5
 
 
 def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
@@ -188,7 +186,7 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
 
     Completed (DONE of the stage that ends the request: scoring, or the last of a shorter
     pipeline_name_sequence). `result` is exactly the `data` the extract-ocr 200 answers with for the
-    same request (scoring: `no_kk`, `nama_kepala_keluarga` and `anggota_keluarga[]` with 0/1 confidences;
+    same request (scoring: `no_kk`, `nama_kepala_keluarga` and `anggota_keluarga[]` with their confidences;
     an earlier stage: its result as it is)::
 
         {"request_id", "status": "completed", "result": {...}, "guardrails": 0}
@@ -238,9 +236,8 @@ def result_callback_body(stage_body: dict[str, Any]) -> dict[str, Any] | None:
 
 def _legacy_answer(stage: str, final: dict[str, Any] | None) -> dict[str, Any] | None:
     """The answer of a DONE body queued before `answer` existed: an earlier stage's result as it is; for
-    scoring, the nine fields projected from the `decisions` stored with the scores, or decided with
-    FIELD_CONFIDENCE_THRESHOLD's default when even those are missing (the request's own thresholds were
-    not kept with the body)."""
+    scoring, the nine fields projected from the `decisions` stored with the scores, or, when even those are
+    missing, decided without thresholds (the request's own were not kept with the body): the probabilities."""
     if not final:
         return None
     if stage != _FINAL_STAGE:
@@ -248,7 +245,7 @@ def _legacy_answer(stage: str, final: dict[str, Any] | None) -> dict[str, Any] |
     scoring = final.get("scoring") or {}
     if scoring.get("decisions"):
         return dict(contract_data(scoring["decisions"]))
-    return dict(contract_fields(final.get("structuring") or {}, scoring, _LEGACY_THRESHOLD))
+    return dict(contract_fields(final.get("structuring") or {}, scoring))
 
 
 class ResultCallback:

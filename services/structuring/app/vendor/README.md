@@ -69,3 +69,25 @@ parse. That costs nothing: the parser is pure Python, so the GIL already seriali
 The adapter that maps this into the pipeline's §7.3 shape is
 [`app/ml/kk_regex.py`](../ml/kk_regex.py); it is ordinary repository code and is linted and typed
 like the rest.
+
+## `kk_model/` — model structuring m04 (`STRUCTURING_BACKEND=kk_model`)
+
+Fitur per kotak, pengelompokan ke anggota, kosakata tertutup, dan fitur per field untuk trust model
+`kk_field` di scoring. Asalnya ruang kerja OCR KK, `scoring/training/` (yang sendiri menyalin logika
+`structuring/training/` apa adanya). Bobotnya **tidak** ada di sini: `weights/kk_structuring_model.joblib`,
+diekspor oleh `scoring/training/export_nlm_k2.py`.
+
+| berkas | upstream sha256 | vendored sha256 |
+|---|---|---|
+| `features.py` | `24c8bcd0ec59f6977e8f79f72c012d49e8dc05e6687ebb12df69c294b1977bdb` | sama (byte-for-byte) |
+| `structure.py` | `ee3087839d66ddb45c6be4af85518c0f3af37eaefd69c6adff6b0f1075568a47` | `8af6f2186133ddc3b3b24d54e0ddf4fcf81cc1c2a146f92ecf307aa56a5719bd` |
+| `field_features.py` | `3c877642d51584e4c9efdbfe9208f0ae574dd40a48007e60722170199c869f38` | `1e9695dd1baae9a7b2983b85c0c24aceba26da23089fa049779f5fe48ca20338` |
+
+**Satu transformasi selain byte-for-byte**: tiga baris `from features import` / `from structure import`
+menjadi import relatif (`from .features import`), karena upstream mengimpornya sebagai modul tingkat atas.
+Tidak ada logika yang diubah. Menyegarkan: salin ulang ketiga berkas, ulangi transformasi import yang
+sama, lalu jalankan `make kk-model-parity` -- ia membandingkan keluaran service dengan hash keluaran
+training di `tests/fixtures/kk_model_baseline.json` (dibuat ulang dengan
+`export_nlm_k2.py --baseline`).
+
+Adapternya [`app/ml/kk_model.py`](../ml/kk_model.py).

@@ -61,6 +61,12 @@ MODELS: dict[str, dict[str, Any]] = {
         "uri_env": "SCORING_MODEL_URI",
         "target": _service_weights("scoring", "kk_trust_model.joblib"),
     },
+    # Pasangan `kk_field` di scoring: keduanya diekspor bersama oleh scoring/training/export_nlm_k2.py
+    # dan harus diganti bersama -- trust model hanya sah di atas structuring yang melatihnya.
+    "structuring": {
+        "uri_env": "STRUCTURING_MODEL_URI",
+        "target": _service_weights("structuring", "kk_structuring_model.joblib"),
+    },
     "extraction": {
         "uri_env": "EXTRACTION_WEIGHTS_URI",
         "target_dir": _service_weights("extraction"),

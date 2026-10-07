@@ -616,7 +616,7 @@ async def _cleanup_db(run: str) -> dict[str, int] | None:
         return None
     pattern = f"LT_{run}\\_%"
     tables = [f"{t}_jobs" for t in ctx["tables"].values()] + [f"{t}_results" for t in ctx["tables"].values()]
-    tables += ["nilam_pipeline_outbox", "nilam_guardrails_results", "orchestration_extract_ocr"]
+    tables += ["nilam_pipeline_outbox", "nilam_guardrails_results", "nilam_ocr_results", "orchestration_extract_ocr"]
     deleted: dict[str, int] = {}
     async with pool.acquire() as conn:
         for table in tables:

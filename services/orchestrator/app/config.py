@@ -36,7 +36,8 @@ class Settings(BaseServiceSettings):
     pipeline_poll_interval_seconds: float = Field(0.5, gt=0)
 
     # The shared database, only to keep every guardrails verdict (guardrails_results), the rejected ones
-    # included. Unset: nothing is kept. A write is best-effort, bounded by GUARDRAILS_LOG_TIMEOUT_SECONDS.
+    # included, and the final answer of every request (ocr_results). Unset: nothing is kept. A write is
+    # best-effort, bounded by GUARDRAILS_LOG_TIMEOUT_SECONDS.
     database_url: str | None = None
     guardrails_log_timeout_seconds: float = Field(2.0, gt=0)
 

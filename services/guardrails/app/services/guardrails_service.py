@@ -13,7 +13,7 @@ from typing import Any
 
 from starlette.concurrency import run_in_threadpool
 
-from app.clients.reject_threshold import REJECT, RejectThreshold, Threshold, default_threshold
+from app.clients.reject_threshold import Threshold
 from app.config import Settings
 from app.ml.base import UnassessableImage
 
@@ -44,34 +44,31 @@ class GuardrailsService:
     """The model's verdict on a document, and nothing else: type, size and the choice between
     `file` and `file_url` are settled before this is called."""
 
-    def __init__(self, model: Any, settings: Settings, threshold: RejectThreshold | None = None):
-        """Without `threshold`, a chain with no remote source: `GUARDRAILS_THRESHOLD`, else the
-        model's own, else 0.5."""
+    def __init__(self, model: Any, settings: Settings):
         self._model = model
         self._settings = settings
-        self._threshold = threshold or RejectThreshold(
-            None, "", default_threshold(settings.guardrails_threshold, model), cache_seconds=0
-        )
 
     async def check(
         self, filename: str, content_type: str | None, content: bytes, *, override: Threshold | None = None
     ) -> dict[str, Any]:
         """The §5.2 `data` block: `{passed, reason, document}`. `override` is the request's own threshold and
-        side; without it the configured chain decides, on the reject side."""
+        side; without it nothing is compared and the document passes, with `probability_bad` as the model gave
+        it (an image that cannot be judged still fails)."""
         if hasattr(self._model, "check_document"):
-            # The remote service judges under its own threshold, so neither the per-request
-            # override nor the chain applies; forcing one here would report a threshold that did
-            # not decide anything.
+            # The remote service judges under its own threshold, so the per-request override does
+            # not apply; forcing one here would report a threshold that did not decide anything.
             document = await self._model.check_document(filename, content, content_type)
         else:
-            threshold = override if override is not None else Threshold(await self._threshold.get(), REJECT)
-            document = await run_in_threadpool(self._assess, filename, content_type, content, threshold)
+            document = await run_in_threadpool(self._assess, filename, content_type, content, override)
 
         verdict = document["verdict"]
         return {"passed": verdict == VERDICT_ACCEPTED, "reason": reason_for(verdict), "document": document}
 
-    def _assess(self, filename: str, content_type: str | None, content: bytes, threshold: Threshold) -> dict[str, Any]:
-        """Runs the in-process model and turns its one probability into the document block."""
+    def _assess(
+        self, filename: str, content_type: str | None, content: bytes, threshold: Threshold | None
+    ) -> dict[str, Any]:
+        """Runs the in-process model and turns its one probability into the document block. Without a
+        threshold the document is accepted whatever the probability, and `threshold_used` is null."""
         try:
             probability_bad = round(float(self._model.assess(filename, content_type, content)), 4)
         except UnassessableImage as exc:
@@ -84,17 +81,17 @@ class GuardrailsService:
                 "probability_bad": None,
                 # The threshold that was in force, even though nothing was compared against it:
                 # the field records the configuration the request ran under.
-                "threshold_used": threshold.value,
-                "threshold_target": threshold.target,
+                "threshold_used": threshold.value if threshold else None,
+                "threshold_target": threshold.target if threshold else None,
             }
 
-        rejected = threshold.rejects(probability_bad)
+        rejected = threshold is not None and threshold.rejects(probability_bad)
         return {
             "verdict": VERDICT_REJECT if rejected else VERDICT_ACCEPTED,
             # Confidence in the verdict, not in "bad": the rejection is as confident as the
             # probability, the acceptance is as confident as its complement.
             "confidence": probability_bad if rejected else round(1.0 - probability_bad, 4),
             "probability_bad": probability_bad,
-            "threshold_used": threshold.value,
-            "threshold_target": threshold.target,
+            "threshold_used": threshold.value if threshold else None,
+            "threshold_target": threshold.target if threshold else None,
         }

@@ -30,35 +30,23 @@ DOCUMENT_TYPE = "kk"
 REJECTED_CODE = "DOWNSTREAM_VALIDATION_ERROR"
 
 # --- list A: internal names, used by structuring and scoring -------------------------------
+#
+# The nine fields structuring emits, scoring scores and the contract carries -- no more. The card has
+# seventeen more (alamat, agama, tanggal_lahir, ...), and structuring used to emit them as well; nothing
+# downstream read them, and the trained structuring model `kk_model` does not extract them at all, so
+# the payload stopped carrying them rather than carrying seventeen keys that are always empty.
 
 DOC_FIELDS: tuple[str, ...] = (
     "nomor_kk",
     "nama_kepala_keluarga",
-    "alamat",
-    "desa_kelurahan",
-    "rt",
-    "rw",
-    "kecamatan",
-    "kabupaten_kota",
-    "provinsi",
-    "kode_pos",
-    "tanggal_dikeluarkan",
 )
 
 MEMBER_FIELDS: tuple[str, ...] = (
     "nama_lengkap",
     "nik",
-    "jenis_kelamin",
-    "tempat_lahir",
-    "tanggal_lahir",
-    "agama",
     "pendidikan",
     "jenis_pekerjaan",
-    "golongan_darah",
-    "status_perkawinan",
-    "tanggal_perkawinan",
     "status_hubungan_dalam_keluarga",
-    "kewarganegaraan",
     "ayah",
     "ibu",
 )
@@ -95,8 +83,8 @@ MEMBER_PROJECTION: tuple[tuple[str, str], ...] = (
     ("ibu", "ibu"),
 )
 
-# The internal names scoring actually scores: the nine contract fields, no more. Each field needs
-# its own calibrator, and training 26 of them for 9 numbers anyone reads would be waste.
+# The internal names scoring scores: the nine contract fields, the same as list A now that structuring
+# emits only those. Kept as their own names because they say what the scoring code means.
 SCORED_DOC_FIELDS: tuple[str, ...] = tuple(internal for _, internal in DOC_PROJECTION)
 SCORED_MEMBER_FIELDS: tuple[str, ...] = tuple(internal for _, internal in MEMBER_PROJECTION)
 
@@ -203,6 +191,78 @@ DOC_CELL_FEATURES: tuple[str, ...] = (
     "confusable_ratio",
 )
 
+# --- list D: the field-level model pair, `kk_model` structuring + `kk_field` scoring ---------
+#
+# A second, independent pair: structuring m04 (a key per OCR box, then grouping and a closed
+# vocabulary) and the s11 trust model trained on ITS output. The trust model reads one vector per
+# filled field, the same for document and member fields, and is only valid on the structuring it was
+# trained with -- so `kk_field` scores a field only when its `features` carry every name below, and a
+# `kk_regex` vector (lists C) scores `None` rather than being read as something it is not.
+
+#: The 42 features `kk_model` emits for each of the nine scored fields (`field_features.NUM_FEATS`
+#: of the vendored model code; a structuring test holds the two equal).
+FIELD_FEATURES: tuple[str, ...] = (
+    # structure: box probabilities from the structuring model
+    "lg_conf",
+    "lg_struct_min",
+    "lg_pk_min",
+    "lg_pk_mean",
+    "margin_min",
+    "n_boxes",
+    "filled",
+    # OCR
+    "lg_ocr_min",
+    "lg_ocr_mean",
+    # closed vocabulary (0 for open fields)
+    "snapped",
+    "sim",
+    "raw_in_vocab",
+    # shape of the value
+    "len_norm",
+    "digit_frac",
+    "alpha_frac",
+    "n_tok",
+    "fmt16",
+    "nik_date_ok",
+    "region_match",
+    # document context
+    "n_members",
+    "key_coverage",
+    "member_rel",
+    # cross-checks between names, NIK consistency
+    "xname_exact",
+    "xname_near",
+    "xname_any",
+    "nik_dup",
+    "nik_gender",
+    "nik_tail0",
+    "sim_gap",
+    # raw OCR text
+    "n_weird",
+    "has_lower",
+    "has_label",
+    "digit_in_name",
+    "last_tok_len",
+    # geometry
+    "cpw_rel",
+    "cpw_dev",
+    "cand_pk_max",
+    "cand_n",
+    "edge_gap",
+    # document OCR quality
+    "doc_ocr_mean",
+    "doc_ocr_p10",
+    "member_n_filled",
+)
+
+#: Internal name -> the name the model pair was trained with, for the nine scored fields. Two differ;
+#: the trained name is what the one-hot columns and the text model's input are built from.
+MODEL_FIELD_NAMES: dict[str, str] = {
+    **{name: name for name in SCORED_DOC_FIELDS + SCORED_MEMBER_FIELDS},
+    "nomor_kk": "no_kk",
+    "jenis_pekerjaan": "pekerjaan",
+}
+
 
 CONTRACT_FIELDS: tuple[str, ...] = CONTRACT_DOC_FIELDS + CONTRACT_MEMBER_FIELDS
 
@@ -214,8 +274,8 @@ COLUMN_THRESHOLD_DESCRIPTION = (
     "`nama_kepala_keluarga`, and the seven member fields (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, "
     "`status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), a member field's threshold applying to every member. "
     "`all_field` sets one threshold for every field; a key for a single field overrides it. "
-    "A field left out (or the whole map omitted) uses the trust model's own threshold for that field; a field the "
-    "model has none for (`no_kk`) is then `0`"
+    "A field without a threshold (left out, or the whole map omitted) gets the trust model's probability itself "
+    "as `confidence`, a float from 0 to 1 (0 when there is no value)"
 )
 
 
@@ -262,32 +322,27 @@ def column_thresholds_from_json(raw: str | None) -> dict[str, float] | None:
 def contract_fields(
     structuring: Mapping[str, Any],
     scoring: Mapping[str, Any],
-    threshold: float,
     column_thresholds: Mapping[str, float] | None = None,
 ) -> ContractData:
-    """The `data` of the orchestrator's `extract-ocr` contract: nine fields, each `{value, confidence}`
-    with `confidence` 1 or 0, as in nilam. See `scored_fields` for how each field is decided."""
-    return contract_data(scored_fields(structuring, scoring, threshold, column_thresholds))
+    """The `data` of the orchestrator's `extract-ocr` contract: nine fields, each `{value, confidence}`,
+    `confidence` 1 or 0 for a field with a threshold and the probability itself for one without. See
+    `scored_fields` for how each field is decided."""
+    return contract_data(scored_fields(structuring, scoring, column_thresholds))
 
 
 def scored_fields(
     structuring: Mapping[str, Any],
     scoring: Mapping[str, Any],
-    threshold: float,
     column_thresholds: Mapping[str, float] | None = None,
 ) -> ScoredData:
     """`contract_fields` plus the threshold each field was decided with: what the scoring stage stores
-    (`decisions`), so the outcome row, the POST and the GET answer the same 0/1 for one request.
+    (`decisions`), so the outcome row, the POST and the GET answer the same for one request.
 
-    A field's `confidence` is 1 when it has a value and the trust model's probability reaches the field's
-    threshold, else 0. The threshold, first that applies:
-
-    1. `column_thresholds[contract name]` -- the central orchestrator's, for this request;
-    2. `scoring["thresholds"][internal name]` -- the trust model's own, the point above which every held-out
-       sample of that field was correct. They travel in the result because they belong to the trained model;
-    3. `threshold` (FIELD_CONFIDENCE_THRESHOLD), only for a result that carries no thresholds at all (the
-       `mock` backend). A result that does carry thresholds and leaves a field out is saying the field had
-       no such point (`nomor_kk` today), so that field is 0 unless the request gives it a threshold.
+    Only the request decides: a field's threshold is `column_thresholds[contract name]` (`all_field` is already
+    spread over every field by `parse_column_thresholds`). With one, `confidence` is 1 when the field has a value
+    and the trust model's probability reaches it, else 0. Without one, `confidence` is that probability as it
+    is, a float (0.0 when there is no value or no score). The trust model's own `scoring["thresholds"]` travel
+    in the result for reference but no longer decide.
 
     The member lists of `structuring` and `scoring` are **positionally aligned**. A length mismatch is a
     defect in this pipeline, not a property of the document, so it raises rather than truncating or
@@ -300,34 +355,27 @@ def scored_fields(
             f"anggota_keluarga length mismatch between structuring and scoring: {len(members)} vs {len(scored_members)}"
         )
 
-    model = scoring.get("thresholds") or {}
     columns = column_thresholds or {}
-    # A model that ships its own thresholds decides every field; the env fallback is for one that ships none.
-    fallback = None if model else threshold
 
-    def limit(out: str, internal: str) -> float | None:
-        for candidate in (columns.get(out), model.get(internal)):
-            if isinstance(candidate, int | float) and not isinstance(candidate, bool):
-                return float(candidate)
-        return fallback
+    def limit(out: str) -> float | None:
+        candidate = columns.get(out)
+        if isinstance(candidate, int | float) and not isinstance(candidate, bool):
+            return float(candidate)
+        return None
 
     doc_scores = scoring.get("fields") or {}
     data: dict[str, Any] = {
-        out: _field(structuring.get(internal), doc_scores.get(internal), limit(out, internal))
-        for out, internal in DOC_PROJECTION
+        out: _field(structuring.get(internal), doc_scores.get(internal), limit(out)) for out, internal in DOC_PROJECTION
     }
     data["anggota_keluarga"] = [
-        {
-            out: _field(member.get(internal), scores.get(internal), limit(out, internal))
-            for out, internal in MEMBER_PROJECTION
-        }
+        {out: _field(member.get(internal), scores.get(internal), limit(out)) for out, internal in MEMBER_PROJECTION}
         for member, scores in zip(members, scored_members, strict=True)
     ]
     return cast(ScoredData, data)
 
 
 def contract_data(scored: Mapping[str, Any]) -> ContractData:
-    """The `extract-ocr` `data` of stored scored fields: value and 0/1 confidence, without the threshold."""
+    """The `extract-ocr` `data` of stored scored fields: value and confidence, without the threshold."""
 
     def plain(field: Mapping[str, Any]) -> ContractField:
         return {"value": field["value"], "confidence": field["confidence"]}
@@ -340,10 +388,14 @@ def contract_data(scored: Mapping[str, Any]) -> ContractData:
 
 
 def _field(field: Mapping[str, Any] | None, score: Any, threshold: float | None) -> ScoredField:
-    """One decided field. `value` is always a string, `""` when not found, and the object is never null."""
+    """One decided field. `value` is always a string, `""` when not found, and the object is never null.
+    `confidence`: 0/1 against `threshold`, or the probability itself (a float) when there is none."""
     value = "" if field is None else str(field.get("value") or "").strip()
     numeric = isinstance(score, int | float) and not isinstance(score, bool)
-    confident = bool(value) and numeric and threshold is not None and float(score) >= threshold
+    if threshold is None:
+        probability = float(score) if value and numeric else 0.0
+        return {"value": value, "confidence": probability, "threshold": None}
+    confident = bool(value) and numeric and float(score) >= threshold
     return {"value": value, "confidence": 1 if confident else 0, "threshold": threshold}
 
 
@@ -354,8 +406,8 @@ def final_result(
     scoring: ScoringResult,
 ) -> FinalResult:
     """What the SCORING callback carries: the two stage payloads whole, plus the guardrails report
-    that was submitted. Nothing is flattened, so a consumer that wants the eleven-plus-fifteen
-    internal fields still has them and `contract_fields` stays the only place the nine are chosen."""
+    that was submitted. Nothing is flattened, so a consumer that wants the internal fields with their
+    scores and features still has them, and `contract_fields` stays the only place they are renamed."""
     return {
         "document_type": document_type,
         "structuring": structuring,

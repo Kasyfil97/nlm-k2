@@ -8,7 +8,6 @@ from functools import lru_cache
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.registry import Factory, build_backend
 
-from app.clients.reject_threshold import RejectThreshold, default_threshold
 from app.config import Settings, get_settings
 from app.ml.base import QualityBackend
 from app.ml.kk_quality import KKQualityModel
@@ -53,34 +52,8 @@ def get_quality_model() -> QualityBackend:
     return build_backend(QUALITY_BACKENDS, settings.guardrails_backend, settings, "guardrails")
 
 
-# --- clients ------------------------------------------------------------------------------
-
-
-@lru_cache
-def get_reject_threshold() -> RejectThreshold:
-    """The reject threshold from the central orchestrator (one per process: it holds the cache)."""
-    settings: Settings = get_settings()
-    client = None
-    if settings.guardrails_threshold_url:
-        headers = (
-            {"X-API-Key": settings.guardrails_threshold_api_key} if settings.guardrails_threshold_api_key else None
-        )
-        client = RemoteModelClient(
-            settings.guardrails_threshold_url,
-            settings.guardrails_threshold_timeout_seconds,
-            name="orchestrator reject threshold",
-            headers=headers,
-        )
-    return RejectThreshold(
-        client,
-        settings.guardrails_threshold_path,
-        default_threshold(settings.guardrails_threshold, get_quality_model()),
-        cache_seconds=settings.guardrails_threshold_cache_seconds,
-    )
-
-
 # --- services (cheap to build: one per request) ------------------------------------------
 
 
 def get_guardrails_service() -> GuardrailsService:
-    return GuardrailsService(get_quality_model(), get_settings(), get_reject_threshold())
+    return GuardrailsService(get_quality_model(), get_settings())

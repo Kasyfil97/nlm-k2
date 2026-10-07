@@ -64,8 +64,9 @@ def test_testing_tables_are_migrated_with_the_live_ones():
     assert {table.schema for table in tables} == {"nilam_ocr_kk"}
     names = {table.name for table in tables}
     assert all(name.startswith("nilam_") for name in names), names
-    for stage in ("ocr", "structuring", "scoring"):
+    for stage in ("ocr_extraction", "structuring", "scoring"):
         assert {f"nilam_testing_{stage}_jobs", f"nilam_testing_{stage}_results"} <= names
+    assert {"nilam_ocr_results", "nilam_testing_ocr_results"} <= names
     assert {"nilam_pipeline_outbox", "nilam_testing_pipeline_outbox"} <= names
     index_names = {index.name for index in outbox_table(MetaData(), "testing_").indexes}
     assert index_names == {
@@ -98,7 +99,7 @@ async def test_testing_pipeline_writes_only_the_testing_tables_and_sends_no_call
         orchestration_outcome_table="orchestration_extract_ocr",
         pipeline_outbox=True,
     )
-    pipeline = build_stage_pipeline(settings, stage=STAGE_OCR, table_prefix="ocr", testing=True)
+    pipeline = build_stage_pipeline(settings, stage=STAGE_OCR, table_prefix="ocr_extraction", testing=True)
     assert pipeline.callbacks is False
     assert pipeline.metrics_stage == "TESTING_OCR"
     assert isinstance(pipeline.outbox, SqlOutbox) and pipeline.outbox.table.name == "nilam_testing_pipeline_outbox"
@@ -117,8 +118,8 @@ async def test_testing_pipeline_writes_only_the_testing_tables_and_sends_no_call
 
     # DONE also shows no outcome row was written: its table does not exist here, so the write would fail the job.
     assert (await pipeline.get("REQ_T1"))["status"] == "DONE"
-    assert await _table_rows(database_url, "testing_ocr") == ["REQ_T1"]
-    assert await _table_rows(database_url, "ocr") == []
+    assert await _table_rows(database_url, "testing_ocr_extraction") == ["REQ_T1"]
+    assert await _table_rows(database_url, "ocr_extraction") == []
     async with database.get_engine(database_url).connect() as conn:
         outbox = (await conn.execute(select(pipeline.outbox.table.c.kind))).scalars().all()
     assert outbox == ["handoff"]  # the hand-off only: no callback queued
@@ -126,13 +127,13 @@ async def test_testing_pipeline_writes_only_the_testing_tables_and_sends_no_call
 
 async def test_live_pipeline_keeps_its_callbacks_and_metrics_label(database_url):
     settings = _settings(database_url=database_url, orchestration_url="http://orchestrator.test")
-    pipeline = build_stage_pipeline(settings, stage=STAGE_OCR, table_prefix="ocr")
+    pipeline = build_stage_pipeline(settings, stage=STAGE_OCR, table_prefix="ocr_extraction")
     assert pipeline.callbacks is True
     assert pipeline.metrics_stage == STAGE_OCR
 
 
 async def test_testing_results_read_the_testing_tables(database_url):
-    jobs, results = pipeline_tables("testing_ocr", MetaData())
+    jobs, results = pipeline_tables("testing_ocr_extraction", MetaData())
     async with database.get_engine(database_url).begin() as conn:
         await conn.execute(jobs.insert().values(request_id="REQ_T2", status="DONE", ds="20260924"))
         await conn.execute(results.insert().values(request_id="REQ_T2", result={"full_text": "T"}, ds="20260924"))
@@ -140,5 +141,5 @@ async def test_testing_results_read_the_testing_tables(database_url):
     settings = _settings(database_url=database_url, orchestration_url="http://orchestrator.test")
     testing_results, live_results = build_stage_results(settings, testing=True), build_stage_results(settings)
     assert testing_results is not None and live_results is not None
-    assert await testing_results.get("ocr", "REQ_T2") == {"full_text": "T"}
-    assert await live_results.get("ocr", "REQ_T2") is None
+    assert await testing_results.get("ocr_extraction", "REQ_T2") == {"full_text": "T"}
+    assert await live_results.get("ocr_extraction", "REQ_T2") is None

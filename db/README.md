@@ -13,7 +13,7 @@ membaca apa.
 ## Schema dan nama tabel
 
 Semua tabel milik repo ini tinggal di schema **`nilam_ocr_kk`**, bukan di `public`, dan setiap namanya
-berawalan **`nilam_`** (`nilam_ocr_kk.nilam_ocr_jobs`, `nilam_ocr_kk.nilam_testing_pipeline_outbox`, ...):
+berawalan **`nilam_`** (`nilam_ocr_kk.nilam_ocr_extraction_jobs`, `nilam_ocr_kk.nilam_testing_pipeline_outbox`, ...):
 penamaan klien, sama seperti schema nilam. Kode membaca keduanya dari
 `ocr_common.pipeline.database` (`PIPELINE_SCHEMA`, `TABLE_PREFIX`); tes SQLite memetakan schema itu ke tanpa
 schema.
@@ -23,12 +23,19 @@ primary key, foreign key, dan sequence `id`-nya, dalam satu transaksi tanpa meny
 memindahkan tabel versi `public.ocr_kk_alembic_version` menjadi `nilam_ocr_kk.nilam_ocr_kk_alembic_version`
 sebelum revisi mana pun jalan. CI memeriksanya dengan `db/check_schema_move.py`.
 
+Migrasi `0004_ocr_extraction_naming` (7 Oktober 2026) mengganti nama tabel tahap OCR di tempat:
+`nilam_ocr_jobs`/`nilam_ocr_results` menjadi **`nilam_ocr_extraction_jobs`/`nilam_ocr_extraction_results`**
+(begitu juga versi `nilam_testing_`), beserta indeks, primary key, dan foreign key-nya, tanpa menyalin baris.
+Nama `nilam_ocr_results` yang kosong lalu dipakai tabel baru: **hasil final orchestrator** (lihat peta tabel).
+Pod extraction/structuring/scoring dengan image lama harus diganti bersamaan dengan migrasi ini.
+`db/check_schema_move.py` juga memeriksa 0004 (naik, `alembic check`, turun ke 0003, naik lagi).
+
 **Tidak kompatibel ke belakang:** pod dengan image lama gagal query-nya di antara migrasi dan
 penggantiannya, dan query di luar repo ini (dashboard, tim Orkestrasi) harus memakai nama baru. Peran
 service juga butuh `USAGE` pada schema `nilam_ocr_kk`; hibah pada tabelnya ikut pindah.
 
-**Satu berkas DDL:** [`schema.sql`](schema.sql) membuat schema dan ke-16 tabel (plus indeks, foreign key, dan
-tabel versi Alembic yang dicap di `0003_nilam_naming`) untuk database **kosong**, tanpa Alembic:
+**Satu berkas DDL:** [`schema.sql`](schema.sql) membuat schema dan ke-18 tabel (plus indeks, foreign key, dan
+tabel versi Alembic yang dicap di `0004_ocr_extraction_naming`) untuk database **kosong**, tanpa Alembic:
 `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql`. Idempoten. Skema hasilnya identik dengan
 `alembic upgrade head` (dibandingkan lewat `pg_dump --schema-only`). Untuk database yang sudah berisi tabel di
 `public`, tetap pakai migrasi: berkas ini tidak memindahkan baris. Buat ulang berkas ini setiap ada migrasi baru.
@@ -37,12 +44,13 @@ tabel versi Alembic yang dicap di `0003_nilam_naming`) untuk database **kosong**
 
 | Tabel | Pemilik schema | Ditulis | Dibaca | Isi |
 |---|---|---|---|---|
-| `nilam_ocr_jobs`, `nilam_ocr_results` | **repo ini** | extraction | extraction (`GET /v1/extraction/jobs/{request_id}`), orchestrator lewat API itu | status dan hasil tahap OCR |
+| `nilam_ocr_extraction_jobs`, `nilam_ocr_extraction_results` | **repo ini** | extraction | extraction (`GET /v1/extraction/jobs/{request_id}`), orchestrator lewat API itu | status dan hasil tahap OCR (sebelum `0004`: `nilam_ocr_jobs`/`nilam_ocr_results`) |
+| `nilam_ocr_results`, `nilam_testing_ocr_results` | **repo ini** | orchestrator (best-effort, `DATABASE_URL`; `-test` menulis `nilam_testing_`) | siapa pun yang butuh jawaban final per request | **hasil final OCR KK**: satu baris per `request_id`, berisi envelope `/v1/extract-ocr` terakhir yang dijawab orchestrator: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at` (+ `ds`). Di-upsert setiap POST/GET menjawab (202 lalu 200/400/422); `created_at` jawaban pertama, `updated_at` jawaban terakhir. Error yang dijawab exception handler (file rusak/terlalu besar, 404) tidak dicatat. Migrasi `0004` |
 | `nilam_structuring_jobs`, `nilam_structuring_results` | **repo ini** | structuring | structuring lewat API-nya (orchestrator) | status dan field hasil structuring |
 | `nilam_scoring_jobs`, `nilam_scoring_results` | **repo ini** | scoring | scoring lewat API-nya (orchestrator) | status dan skor trust model |
 | `nilam_pipeline_outbox` | **repo ini** | ketiga tahap (dalam transaksi job), relay | relay tiap service, `GET /v1/<tahap>/outbox` | callback dan handoff yang belum terkirim (`PIPELINE_OUTBOX`). Baris dihapus setelah terkirim; yang gagal permanen (4xx, atau 5xx lebih lama dari `PIPELINE_OUTBOX_MAX_AGE_SECONDS`) tetap ada sebagai dead letter dengan `failed_at` + `last_error`, tidak pernah diambil lagi oleh relay, dan dilepas manual dengan `failed_at = NULL, next_attempt_at = now()`. `ds` dipakai untuk membersihkan dead letter lama |
-| `nilam_testing_ocr_jobs`/`_results`, `nilam_testing_structuring_jobs`/`_results`, `nilam_testing_scoring_jobs`/`_results`, `nilam_testing_pipeline_outbox` | **repo ini** | ketiga tahap lewat endpoint `-test` (`TESTING_ENDPOINTS`) | tahap itu sendiri, orchestrator lewat `GET /v1/<tahap>/jobs-test/{request_id}` | salinan persis tabel tahap dan outbox untuk load test tim ML (baseline `0001`). Tidak pernah dibaca Orkestrasi; boleh di-`TRUNCATE` kapan saja setelah tes. Lihat README, "Endpoint Testing" |
-| `nilam_guardrails_results`, `nilam_testing_guardrails_results` | **repo ini** | orchestrator (best-effort, `DATABASE_URL`; `-test` menulis `nilam_testing_`) | orchestrator (`GET /v1/extract-ocr/{request_id}` untuk request yang tidak pernah sampai tahap) | satu baris per putusan guardrails, termasuk yang ditolak: `passed`, `verdict`, `confidence`, `threshold`, `n_pages`, `pipeline_name_sequence`, dan `report` utuh (`probability_bad`). Append-only; migrasi `0002`, porting dari nilam |
+| `nilam_testing_ocr_extraction_jobs`/`_results`, `nilam_testing_structuring_jobs`/`_results`, `nilam_testing_scoring_jobs`/`_results`, `nilam_testing_pipeline_outbox` | **repo ini** | ketiga tahap lewat endpoint `-test` (`TESTING_ENDPOINTS`) | tahap itu sendiri, orchestrator lewat `GET /v1/<tahap>/jobs-test/{request_id}` | salinan persis tabel tahap dan outbox untuk load test tim ML (baseline `0001`). Tidak pernah dibaca Orkestrasi; boleh di-`TRUNCATE` kapan saja setelah tes. Lihat README, "Endpoint Testing" |
+| `nilam_guardrails_results`, `nilam_testing_guardrails_results` | **repo ini** | orchestrator (best-effort, `DATABASE_URL`; `-test` menulis `nilam_testing_`) | orchestrator (`GET /v1/extract-ocr/{request_id}` untuk request yang tidak pernah sampai tahap) | satu baris per putusan guardrails, termasuk yang ditolak: `passed`, `verdict`, `confidence`, `threshold` (null bila request tidak membawa ambang; `threshold_source` `none`), `n_pages`, `pipeline_name_sequence`, dan `report` utuh (`probability_bad`). Append-only; migrasi `0002`, porting dari nilam |
 | `nilam_ocr_kk_alembic_version` | **repo ini** | Alembic | Alembic | versi migrasi repo ini; namanya sengaja tidak `alembic_version` supaya tidak bentrok dengan migrasi tim lain di instans yang sama |
 | `ocr.orchestration_api_events` | **orkestrasi** | orkestrasi; ketiga tahap menambah baris keadaan akhir kalau `ORCHESTRATION_API_EVENTS_TABLE` diisi | orkestrasi | log API orkestrasi, append-only. Lihat bagian di bawah tabel ini |
 | `orchestration_extract_ocr` | **Orkestrasi pusat** | ketiga tahap (dalam transaksi job) kalau `ORCHESTRATION_OUTCOME_TABLE` diisi | Orkestrasi pusat | **kanal hasil yang sesungguhnya.** Satu baris per `request_id`; kontraknya kolom `downstream_status`. Barisnya **monoton di `completed`**: penulisan terlambat dari relay yang menyerah atau eksekusi kembar ditolak, dicatat WARNING, dan dihitung `pipeline_outcome_writes_suppressed_total`. Migrasi di sini tidak pernah membuat atau mengubahnya |
@@ -67,8 +75,10 @@ dibatasi, peran Orkestrasi pusat di database yang sama tetap bisa membaca setiap
 Tidak ada peran tahap yang mendapat DDL atas tabelnya sendiri: itu milik peran migrasi.
 
 Orkestrasi pusat tidak mendapat `SELECT` pada tabel tahap. Satu-satunya yang mereka butuhkan dari
-sini adalah tabel outcome, sementara `nilam_ocr_results` memuat teks OCR **seluruh** kartu dan
-`nilam_structuring_results` memuat 26 field internal (alamat, tanggal lahir, agama, nama orang tua).
+sini adalah tabel outcome, sementara `nilam_ocr_extraction_results` memuat teks OCR **seluruh** kartu dan
+`nilam_structuring_results` memuat sembilan field internal per kartu (NIK dan nama tiap anggota, nama orang
+tua) beserta vektor fitur scoring. Baris dari sebelum 7 Oktober 2026 masih memuat 26 field (termasuk alamat,
+tanggal lahir, dan agama).
 
 Tabel `nilam_testing_*` adalah salinan persis dan mewarisi baris yang sama persis.
 
@@ -80,14 +90,15 @@ kesepakatan lintas tim, bukan sesuatu yang bisa ditegakkan baseline.
 
 | Tempat | Isi |
 |---|---|
-| `nilam_ocr_results.result` | teks OCR seluruh kartu — setiap NIK, nama, alamat yang terbaca |
-| `nilam_structuring_results.result` | 11 field dokumen + 15 per anggota |
+| `nilam_ocr_extraction_results.result` | teks OCR seluruh kartu — setiap NIK, nama, alamat yang terbaca |
+| `nilam_ocr_results.data` | sembilan field kontrak hasil final, termasuk NIK tiap anggota |
+| `nilam_structuring_results.result` | 2 field dokumen + 7 per anggota (baris lama: 11 + 15) |
 | `nilam_scoring_results.result` | skor saja, tetapi `payload` menyimpan fitur yang diskor |
 | tabel outcome `result_data` | sembilan field kontrak, termasuk NIK tiap anggota |
 | `nilam_guardrails_results.report` | skor kualitas gambar saja, tanpa isi kartu; `request_id` menautkannya ke tahap |
-| **`nilam_ocr_jobs.input`** | presigned URL — **setara kredensial pembawa** ke gambar KK itu sendiri |
+| **`nilam_ocr_extraction_jobs.input`** | presigned URL — **setara kredensial pembawa** ke gambar KK itu sendiri |
 
-`nilam_ocr_jobs.input` dikosongkan di transaksi `complete()`/`fail()` milik job, bukan lewat sapuan
+`nilam_ocr_extraction_jobs.input` dikosongkan di transaksi `complete()`/`fail()` milik job, bukan lewat sapuan
 retensi `ds`: §3.1 menjanjikan job terlantar bisa dijalankan ulang dari URL itu, dan janji itu hanya
 berlaku selagi job masih `PROCESSING`.
 

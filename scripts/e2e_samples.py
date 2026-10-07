@@ -7,7 +7,7 @@ yang benar atas gambar yang nyata. Jadi stack-nya harus jalan dengan backend sun
 
 | Berkas | Kasus | Harapan |
 |---|---|---|
-| `kk_true.jpg` | KK benar | 200, sembilan field `{value, confidence 0/1}`, nilai kunci cocok, `GET` identik |
+| `kk_true.jpg` | KK benar | 200, sembilan field `{value, confidence}` (probabilitas), nilai cocok, `GET` identik |
 | `kk_pdf.pdf` | KK benar, PDF | sama dengan di atas |
 | `kk_cut.jpg` | KK terpotong | 400 dari guardrails; tanpa guardrails ditolak structuring (§7.4) |
 | `kk_no_nokk.jpg` | nomor KK tidak ada | 400 dari guardrails; tanpa guardrails ditolak structuring (§7.4) |
@@ -15,9 +15,13 @@ yang benar atas gambar yang nyata. Jadi stack-nya harus jalan dengan backend sun
 
 Nilai yang diharapkan pada kasus positif dibaca dari gambarnya, bukan disalin dari keluaran OCR.
 
-Untuk setiap kasus positif, satu request lagi dikirim dengan `column_confidence_threshold` bernilai 0 untuk
+Tanpa `column_confidence_threshold`, `confidence` adalah probabilitas trust model (float 0..1). Untuk setiap
+kasus positif, satu request lagi dikirim dengan `column_confidence_threshold` bernilai 0 untuk
 kesembilan field. Hasilnya, setiap field yang terisi harus ber-confidence 1. Ini membuktikan ambang per
 request sampai ke scoring pada data sungguhan.
+
+Guardrails hanya menolak bila request membawa ambang, jadi setiap request di sini mengirim
+`guardrails_confidence_threshold` `{"acc_rej": 0.5}` (`GUARDRAILS_THRESHOLD`).
 
 Untuk kasus negatif, dokumen yang sama dikirim sekali lagi dengan
 `pipeline_name_sequence=["extraction","structuring","scoring"]`, yaitu tanpa guardrails. Ini melihat
@@ -91,12 +95,17 @@ def _read(filename: str) -> bytes:
         return handle.read()
 
 
+#: Ambang guardrails yang dikirim setiap request: tanpa ambang, guardrails meloloskan semua dokumen.
+GUARDRAILS_THRESHOLD = 0.5
+
+
 def _submit(client: httpx.Client, request_id: str, case: Case, content: bytes, **fields: str) -> dict[str, Any]:
     """POST /v1/extract-ocr; kalau jawabannya 202, tunggu lewat GET sampai selesai."""
+    threshold = json.dumps({"acc_rej": GUARDRAILS_THRESHOLD})
     response = client.post(
         f"{smoke.URLS['orchestrator']}/v1/extract-ocr",
         headers=smoke.HEADERS,
-        data={"request_id": request_id, "document_type": "kk", **fields},
+        data={"request_id": request_id, "document_type": "kk", "guardrails_confidence_threshold": threshold, **fields},
         files={"file": (case.file, content, _content_type(case.file))},
     )
     body = response.json()
@@ -113,7 +122,11 @@ def _guardrails_score(client: httpx.Client, case: Case, content: bytes) -> tuple
     response = client.post(
         f"{smoke.URLS['guardrails']}/v1/guardrails/check",
         headers=smoke.HEADERS,
-        data={"request_id": f"E2E_GR_{case.file}"},
+        data={
+            "request_id": f"E2E_GR_{case.file}",
+            "threshold": str(GUARDRAILS_THRESHOLD),
+            "threshold_target": "reject",
+        },
         files={"file": (case.file, content, _content_type(case.file))},
     )
     if response.status_code != 200:
@@ -138,7 +151,7 @@ def _fields(data: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _shape_ok(data: dict[str, Any]) -> tuple[bool, str]:
-    """Sembilan field kontrak, dan setiap field tepat `{value: str, confidence: 0|1}`; bukan `bin`/`auto`."""
+    """Sembilan field kontrak, dan setiap field tepat `{value: str, confidence: 0..1}`; bukan `bin`/`auto`."""
     if set(data) != DOC_KEYS:
         return False, f"key data {sorted(data)}"
     for index, row in enumerate(data["anggota_keluarga"]):
@@ -147,7 +160,8 @@ def _shape_ok(data: dict[str, Any]) -> tuple[bool, str]:
     for name, field in _fields(data):
         if set(field) != {"value", "confidence"}:
             return False, f"{name} punya key {sorted(field)}"
-        if not isinstance(field["value"], str) or field["confidence"] not in (0, 1):
+        confidence = field["confidence"]
+        if not isinstance(field["value"], str) or not isinstance(confidence, int | float) or not 0 <= confidence <= 1:
             return False, f"{name} = {field}"
     return True, ""
 
@@ -178,7 +192,7 @@ def positive(client: httpx.Client, case: Case, content: bytes, results: list[tup
     _print_data(data)
 
     shape, why = _shape_ok(data)
-    _check(results, f"{case.file}: bentuk data {{value, confidence 0/1}}", shape, why)
+    _check(results, f"{case.file}: bentuk data {{value, confidence 0..1}}", shape, why)
     members = data.get("anggota_keluarga") or []
     values = {
         "no_kk": (data["no_kk"]["value"], expected.no_kk),

@@ -7,6 +7,7 @@ from ocr_common.errors import UnprocessableEntity
 from ocr_common.kk import DOCUMENT_TYPE
 from ocr_common.pipeline import STRUCTURING, HandoffPayload, StagePipeline, Work, chain, stored
 from ocr_common.pipeline.results import StageResults, load_upstream
+from ocr_common.pipeline.tables import OCR_STAGE_TABLE_PREFIX
 from ocr_common.types import StructuringResult
 
 from app.services.structuring_service import StructuringService
@@ -54,7 +55,7 @@ class StructuringJobService:
         if ocr is None and self._results is None:
             raise UnprocessableEntity(
                 "ocr is missing: the request refers to the OCR result by request_id, but this service has no "
-                "DATABASE_URL to read nilam_ocr_results from",
+                "DATABASE_URL to read nilam_ocr_extraction_results from",
             )
         work, handoff = self._spec(request_id, document_type, guardrails, ocr, sequence, column_thresholds)
         return await self._pipeline.submit(
@@ -100,7 +101,9 @@ class StructuringJobService:
         upstream: dict[str, Any] = {}
 
         async def work() -> StructuringResult:
-            upstream["ocr"] = ocr if ocr is not None else await load_upstream(self._results, "ocr", request_id)
+            upstream["ocr"] = (
+                ocr if ocr is not None else await load_upstream(self._results, OCR_STAGE_TABLE_PREFIX, request_id)
+            )
             texts = StructuringService.boxes_from_ocr(upstream["ocr"])
             # MAY be empty: an image with no readable text must reach the validity gate to be
             # rejected there (§7.4, first rule), not refused earlier as a bad request.

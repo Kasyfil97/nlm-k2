@@ -14,7 +14,7 @@ ringkasannya untuk integrasi.
 Yang sudah terbukti, dan di mana:
 
 - Unit test pustaka dan kelima service, serta uji ujung ke ujung `make smoke` di Docker Compose lokal
-  (lihat README). Migrasi database `0001`–`0003` diuji terhadap PostgreSQL 16 (naik, `alembic check`,
+  (lihat README). Migrasi database `0001`–`0004` diuji terhadap PostgreSQL (naik, `alembic check`,
   pindah schema beserta barisnya, turun lagi, naik lagi).
 - **Belum** diverifikasi oleh dokumen ini: perilaku di cluster setelah perubahan 5 Oktober 2026 (bentuk
   jawaban baru, callback hasil baru, schema `nilam_ocr_kk`), dan callback ke service kalian. Bagian ini
@@ -96,8 +96,8 @@ Sejak 5 Oktober 2026 (seperti nilam sejak 1 Oktober) jawaban tidak lagi membawa 
 | `document_type` | tidak | default `kk`; selain `kk` dijawab 400 `UNSUPPORTED_DOCUMENT_TYPE` |
 | `file` / `file_url` | salah satu | JPEG, PNG, PDF, maks. **5 MB** (413) dan maks. **2 halaman** (400). **(KK)** Dari PDF hanya halaman 1 yang dinilai dan dibaca. Tipe yang dideklarasikan tapi tidak didukung (`application/octet-stream`, kosong, `jpg`, `text/plain`, ...) dibaca dari tanda tangan berkasnya |
 | `pipeline_name_sequence` | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Field berulang, string dipisah koma, atau satu string JSON array. Default (atau field kosong): keempatnya |
-| `guardrails_confidence_threshold` | tidak | `{"acc_rej": 0.8}`, nilai di antara 0 dan 1. **(KK)** Berlaku pada sisi reject: dokumen ditolak bila `probability_bad` model kualitas ≥ nilainya |
-| `column_confidence_threshold` | tidak | ambang per field kontrak, nilai 0–1, sisi accept. Key `all_field` untuk semua field; key per field (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`) menang atas `all_field`. Tidak dikirim: **(KK)** ambang milik trust model per field |
+| `guardrails_confidence_threshold` | tidak | `{"acc_rej": 0.8}`, nilai di antara 0 dan 1. **(KK)** Berlaku pada sisi reject: dokumen ditolak bila `probability_bad` model kualitas ≥ nilainya. **Tidak dikirim: dokumen dianggap lolos** guardrails (tidak ada ambang bawaan), dan `probability_bad`-nya (float) tetap diteruskan ke scoring dan tercatat di `nilam_guardrails_results` |
+| `column_confidence_threshold` | tidak | ambang per field kontrak, nilai 0–1, sisi accept. Key `all_field` untuk semua field; key per field (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`) menang atas `all_field`. **Field tanpa ambang (tidak disebut, atau parameter tidak dikirim): `confidence`-nya probabilitas trust model apa adanya (float), bukan 0/1** |
 
 Threshold yang tidak bisa dibaca dijawab **422 `INVALID_THRESHOLD`**; `pipeline_name_sequence` yang
 melanggar aturan urutan dijawab **422 `INVALID_PIPELINE_SEQUENCE`**. Keduanya sebelum apa pun dijalankan.
@@ -131,9 +131,10 @@ Selesai dalam waktu tunggu, **200**:
 
 - Tiap field selalu `{value, confidence}`; field yang tidak ditemukan `{"value": "", "confidence": 0}`, tidak
   pernah `null`. Kedua kunci dokumen dan ketujuh kunci tiap anggota selalu ada.
-- `confidence` = `1` bila probabilitas trust model bahwa nilainya persis benar mencapai ambang field itu
-  (`column_confidence_threshold`, kalau tidak: ambang model). **(KK)** `no_kk` tidak punya ambang model, jadi
-  `0` kecuali request memberinya ambang.
+- Field yang diberi ambang lewat `column_confidence_threshold` (key-nya sendiri atau `all_field`):
+  `confidence` = `1` bila probabilitas trust model bahwa nilainya persis benar mencapai ambang itu, selain itu
+  `0`. Field **tanpa ambang**: `confidence` = probabilitas itu sendiri, float 0–1 (mis. `0.9731`); `0` bila
+  nilainya kosong. Ambang milik trust model tidak lagi memutuskan.
 - `anggota_keluarga` berurutan seperti baris pada kartu.
 
 Belum selesai, **202**:
@@ -191,7 +192,7 @@ dengan nilam. Callback dikirim oleh tahap pipeline yang mengakhiri request, buka
 selalu dikirim (tahap tidak tahu apakah orchestrator menjawab 200 atau 202).
 
 Selesai: `result` **sama persis** dengan `data` jawaban 200 `extract-ocr` untuk request yang sama
-(sembilan field, `confidence` 0/1 dari threshold request itu; `pipeline_name_sequence` yang berakhir
+(sembilan field, `confidence` 0/1 dari threshold request itu atau probabilitasnya bila tanpa threshold; `pipeline_name_sequence` yang berakhir
 sebelum scoring: hasil service terakhirnya apa adanya):
 
     {"request_id": "REQ_001", "status": "completed",
@@ -231,10 +232,9 @@ error_message}`) masih ada dan dijelaskan di webhook `stageCallback` pada `api/g
 
 1. **Konfirmasi mode KK** di sisi kalian (callback atau poll), supaya `orchestration.callbackEnabled` kami
    sama.
-2. **Endpoint threshold guardrails (opsional).** **(KK)** Service guardrails kami bisa membaca ambangnya dari
-   `GUARDRAILS_THRESHOLD_URL` + `GUARDRAILS_THRESHOLD_PATH` (default `/v1/thresholds/guardrails`), dengan
-   jawaban `{"reject_threshold": 0.6}`: dokumen ditolak bila `probability_bad` ≥ nilai itu. Disimpan 60 detik
-   per pod; bila endpoint mati, ambang terakhir yang valid tetap dipakai.
+2. **Ambang guardrails per request.** **(KK)** Endpoint threshold guardrails (`GUARDRAILS_THRESHOLD_URL`)
+   dan `GUARDRAILS_THRESHOLD` sudah dihapus: hanya `guardrails_confidence_threshold` di request yang bisa
+   menolak dokumen. Kirimkan di setiap request bila dokumen buram harus ditolak; tanpa itu semua dokumen lolos.
 3. **Tabel `ocr.orchestration_api_events`.** Tim nilam mematikan double write ke tabel itu pada 5 Oktober
    2026 karena tabelnya dihapus migrasi kalian. Konfirmasi apakah tabel itu masih ada di database KK; kalau
    tidak, kami matikan juga (`ORCHESTRATION_API_EVENTS_TABLE` kosong), karena tulisan itu berada di
@@ -248,9 +248,10 @@ dan namanya berawalan **`nilam_`**; sebelumnya di `public` tanpa awalan.
 
 | Tabel | Isi |
 |---|---|
-| `nilam_ocr_kk.nilam_ocr_jobs`, `nilam_ocr_kk.nilam_ocr_results` | status dan hasil OCR |
-| `nilam_ocr_kk.nilam_structuring_jobs`, `nilam_ocr_kk.nilam_structuring_results` | field hasil structuring (11 dokumen + 15 per anggota) |
-| `nilam_ocr_kk.nilam_scoring_jobs`, `nilam_ocr_kk.nilam_scoring_results` | probabilitas trust model dan keputusan 0/1 |
+| `nilam_ocr_kk.nilam_ocr_extraction_jobs`, `nilam_ocr_kk.nilam_ocr_extraction_results` | status dan hasil tahap OCR (sebelum migrasi `0004`, 7 Okt 2026: `nilam_ocr_jobs`/`nilam_ocr_results`) |
+| `nilam_ocr_kk.nilam_ocr_results` | **hasil final OCR KK** dari orchestrator, satu baris per `request_id`: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at`; diperbarui setiap kali POST/GET `extract-ocr` menjawab (migrasi `0004`) |
+| `nilam_ocr_kk.nilam_structuring_jobs`, `nilam_ocr_kk.nilam_structuring_results` | field hasil structuring (2 dokumen + 7 per anggota; baris sebelum 7 Okt 2026: 11 + 15) |
+| `nilam_ocr_kk.nilam_scoring_jobs`, `nilam_ocr_kk.nilam_scoring_results` | probabilitas trust model dan keputusan per field (0/1 bila ada ambang, selain itu probabilitasnya) |
 | `nilam_ocr_kk.nilam_pipeline_outbox` | callback dan handoff yang belum terkirim |
 | `nilam_ocr_kk.nilam_guardrails_results` | setiap putusan guardrails, termasuk yang ditolak |
 

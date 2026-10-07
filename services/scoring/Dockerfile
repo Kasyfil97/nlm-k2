@@ -24,11 +24,15 @@ RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser /app
 USER appuser
 
+# Bobot TIDAK ikut image: diunduh dari SCORING_MODEL_URI setiap kali container start (lihat CMD).
+# Default di bawah boleh ditimpa lewat env (.env, helm).
 ENV PORT=8044 \
-    WEIGHTS_DIR=/app/weights
+    WEIGHTS_DIR=/app/weights \
+    SCORING_MODEL_URI=gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/scoring/kk_trust_model.joblib
 EXPOSE 8044
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8044\")}/health', timeout=3)" || exit 1
 
-CMD ["sh", "-c", "python scripts/fetch_weights.py scoring && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# --force: unduh ulang setiap start, supaya restart container mengambil model terbaru di GCS.
+CMD ["sh", "-c", "python scripts/fetch_weights.py scoring --force && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

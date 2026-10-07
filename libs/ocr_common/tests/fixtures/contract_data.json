@@ -1,5 +1,5 @@
 {
-  "_source": "Keluaran contract_fields() atas structuring_result.json + scoring_result.json: tiap field {value, confidence 0|1}, seperti nilam. confidence 1 bila probabilitas trust model mencapai ambang field itu -- column_confidence_threshold dari request, lalu ambang milik model di hasil scoring, dan FIELD_CONFIDENCE_THRESHOLD = 0.5 hanya bila hasil tidak membawa ambang sama sekali. Inilah proyeksi §3.3.1, dan inilah yang harus identik antara orchestrator dan tahap scoring.",
+  "_source": "Keluaran contract_fields() atas structuring_result.json + scoring_result.json dengan column_confidence_threshold {\"all_field\": 0.5}: tiap field {value, confidence 0|1}, seperti nilam. confidence 1 bila probabilitas trust model mencapai ambang field itu dari request. Tanpa ambang untuk sebuah field, confidence-nya adalah probabilitas itu sendiri (float). Inilah proyeksi §3.3.1, dan inilah yang harus identik antara orchestrator dan tahap scoring.",
   "no_kk": {
     "value": "3273012345678901",
     "confidence": 1

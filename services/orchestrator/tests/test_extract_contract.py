@@ -4,10 +4,8 @@ from copy import deepcopy
 
 import pytest
 
-from ocr_common.kk import CONTRACT_DOC_FIELDS, CONTRACT_MEMBER_FIELDS, contract_fields
+from ocr_common.kk import CONTRACT_DOC_FIELDS, CONTRACT_MEMBER_FIELDS, contract_fields, parse_column_thresholds
 
-from app.config import get_settings
-from app.main import app
 from tests.conftest import JPEG, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_contract"
@@ -22,17 +20,25 @@ def _submit(client, auth, **form):
     )
 
 
-def _projected(threshold=0.5, *, structuring=None, scoring=None):
-    return contract_fields(structuring or STRUCTURING_RESULT, scoring or SCORING_RESULT, threshold)
+# `column_confidence_threshold` {"all_field": 0.5}: every field decided 0/1 at 0.5.
+HALF = parse_column_thresholds({"all_field": 0.5})
+
+
+def _projected(columns=HALF, *, structuring=None, scoring=None):
+    return contract_fields(structuring or STRUCTURING_RESULT, scoring or SCORING_RESULT, columns)
 
 
 def test_only_the_nine_contract_fields_leave():
-    """Structuring extracts 11 document fields and 15 per member; the projection is the whole reason
-    `alamat`, `agama` and `tanggal_lahir` do not appear in a response."""
-    data = _projected()
-    assert set(data) == {*CONTRACT_DOC_FIELDS, "anggota_keluarga"}
-    for member in data["anggota_keluarga"]:
-        assert set(member) == set(CONTRACT_MEMBER_FIELDS)
+    """The projection carries the nine fields structuring emits, under their contract names, and
+    nothing a stored result may still carry from before structuring emitted only those nine."""
+    legacy = deepcopy(STRUCTURING_RESULT)
+    legacy["alamat"] = {"value": "JL. MERDEKA NO. 12", "ocr_conf": 0.97, "crf_conf": None}
+    for member in legacy["anggota_keluarga"]:
+        member["agama"] = {"value": "ISLAM", "ocr_conf": 0.99, "crf_conf": 0.98}
+    for data in (_projected(), _projected(structuring=legacy)):
+        assert set(data) == {*CONTRACT_DOC_FIELDS, "anggota_keluarga"}
+        for member in data["anggota_keluarga"]:
+            assert set(member) == set(CONTRACT_MEMBER_FIELDS)
 
 
 def test_the_two_renames_happen_and_nothing_else_does():
@@ -52,33 +58,33 @@ def test_confidence_is_1_from_the_threshold_up_and_0_just_below():
     scoring = deepcopy(SCORING_RESULT)
     scoring["fields"]["nomor_kk"] = 0.5
     scoring["fields"]["nama_kepala_keluarga"] = 0.4999
-    data = _projected(0.5, scoring=scoring)
+    data = _projected(scoring=scoring)
     assert (data["no_kk"], data["nama_kepala_keluarga"]) == (
         {"value": STRUCTURING_RESULT["nomor_kk"]["value"], "confidence": 1},
         {"value": STRUCTURING_RESULT["nama_kepala_keluarga"]["value"], "confidence": 0},
     )
 
 
-def test_the_models_own_thresholds_travel_with_the_scores():
-    """§8.5 menuntut baris outcome dan respons extract-ocr identik untuk satu request, jadi ambang ikut di
-    dalam hasil scoring, bukan di konfigurasi. Model yang membawa ambang memutuskan SETIAP field: yang tidak
-    ia beri ambang tetap 0, walau lolos ambang global."""
+def test_without_a_threshold_confidence_is_the_probability_as_it_is():
+    """Tanpa `column_confidence_threshold`, `confidence` adalah probabilitas trust model apa adanya; ambang
+    milik model yang ikut di hasil scoring tidak lagi memutuskan."""
     scoring = deepcopy(SCORING_RESULT)
     scoring["thresholds"] = {"nomor_kk": 0.95}
     scoring["fields"]["nomor_kk"] = 0.94
     scoring["fields"]["nama_kepala_keluarga"] = 0.97
-    data = _projected(0.5, scoring=scoring)
-    assert data["no_kk"]["confidence"] == 0, "0.94 lolos ambang global 0.5 tapi bukan ambang modelnya"
-    assert data["nama_kepala_keluarga"]["confidence"] == 0, "model membawa ambang, tapi tidak untuk field ini"
+    data = _projected(None, scoring=scoring)
+    assert (data["no_kk"]["confidence"], data["nama_kepala_keluarga"]["confidence"]) == (0.94, 0.97)
 
 
 def test_the_requests_column_thresholds_come_first():
-    """`column_confidence_threshold` dari Orkestrasi pusat mengalahkan ambang model, per nama kontrak."""
+    """`column_confidence_threshold` dari Orkestrasi pusat memutuskan 0/1 per nama kontrak; field yang tidak ia
+    sebut mendapat probabilitasnya."""
     scoring = deepcopy(SCORING_RESULT)
     scoring["thresholds"] = {"nomor_kk": 0.95}
     scoring["fields"]["nomor_kk"] = 0.94
-    data = contract_fields(STRUCTURING_RESULT, scoring, 0.5, {"no_kk": 0.9, "nama_kepala_keluarga": 0.9})
-    assert (data["no_kk"]["confidence"], data["nama_kepala_keluarga"]["confidence"]) == (1, 1)
+    data = contract_fields(STRUCTURING_RESULT, scoring, {"no_kk": 0.9})
+    assert data["no_kk"]["confidence"] == 1
+    assert data["nama_kepala_keluarga"]["confidence"] == SCORING_RESULT["fields"]["nama_kepala_keluarga"]
 
 
 def test_a_low_score_on_one_member_field_does_not_touch_the_others():
@@ -99,6 +105,8 @@ def test_a_missing_value_is_an_empty_string_never_null():
     data = _projected(structuring=structuring)
     assert data["nama_kepala_keluarga"] == {"value": "", "confidence": 0}
     assert data["anggota_keluarga"][0]["ibu"] == {"value": "", "confidence": 0}
+    raw = _projected(None, structuring=structuring)
+    assert raw["nama_kepala_keluarga"] == {"value": "", "confidence": 0.0}
 
 
 def test_a_value_without_a_score_is_confidence_0_not_an_error():
@@ -143,19 +151,15 @@ def test_a_household_with_no_members_projects_to_an_empty_list():
 def test_the_endpoint_returns_the_projection(client, auth):
     response = _submit(client, auth)
     assert response.status_code == 200
-    assert response.json()["data"] == _projected(0.5)
+    data = response.json()["data"]
+    assert data == _projected(None)
+    assert data["no_kk"]["confidence"] == SCORING_RESULT["fields"]["nomor_kk"], "the probability, not 0/1"
 
 
-def test_confidence_threshold_can_be_changed(client, auth):
-    app.dependency_overrides[get_settings] = lambda: get_settings().model_copy(
-        update={"field_confidence_threshold": 0.9}
-    )
-    try:
-        response = _submit(client, auth)
-    finally:
-        app.dependency_overrides.pop(get_settings, None)
+def test_the_requests_threshold_turns_the_confidences_into_0_1(client, auth):
+    response = _submit(client, auth, column_confidence_threshold='{"all_field": 0.9}')
 
-    assert response.json()["data"] == _projected(0.9)
+    assert response.json()["data"] == _projected(parse_column_thresholds({"all_field": 0.9}))
 
 
 def test_the_answer_carries_no_job_status_document_type_or_params(client, auth):

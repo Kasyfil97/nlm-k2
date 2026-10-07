@@ -22,6 +22,7 @@ from app.clients.extraction import ExtractionJobClient
 from app.clients.guardrails import GuardrailsClient, GuardrailsThreshold
 from app.config import Settings
 from app.services.document_checks import check_document
+from app.services.final_results import FinalResults, NoFinalResults
 from app.services.guardrails_log import GuardrailsLog, NoGuardrailsLog
 from app.services.pipeline_waiter import PipelineWait, StageError, WaitOutcome
 
@@ -44,9 +45,11 @@ class ExtractOcrService:
         waiter: PipelineWait,
         settings: Settings,
         log: GuardrailsLog | None = None,
+        results: FinalResults | None = None,
     ):
         self._guardrails = guardrails
         self._log = log or NoGuardrailsLog()
+        self._results = results or NoFinalResults()
         self._extraction = extraction
         self._waiter = waiter
         self._settings = settings
@@ -121,6 +124,11 @@ class ExtractOcrService:
         remaining = wait_seconds - (time.monotonic() - started)
         outcome = await self._waiter.wait(request_id, remaining, last_stage=STAGE_OF[sequence[-1]])
         return {**verdict, "job": job, **_pipeline(document_type, report, outcome)}
+
+    async def answered(self, request_id: str, body: dict[str, Any]) -> None:
+        """Keeps `body`, the extract-ocr envelope just given for `request_id`, as its final result
+        (`nilam_ocr_results`, upserted: the latest answer wins). Best-effort."""
+        await self._results.save(request_id, body)
 
     async def status(self, request_id: str) -> dict[str, Any]:
         """Where the request is now, read from the stages without waiting. A request no stage has a job for is

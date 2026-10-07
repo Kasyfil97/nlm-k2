@@ -20,10 +20,12 @@ from ocr_common.pipeline.tables import guardrails_results_table
 
 logger = logging.getLogger(__name__)
 
-# Whose threshold decided, as in nilam: the central orchestrator's, sent with the request, or the guardrails
-# service's own threshold chain (R15).
+# Whose threshold decided, as in nilam: the central orchestrator's, sent with the request; the guardrails
+# model service's own (the `remote` backend states one); or none -- no threshold sent, so the document passed
+# and only `probability_bad` was answered.
 SOURCE_REQUEST = "request"
 SOURCE_SERVICE = "service"
+SOURCE_NONE = "none"
 
 
 class GuardrailsVerdict(TypedDict):
@@ -115,7 +117,7 @@ class SqlGuardrailsLog:
                     confidence=document.get("confidence"),
                     threshold=document.get("threshold_used"),
                     threshold_target=document.get("threshold_target"),
-                    threshold_source=SOURCE_REQUEST if threshold_from_request else SOURCE_SERVICE,
+                    threshold_source=_threshold_source(document, threshold_from_request),
                     n_pages=n_pages,
                     reason=report.get("reason"),
                     pipeline_name_sequence=list(sequence) if sequence else None,
@@ -140,3 +142,9 @@ class SqlGuardrailsLog:
             return None
         sequence = row.pipeline_name_sequence
         return {"report": dict(row.report), "sequence": list(sequence) if isinstance(sequence, list) else None}
+
+
+def _threshold_source(document: dict[str, Any], threshold_from_request: bool) -> str:
+    if threshold_from_request:
+        return SOURCE_REQUEST
+    return SOURCE_NONE if document.get("threshold_used") is None else SOURCE_SERVICE

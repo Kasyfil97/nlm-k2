@@ -10,16 +10,17 @@ class ContractField(BaseModel):
         "is never replaced by null",
         examples=["3273012345678901"],
     )
-    confidence: Literal[0, 1] = Field(
+    confidence: int | float = Field(
         ...,
+        ge=0,
+        le=1,
         description=(
-            "1 when the trust model's probability that this value is exactly correct reaches the field's "
-            "threshold, else 0 (also when there is no value), as in nilam. The threshold: the request's "
-            "`column_confidence_threshold` for this field, else the trust model's own for it (the point above "
-            "which every held-out sample was correct). A field the model has no threshold for (`no_kk`) is 0 "
-            "unless the request gives it one"
+            "With a threshold for this field in the request's `column_confidence_threshold` (its own key or "
+            "`all_field`): 1 when the trust model's probability that this value is exactly correct reaches it, "
+            "else 0 (also when there is no value), as in nilam. **Without a threshold**: that probability itself, "
+            "a float from 0 to 1 as the model gave it (0 when there is no value)"
         ),
-        examples=[1],
+        examples=[1, 0.9731],
     )
 
 

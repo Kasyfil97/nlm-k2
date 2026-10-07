@@ -15,7 +15,10 @@ class StructuringService:
     come back as a `reject_reason`, not as a 400 from this layer. The two look alike to a caller and
     are not: a rejection is a `DONE` job whose result stays readable, a 400 here is a stage failure.
 
-    Blank boxes are still dropped: a box the recogniser produced with no text is noise, not content.
+    Blank boxes are still dropped: a box the recogniser produced with no text is noise, not content --
+    except for a structurer that says `reads_blank_boxes`. `kk_model` does: it was trained on the OCR
+    output as is, blank boxes included, and they move its row and neighbour features (dropping them
+    changes 684 of the 10414 field scores of the training corpus).
     """
 
     def __init__(self, structurer: Structurer):
@@ -34,4 +37,6 @@ class StructuringService:
         ]
 
     def structure(self, texts: list[OcrBox]) -> StructuringResult:
+        if getattr(self._structurer, "reads_blank_boxes", False):
+            return self._structurer.structure(texts)
         return self._structurer.structure([box for box in texts if (box.get("text") or "").strip()])

@@ -188,7 +188,7 @@ def test_a_url_the_policy_refuses_fails_the_job_rather_than_the_request(harness,
 
 async def test_a_stale_job_sent_as_file_url_is_fetched_and_run_again(monkeypatch):
     """Why `file_url` is the recommended intake (§3.1): everything the job needs is in
-    `ocr_jobs.input`, so the pod that picks it up next can rebuild the work."""
+    `ocr_extraction_jobs.input`, so the pod that picks it up next can rebuild the work."""
     service, pipeline, callback, next_stage = _service()
     stored = {"document_type": DOCUMENT_TYPE, "guardrails": GUARDRAILS, "file_url": FILE_URL}
     await pipeline.repository.claim("REQ_stale", input=stored)

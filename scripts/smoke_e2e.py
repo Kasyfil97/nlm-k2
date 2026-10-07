@@ -164,11 +164,11 @@ def _rid() -> str:
     return request_id
 
 
-def _submit(client: httpx.Client, request_id: str, filename: str, content: bytes) -> httpx.Response:
+def _submit(client: httpx.Client, request_id: str, filename: str, content: bytes, **fields: str) -> httpx.Response:
     return client.post(
         f"{URLS['orchestrator']}/v1/extract-ocr",
         headers=HEADERS,
-        data={"request_id": request_id, "document_type": "kk"},
+        data={"request_id": request_id, "document_type": "kk", **fields},
         files={"file": (filename, content, "image/jpeg")},
     )
 
@@ -313,10 +313,11 @@ def latency(client: httpx.Client, runs: int) -> bool:
 
 
 def guardrails_reject(client: httpx.Client) -> bool:
-    """Butuh GUARDRAILS_BACKEND=mock: model mock menolak nama file yang mengandung `notkk`."""
+    """Butuh GUARDRAILS_BACKEND=mock: model mock memberi `notkk` probabilitas buruk, yang ditolak karena
+    request membawa ambang guardrails (tanpa ambang, dokumen selalu lolos)."""
     print("== guardrails menolak ==")
     request_id = _rid()
-    response = _submit(client, request_id, "notkk.jpg", _image())
+    response = _submit(client, request_id, "notkk.jpg", _image(), guardrails_confidence_threshold='{"acc_rej": 0.5}')
     body = response.json()
     print(f"notkk.jpg -> {response.status_code} errors={body.get('errors')} guardrails={body.get('guardrails')}")
     print(f"  message={body.get('message')!r}")
@@ -607,15 +608,17 @@ def cleanup() -> None:
         # hanya menghapus hasilnya, dan meninggalkan 21/18/9 baris job setelah satu kali jalan.
         stage_rows = 0
         for table in (
-            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_results",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_extraction_results",
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_results",
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_results",
-            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_jobs",
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_extraction_jobs",
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}structuring_jobs",
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}scoring_jobs",
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}pipeline_outbox",
             # Ditulis orchestrator untuk setiap putusan guardrails, termasuk yang menolak.
             f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}guardrails_results",
+            # Jawaban final orchestrator per request_id (migrasi 0004).
+            f"{PIPELINE_SCHEMA}.{TABLE_PREFIX}ocr_results",
         ):
             try:
                 cursor.execute(f"DELETE FROM {table} WHERE request_id = ANY(%s)", (minted,))

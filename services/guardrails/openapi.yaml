@@ -7,8 +7,8 @@ info:
     or `unassessable` when the image could not be judged at all -- and never an HTTP error for the document
     itself. The model runs in this process (`kk_quality`: patch blur CNN + XGBoost + isotonic calibration)
     or in the ML team''s quality service (`remote`). This is the only image-quality gate in the pipeline,
-    so `GUARDRAILS_THRESHOLD` is the single lever for refusing a bad photo. All endpoints except /health,
-    /ready and /metrics require an X-API-Key header.
+    and only the request''s `threshold` refuses a bad photo: without one the document passes and `probability_bad`
+    is answered. All endpoints except /health, /ready and /metrics require an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -183,10 +183,11 @@ paths:
 
         **Always 200 when the document was received**: read `data.passed`. An image the model cannot judge
         is `verdict: "unassessable"` with `probability_bad: null` and `passed: false`, not an error status.
-        The 400s below are about the *request*, not about the document: an intake that names neither or
-        both of `file` and `file_url`, a refused `file_url`, or a `file_url` while `GUARDRAILS_FETCH_URL=false`.
-        A `threshold` outside (0, 1), or one without its `threshold_target`, is 422. Type and size are
-        checked by the orchestrator before this endpoint is called.'
+        **Without `threshold`** every judged document passes, and `probability_bad` is the float for the
+        caller to decide on. The 400s below are about the *request*, not about the document: an intake
+        that names neither or both of `file` and `file_url`, a refused `file_url`, or a `file_url` while
+        `GUARDRAILS_FETCH_URL=false`. A `threshold` outside (0, 1), or one without its `threshold_target`,
+        is 422. Type and size are checked by the orchestrator before this endpoint is called.'
       operationId: checkDocument
       requestBody:
         content:
@@ -214,6 +215,19 @@ paths:
                         confidence: 0.9713
                         probability_bad: 0.0287
                         threshold_used: 0.5
+                    request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
+                no_threshold:
+                  summary: 'No threshold sent: passed'
+                  value:
+                    status_code: 200
+                    status_desc: OK
+                    message: OK
+                    data:
+                      passed: true
+                      document:
+                        verdict: accepted
+                        confidence: 0.1179
+                        probability_bad: 0.8821
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 rejected:
                   summary: Rejected
@@ -334,7 +348,7 @@ components:
         file:
           anyOf:
           - type: string
-            contentMediaType: application/octet-stream
+            format: binary
           - type: string
           - type: 'null'
           title: File
@@ -356,9 +370,10 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Threshold
-          description: Threshold for this request only, overriding every configured source; sent with
-            `threshold_target`, or neither (as in nilam). Strictly between 0 and 1. Ignored by the `remote`
-            backend, which judges under its own
+          description: 'Threshold for this request; sent with `threshold_target`, or neither (as in nilam).
+            Strictly between 0 and 1. **Omitted: the document passes** (`verdict: accepted`, `threshold_used:
+            null`) and `probability_bad` is answered as the model gave it; no configured threshold applies.
+            Ignored by the `remote` backend, which judges under its own'
           examples:
           - 0.5
         threshold_target:
@@ -385,10 +400,10 @@ components:
           - reject
           - unassessable
           title: Verdict
-          description: '`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it,
-            and `unassessable` when the model could not judge the image at all (undecodable, not an image,
-            or dimensions outside the range it was trained on). `unassessable` is a verdict and not an
-            error: this endpoint always answers 200'
+          description: '`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it
+            or when the request sent no threshold, and `unassessable` when the model could not judge the
+            image at all (undecodable, not an image, or dimensions outside the range it was trained on).
+            `unassessable` is a verdict and not an error: this endpoint always answers 200'
           examples:
           - accepted
         confidence:
@@ -420,10 +435,9 @@ components:
             exclusiveMinimum: 0.0
           - type: 'null'
           title: Threshold Used
-          description: 'The threshold in force for this request: the `threshold` form field, else the
-            central orchestrator''s (`GUARDRAILS_THRESHOLD_URL`), else `GUARDRAILS_THRESHOLD`, else the
-            value stored with the weights, else 0.5. Echoed because it can change without a deploy here.
-            Null with the `remote` backend when that service does not state its own'
+          description: 'The threshold that decided: the request''s `threshold` form field. Null when the
+            request sent none (the document then passes), and with the `remote` backend when that service
+            does not state its own'
           examples:
           - 0.5
         threshold_target:
@@ -435,8 +449,8 @@ components:
           - type: 'null'
           title: Threshold Target
           description: 'The side `threshold_used` applied to: `reject` (rejected when `probability_bad
-            >= threshold_used`) or `accept` (accepted when `1 - probability_bad >= threshold_used`). `reject`
-            unless the request sent `threshold_target`. Null with the `remote` backend'
+            >= threshold_used`) or `accept` (accepted when `1 - probability_bad >= threshold_used`), as
+            the request sent it. Null when the request sent no threshold, and with the `remote` backend'
           examples:
           - reject
       type: object

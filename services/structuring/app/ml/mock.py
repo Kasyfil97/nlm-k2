@@ -23,7 +23,6 @@ from typing import cast
 
 from ocr_common.kk import (
     DOC_CELL_FEATURES,
-    DOC_FIELDS,
     MEMBER_CELL_FEATURES,
     MEMBER_FIELDS,
     SCORED_DOC_FIELDS,
@@ -42,18 +41,6 @@ from app.ml.validity import reject_reason as _reject_reason
 __all__ = ["NOT_A_KK", "NO_TEXT", "MockStructurer"]
 
 _LEVER = re.compile(r"MOCK:(\w+)=([^\s]*)")
-
-_DOC_VALUES = {
-    "alamat": "JL. MERDEKA NO. 12",
-    "desa_kelurahan": "CIHAPIT",
-    "rt": "003",
-    "rw": "007",
-    "kecamatan": "BANDUNG WETAN",
-    "kabupaten_kota": "KOTA BANDUNG",
-    "provinsi": "JAWA BARAT",
-    "kode_pos": "40114",
-    "tanggal_dikeluarkan": "12-03-2019",
-}
 
 
 class MockStructurer:
@@ -84,8 +71,6 @@ class MockStructurer:
                 people[0].nama_lengkap if people else "", 0.9873, features=_features(DOC_CELL_FEATURES, 2)
             ),
         }
-        for name in DOC_FIELDS:
-            document.setdefault(name, _field(_DOC_VALUES.get(name, ""), 0.97))
         # Scores deliberately differ per member: identical numbers would hide an index shift
         # between this list and scoring's, which is exactly what the variable length exists to expose.
         document["anggota_keluarga"] = [
@@ -94,18 +79,11 @@ class MockStructurer:
                     getattr(person, name),
                     round(0.99 - index * 0.031, 4),
                     round(0.97 - index * 0.043, 4),
-                    # Only the seven SCORED fields carry a vector; the other eight are extracted and
-                    # never scored, and inventing features for them would suggest otherwise.
-                    # Langkah per anggota adalah len(MEMBER_FIELDS), bukan jumlah field yang
-                    # diskor: dengan langkah yang lebih kecil dari posisi terbesar, offset anggota
-                    # ke-n bertabrakan dengan anggota ke-(n+1) -- dan vektor yang identik antar sel
-                    # membuat pergeseran indeks tak terlihat, satu-satunya hal yang seluruh berkas
-                    # ini ada untuk mengekspos.
-                    features=(
-                        _features(MEMBER_CELL_FEATURES, index * len(MEMBER_FIELDS) + position + 3)
-                        if name in SCORED_MEMBER_FIELDS
-                        else None
-                    ),
+                    # Langkah per anggota adalah len(MEMBER_FIELDS): dengan langkah yang lebih kecil
+                    # dari posisi terbesar, offset anggota ke-n bertabrakan dengan anggota ke-(n+1)
+                    # -- dan vektor yang identik antar sel membuat pergeseran indeks tak terlihat,
+                    # satu-satunya hal yang seluruh berkas ini ada untuk mengekspos.
+                    features=_features(MEMBER_CELL_FEATURES, index * len(MEMBER_FIELDS) + position + 3),
                 )
                 for position, name in enumerate(MEMBER_FIELDS)
             }

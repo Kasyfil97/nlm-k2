@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 15, 5 Oktober 2026.
+Status: draf 16, 7 Oktober 2026.
 
 ---
 
@@ -41,7 +41,7 @@ Status: draf 15, 5 Oktober 2026.
 | **orchestrator** | 8040 | Pintu masuk tunggal. Cek file → minta guardrails menilai → serahkan ke extraction → tunggu sampai `PIPELINE_WAIT_SECONDS`. Stateless. | `K2Orchestrator` (dirombak) |
 | **guardrails** | 8041 | Sinkron, internal. Vonis `accepted` / `reject` untuk keseluruhan dokumen sebelum pipeline jalan. | `K2Quality` (XGBoost + NR-IQA) |
 | **extraction** | 8042 | Tahap async 1. OCR PaddleOCR — orientasi dan pelurusan ditangani di dalamnya. | `K2Extractor` |
-| **structuring** | 8043 | Tahap async 2. Kotak teks → 11 field dokumen + `anggota_keluarga`. **Satu-satunya tahap yang boleh menolak dokumen.** | `K2Regex-v2` (layout parser + CRF) |
+| **structuring** | 8043 | Tahap async 2. Kotak teks → 2 field dokumen + `anggota_keluarga` (7 field per anggota). **Satu-satunya tahap yang boleh menolak dokumen.** | `K2Regex-v2` (layout parser + CRF) |
 | **scoring** | 8044 | Tahap async 3, terakhir. Confidence per field terkalibrasi; menulis hasil akhir. | baru |
 
 Port berurutan mengikuti urutan pipeline.
@@ -255,11 +255,12 @@ seperti `nilam_ocr_npwp` di nilam); sebelumnya di `public` tanpa awalan.
 
 | Tabel | Pemilik | Ditulis | Dibaca |
 |---|---|---|---|
-| `nilam_ocr_jobs` / `nilam_ocr_results` | **nlm-k2** | extraction | extraction lewat API-nya; orchestrator lewat API itu |
+| `nilam_ocr_extraction_jobs` / `nilam_ocr_extraction_results` | **nlm-k2** | extraction | extraction lewat API-nya; orchestrator lewat API itu (sebelum migrasi `0004`, draf 16: `nilam_ocr_jobs` / `nilam_ocr_results`) |
 | `nilam_structuring_jobs` / `nilam_structuring_results` | **nlm-k2** | structuring | idem |
 | `nilam_scoring_jobs` / `nilam_scoring_results` | **nlm-k2** | scoring | idem |
 | `nilam_pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
 | `nilam_guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
+| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at` (draf 16, migrasi `0004`) |
 | tabel outcome (`ORCHESTRATION_OUTCOME_TABLE`) | **Orkestrasi pusat** | ketiga tahap, dalam transaksi job | Orkestrasi pusat |
 
 Tabel outcome **milik mereka**, jadi kolomnya mereka yang menambahkan dan migrasi nlm-k2 tidak pernah
@@ -286,8 +287,8 @@ request tetap dijawab.
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
-| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. Tidak dikirim = ambang milik service guardrails. |
-| `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. Field yang tidak disebut memakai ambang model. Tidak sah → 422 `INVALID_THRESHOLD` |
+| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. **Tidak dikirim = dokumen dianggap lolos** guardrails; `probability_bad` (float) tetap dihitung, diteruskan, dan dicatat (draf 16; tidak ada lagi ambang bawaan di service guardrails). |
+| `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. **Field yang tidak diberi ambang (atau parameter tidak dikirim): `confidence`-nya probabilitas trust model apa adanya (float), bukan 0/1** (draf 16). Tidak sah → 422 `INVALID_THRESHOLD` |
 
 `file` dan `file_url` **tepat satu**, tidak boleh dua-duanya dan tidak boleh kosong keduanya.
 
@@ -404,16 +405,17 @@ Aturan isi `data`:
 
 - **Hanya sembilan field yang keluar**: 2 field dokumen (`no_kk`, `nama_kepala_keluarga`) dan 7 field per
   anggota. Tidak ada field lain, walau tahap structuring mengextraction lebih banyak.
-- Bentuk tiap field selalu `{"value": <string>, "confidence": 0 | 1}` (draf 13, seperti nilam) — **tidak
-  pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan: `{"value": "", "confidence": 0}`.
-- **`confidence` bernilai `1`** bila probabilitas trust model bahwa nilai itu PERSIS benar (kapital & spasi
-  dirapikan) mencapai ambang field itu, selain itu `0`. Ambangnya, yang pertama berlaku:
-  1. `column_confidence_threshold[field]` dari request (3.1);
-  2. ambang milik model untuk field itu — titik di atas mana setiap sampel held-out field sejenis benar.
-     Ambangnya berbeda per field karena memang harus (terukur, `ayah` aman di 0.935, `pendidikan` butuh
-     0.993). Field yang tidak diberi ambang oleh model (`no_kk`) bernilai **0** kecuali request memberinya ambang;
-  3. `FIELD_CONFIDENCE_THRESHOLD`, hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`).
-- Keputusan 0/1 itu **disimpan** tahap scoring bersama hasilnya (`decisions`, 8.3), dan respons `POST`,
+- Bentuk tiap field selalu `{"value": <string>, "confidence": <0 | 1 | float 0–1>}` (draf 13, seperti nilam;
+  float sejak draf 16) — **tidak pernah** `null` sebagai pengganti objek. Field yang tidak ditemukan:
+  `{"value": "", "confidence": 0}`.
+- **Ambang hanya dari request** (draf 16): `column_confidence_threshold[field]`, atau `all_field` (3.1).
+  - Field **dengan** ambang: `confidence` bernilai `1` bila probabilitas trust model bahwa nilai itu PERSIS
+    benar (kapital & spasi dirapikan) mencapai ambang itu, selain itu `0`.
+  - Field **tanpa** ambang: `confidence` adalah probabilitas itu sendiri, float 0–1 apa adanya (mis.
+    `0.9731`); `0` bila nilainya kosong atau tidak terskor.
+  - Ambang milik model (`thresholds`, 8.3) tetap ikut disimpan sebagai rujukan — titik di atas mana setiap
+    sampel held-out field sejenis benar — tetapi tidak lagi memutuskan. `FIELD_CONFIDENCE_THRESHOLD` dihapus.
+- Keputusan itu **disimpan** tahap scoring bersama hasilnya (`decisions`, 8.3), dan respons `POST`,
   `GET`, dan baris outcome semuanya diproyeksikan dari sana — identik secara konstruksi.
 - Probabilitas mentahnya tetap tersedia di hasil tahap scoring (`GET /v1/scoring/jobs/{request_id}`). Callback
   hasil membawa `data` yang sama persis dengan jawaban ini, bukan probabilitasnya (draf 15, [8.5](#85-menutup-request)).
@@ -424,9 +426,10 @@ Aturan isi `data`:
 
 ### 3.3.1 Proyeksi dari hasil structuring ke `data`
 
-Tahap structuring tetap mengextraction **11 field dokumen + 15 field per anggota** ([7.3](#73-hasil-tahap-structuring))
-— itu yang disimpan di `nilam_structuring_results` dan terbaca lewat `GET /v1/structuring/jobs/{request_id}`.
-Orchestrator memproyeksikan sebagian kecilnya ke `data`, sekaligus mengganti dua nama:
+Tahap structuring mengextraction **2 field dokumen + 7 field per anggota** ([7.3](#73-hasil-tahap-structuring))
+— persis sembilan field yang keluar, di bawah nama internalnya. Itu yang disimpan di `nilam_structuring_results`
+dan terbaca lewat `GET /v1/structuring/jobs/{request_id}`. Orchestrator memproyeksikannya ke `data`, sekaligus
+mengganti dua nama:
 
 | Kunci di `data` (kontrak keluar) | Field internal structuring |
 |---|---|
@@ -448,10 +451,11 @@ structuring dan scoring tidak ikut berubah.
 
 Sembilan field ini disebut **field kontrak** di seluruh dokumen.
 
-Field yang **tidak** keluar tapi tetap diextraction dan tersimpan: `alamat`, `rt`, `rw`, `desa_kelurahan`,
-`kecamatan`, `kabupaten_kota`, `provinsi`, `kode_pos`, `tanggal_dikeluarkan`, dan per anggota
-`jenis_kelamin`, `tempat_lahir`, `tanggal_lahir`, `agama`, `golongan_darah`, `status_perkawinan`,
-`tanggal_perkawinan`, `kewarganegaraan`.
+Field kartu lainnya (`alamat`, `rt`, `rw`, `desa_kelurahan`, `kecamatan`, `kabupaten_kota`, `provinsi`,
+`kode_pos`, `tanggal_dikeluarkan`, dan per anggota `jenis_kelamin`, `tempat_lahir`, `tanggal_lahir`, `agama`,
+`golongan_darah`, `status_perkawinan`, `tanggal_perkawinan`, `kewarganegaraan`) **tidak diextraction** sejak
+draf 16: model structuring `kk_model` tidak membacanya, dan tidak ada tahap yang memakainya. Hasil lama yang
+masih membawanya tetap terbaca; proyeksi mengabaikannya.
 
 ### 3.4 Response `202` — belum selesai saat waktu tunggu habis
 
@@ -570,7 +574,7 @@ Content-Type: multipart/form-data
 | `request_id` | string | ya | diteruskan apa adanya |
 | `file` | file | salah satu | byte gambar yang sudah lolos cek tipe/ukuran di orchestrator |
 | `file_url` | string | salah satu | dipakai kalau orchestrator menerima `file_url` dan `GUARDRAILS_FETCH_URL=true` |
-| `threshold` | float | tidak | override `GUARDRAILS_THRESHOLD` untuk request ini (0.01–0.99); normalnya tidak dikirim |
+| `threshold` | float | tidak | ambang untuk request ini, `0 < x < 1`, bersama `threshold_target` (`reject`/`accept`) atau tidak sama sekali. **Tidak dikirim: dokumen lolos** (`verdict: accepted`, `threshold_used: null`) dan `probability_bad` dikembalikan apa adanya (draf 16). Tidak ada ambang bawaan |
 
 ### 5.2 Response — **selalu `200`**
 
@@ -593,7 +597,25 @@ Guardrails hanya menilai, tidak pernah menolak request. Vonisnya ada di `data.pa
 }
 ```
 
-Saat ditolak:
+Tanpa `threshold` di request, dokumen yang buruk pun lolos; hanya probabilitasnya yang dikembalikan:
+
+```json
+{
+  "data": {
+    "passed": true,
+    "reason": null,
+    "document": {
+      "verdict": "accepted",
+      "confidence": 0.1179,
+      "probability_bad": 0.8821,
+      "threshold_used": null,
+      "threshold_target": null
+    }
+  }
+}
+```
+
+Saat ditolak (request membawa `threshold` 0.5):
 
 ```json
 {
@@ -628,7 +650,8 @@ yang dilatihkan ke checkpoint:
 }
 ```
 
-- `probability_bad` adalah keluaran mentah model XGBoost `K2Quality` (`is_bad` = `probability >= threshold`).
+- `probability_bad` adalah keluaran mentah model XGBoost `K2Quality` (`is_bad` = `probability >= threshold`,
+  hanya bila request membawa `threshold`; tanpa itu tidak ada yang dibandingkan dan vonisnya `accepted`).
 - `confidence` = keyakinan pada vonis: `probability_bad` kalau `reject`, `1 - probability_bad` kalau `accepted`.
 - **`unassessable` adalah vonis, bukan galat.** §5.2 mewajibkan selalu `200`, dan inti model melempar
   di lusinan tempat pada jalur ini; memetakannya ke `500` akan melanggar aturan itu. Ia dipisahkan dari
@@ -643,7 +666,8 @@ yang dilatihkan ke checkpoint:
 
 Model ini biner (bagus / tidak bagus) dan menilai gambar **secara keseluruhan**, jadi `reason`-nya tidak
 bisa menyebut bagian mana yang bermasalah. Ini satu-satunya penilaian kualitas gambar di seluruh pipeline,
-sehingga `GUARDRAILS_THRESHOLD` (default 0.5) adalah satu-satunya tuas untuk menolak foto yang buruk.
+sehingga `guardrails_confidence_threshold` di request adalah satu-satunya tuas untuk menolak foto yang buruk
+(draf 16: `GUARDRAILS_THRESHOLD` dan endpoint ambang pusat dihapus; tanpa ambang, dokumen lolos).
 
 ### 5.3 Kegagalan
 
@@ -695,14 +719,14 @@ muncul sebagai job `FAILED`, bukan 4xx. Yang langsung ditolak hanya bentuk reque
 
 ### 6.3 Yang dikerjakan tahap extraction
 
-1. Satu transaksi klaim: `INSERT nilam_ocr_jobs (PROCESSING, input: {document_type, guardrails, file_url})
+1. Satu transaksi klaim: `INSERT nilam_ocr_extraction_jobs (PROCESSING, input: {document_type, guardrails, file_url})
    ON CONFLICT DO NOTHING` + upsert baris outcome `{downstream_status: processing, stage: OCR}`.
 2. `file_url`? unduh; selain itu pakai byte dari payload.
 3. **PaddleOCR** (deteksi + rekognisi). Backend `paddle` (draf 12, sama dengan nilam) memanggil server
    PaddleOCR tim ML di `POST /ocr` dan meneruskan `poly` apa adanya — **tidak** dijadikan `bbox` tegak
    seperti di nilam, karena parser tata letak mengukur kemiringannya. `kk_ocr` menjalankan PP-OCRv5 di
    dalam proses. PDF: hanya halaman 1.
-4. Satu transaksi hasil: `UPSERT nilam_ocr_results` + `UPDATE nilam_ocr_jobs DONE` + `INSERT nilam_pipeline_outbox`
+4. Satu transaksi hasil: `UPSERT nilam_ocr_extraction_results` + `UPDATE nilam_ocr_extraction_jobs DONE` + `INSERT nilam_pipeline_outbox`
    (handoff ke structuring).
 
 **Tahap ini tidak pernah menolak dokumen.** Gambar yang tidak bisa dibuka, model OCR tidak terjangkau,
@@ -762,7 +786,7 @@ aturan structuring untuk ditolak di sana, bukan ditolak `422` di batas skema. En
 Saat `texts` kosong, keduanya `null`.
 
 **Handoff by reference.** Dengan `PIPELINE_HANDOFF_BY_REFERENCE=true` (butuh `DATABASE_URL` yang sama di
-ketiga tahap), blok `ocr` **dihilangkan** dan structuring membacanya sendiri dari `nilam_ocr_results`. Ini
+ketiga tahap), blok `ocr` **dihilangkan** dan structuring membacanya sendiri dari `nilam_ocr_extraction_results`. Ini
 penting untuk KK: satu kartu bisa menghasilkan 200+ kotak teks, dan payload sebesar itu ikut tersimpan di
 baris `nilam_pipeline_outbox`. Penerima menerima kedua bentuk; `ocr` yang tidak ada dan tidak ditemukan di
 database membuat job `FAILED` dengan pesan yang menyebutkannya. Tanpa `DATABASE_URL`, body tanpa `ocr`
@@ -775,37 +799,22 @@ Sama dengan 6.2, dengan `"stage": "STRUCTURING"`.
 ### 7.3 Hasil tahap structuring
 
 Isi `nilam_structuring_results.result` adalah objek `data.ocr_result` K2Regex-v2 — struktur datar yang sama,
-tanpa penggantian nama — dengan **dua perubahan**: tiap field membawa dua skor (`ocr_conf`, `crf_conf`)
-menggantikan `conf` tunggal, dan ada satu kunci tingkat atas baru, `reject_reason`.
+tanpa penggantian nama — dengan **tiga perubahan**: hanya sembilan field kontrak (nama internal) yang ada, tiap
+field membawa dua skor (`ocr_conf`, `crf_conf`) menggantikan `conf` tunggal plus vektor `features` untuk
+scoring, dan ada satu kunci tingkat atas baru, `reject_reason`. Bentuknya sama untuk semua backend
+(`kk_model`, `kk_regex`, `mock`). Contoh di bawah tanpa `features` agar ringkas.
 
 ```json
 {
   "nomor_kk":             {"value": "3273012345678901", "ocr_conf": 0.9991, "crf_conf": null},
   "nama_kepala_keluarga": {"value": "BUDI SANTOSO", "ocr_conf": 0.9873, "crf_conf": null},
-  "alamat":               {"value": "JL. MERDEKA NO. 12", "ocr_conf": 0.9642, "crf_conf": null},
-  "desa_kelurahan":       {"value": "CIHAPIT", "ocr_conf": 0.9810, "crf_conf": null},
-  "rt":                   {"value": "003", "ocr_conf": 0.9755, "crf_conf": null},
-  "rw":                   {"value": "007", "ocr_conf": 0.9755, "crf_conf": null},
-  "kecamatan":            {"value": "BANDUNG WETAN", "ocr_conf": 0.9888, "crf_conf": null},
-  "kabupaten_kota":       {"value": "KOTA BANDUNG", "ocr_conf": 0.9901, "crf_conf": null},
-  "provinsi":             {"value": "JAWA BARAT", "ocr_conf": 0.9934, "crf_conf": null},
-  "kode_pos":             {"value": "40114", "ocr_conf": 0.9702, "crf_conf": null},
-  "tanggal_dikeluarkan":  {"value": "12-03-2019", "ocr_conf": 0.9219, "crf_conf": null},
   "anggota_keluarga": [
     {
       "nama_lengkap":                   {"value": "BUDI SANTOSO", "ocr_conf": 0.9954, "crf_conf": 0.9931},
       "nik":                            {"value": "3273011203850001", "ocr_conf": 0.9975, "crf_conf": 0.9887},
-      "jenis_kelamin":                  {"value": "LAKI-LAKI", "ocr_conf": 0.9968, "crf_conf": 0.9954},
-      "tempat_lahir":                   {"value": "BANDUNG", "ocr_conf": 0.9891, "crf_conf": 0.9803},
-      "tanggal_lahir":                  {"value": "12-03-1985", "ocr_conf": 0.9903, "crf_conf": 0.9877},
-      "agama":                          {"value": "ISLAM", "ocr_conf": 0.9944, "crf_conf": 0.9912},
       "pendidikan":                     {"value": "S1", "ocr_conf": 0.9840, "crf_conf": 0.9102},
       "jenis_pekerjaan":                {"value": "KARYAWAN SWASTA", "ocr_conf": 0.9611, "crf_conf": 0.8774},
-      "golongan_darah":                 {"value": "O", "ocr_conf": 0.7120, "crf_conf": 0.4415},
-      "status_perkawinan":              {"value": "KAWIN", "ocr_conf": 0.9821, "crf_conf": 0.9688},
-      "tanggal_perkawinan":             {"value": "08-08-2010", "ocr_conf": 0.9560, "crf_conf": 0.9341},
       "status_hubungan_dalam_keluarga": {"value": "KEPALA KELUARGA", "ocr_conf": 0.9788, "crf_conf": 0.9440},
-      "kewarganegaraan":                {"value": "WNI", "ocr_conf": 0.9972, "crf_conf": 0.9955},
       "ayah":                           {"value": "SUTRISNO", "ocr_conf": 0.9705, "crf_conf": 0.8312},
       "ibu":                            {"value": "SITI AMINAH", "ocr_conf": 0.9682, "crf_conf": 0.8190}
     }
@@ -816,26 +825,30 @@ menggantikan `conf` tunggal, dan ada satu kunci tingkat atas baru, `reject_reaso
 
 Aturan bentuk — ini yang mengikat, bukan contoh di atas:
 
-- **Struktur datar.** Kesebelas field dokumen adalah kunci tingkat atas, **bukan** di bawah `fields`.
-  `anggota_keluarga` dan `reject_reason` adalah kunci ke-12 dan ke-13.
+- **Struktur datar.** Kedua field dokumen adalah kunci tingkat atas, **bukan** di bawah `fields`.
+  `anggota_keluarga` dan `reject_reason` adalah kunci ke-3 dan ke-4.
 - **Kunci nomor KK adalah `nomor_kk`**, bukan `no_kk`. Parser memang memancarkan `nomor_kk`; penggantian
   nama ke `no_kk` terjadi di orchestrator ([3.3.1](#331-proyeksi-dari-hasil-structuring-ke-data)).
 - Tiap field `{value, ocr_conf, crf_conf}`. `value` selalu string; `""` kalau tidak ditemukan,
   **tidak pernah** `null`.
 - **`ocr_conf`** = skor rekognisi terendah di antara kotak OCR pembentuk nilai itu. Ada untuk field dokumen
   maupun field anggota. `null` kalau field tidak ditemukan.
-- **`crf_conf`** = marginal forward-backward penempatan kolom. **Selalu `null` untuk field dokumen** (regex
-  /posisional, tidak pernah lewat Viterbi) dan untuk sel anggota yang tidak ditempatkan Viterbi.
+- **`crf_conf`** = keyakinan structuring bahwa teks itu milik field tersebut: pada `kk_model`, probabilitas
+  kelas kotak terendah di antara kotak pembentuknya; pada `kk_regex`, marginal forward-backward penempatan
+  kolom. **Selalu `null` untuk field dokumen**, dan `null` untuk field anggota yang tidak ditemukan.
 - Keduanya **tidak dilebur**: keduanya gagal dengan cara berbeda — `ocr_conf` rendah berarti mesin
   rekognisi ragu pada teksnya, `crf_conf` rendah berarti teksnya terbaca tapi tidak jelas masuk kolom mana.
   Peleburan keduanya menjadi satu P(benar) adalah tugas tahap scoring.
-- **`features`** = vektor masukan trust model untuk field itu, **hanya ada pada sembilan field kontrak**
-  dan `null` di semua field lain. Nama-namanya dipatok `ocr_common.kk.MEMBER_CELL_FEATURES` (46 nama, sel
-  anggota) dan `DOC_CELL_FEATURES` (13 nama, field dokumen). Lihat
+- **`features`** = vektor masukan trust model untuk field itu; `null` kalau field kosong. Dengan
+  `kk_model` (pasangan scoring `kk_field`) namanya dipatok `ocr_common.kk.FIELD_FEATURES` (42 nama, sama
+  untuk kesembilan field); dengan `kk_regex` (pasangan `calibrated`) `MEMBER_CELL_FEATURES` (46 nama, sel
+  anggota) dan `DOC_CELL_FEATURES` (13 nama, field dokumen). Satu fitur yang tidak hingga (NaN/inf) dikirim
+  `null`, dan scoring menilai field itu `null`. Bersama `value`, ini **seluruh** masukan `kk_field`: scoring
+  tidak membaca apa pun selain hasil structuring. Lihat
   [7.3.1](#731-kenapa-ada-features-dan-kenapa-ia-lahir-di-sini).
 - **`reject_reason`** = alasan pertama yang menolak dokumen, bahasa Indonesia; `null` kalau dokumen
   diterima. Perannya dijelaskan di [7.4](#74-gerbang-validitas-kk).
-- Tiap anggota selalu membawa kelima-belas kunci, walau nilainya `""`.
+- Tiap anggota selalu membawa ketujuh kunci, walau nilainya `""`.
 - **Tidak ada** `document_type`, `flag`, maupun `flag_reason`. nilam punya `flag` / `flag_reason` sebagai
   penanda lunak untuk trust model; `K2Regex-v2` belum memproduksi padanannya, jadi keduanya sengaja tidak
   dikarang di sini.
@@ -968,7 +981,7 @@ Handoff ini hanya pernah terjadi untuk dokumen dengan `reject_reason: null` — 
 di structuring.
 
 `ocr` dan `structuring` boleh dihilangkan kalau pengirim memakai handoff by reference; scoring membacanya
-dari `nilam_ocr_results` dan `nilam_structuring_results`.
+dari `nilam_ocr_extraction_results` dan `nilam_structuring_results`.
 
 ### 8.2 Response `202`
 
@@ -1012,14 +1025,16 @@ tidak ada keputusan terima/tolak: ambang milik pemanggil.
 
 **`thresholds`** = confidence di atas mana setiap sampel held-out field itu benar, satu per field kontrak,
 memakai nama internal. Ia ikut di dalam hasil **bukan di konfigurasi**, karena ia properti model yang
-dilatih, bukan properti deployment. Keputusan 0/1 per field kontrak disimpan bersamanya sebagai
-`decisions` (`{value, confidence, threshold}`), sehingga `confidence` di respons `extract-ocr` identik dengan
-baris outcome secara konstruksi, bukan dengan menjaga dua env var tetap sinkron.
+dilatih, bukan properti deployment. **Sejak draf 16 ia hanya rujukan** (mis. nilai yang wajar dikirim
+pemanggil di `column_confidence_threshold`); yang memutuskan hanya ambang dari request. Keputusan per field
+kontrak disimpan bersama skornya sebagai `decisions` (`{value, confidence, threshold}`): `confidence` 0/1
+bila `threshold` dari request ada, selain itu `threshold: null` dan `confidence` = probabilitasnya. Dengan
+begitu `confidence` di respons `extract-ocr` identik dengan baris outcome secara konstruksi.
+Catatan di bawah ini menjelaskan nilai ambang model, yang tetap berguna sebagai pilihan ambang request:
 Ambang harus berbeda per field: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan
 satu angka global menjatuhkan cakupan pada presisi 100% ke nol. Field yang **tidak ada** di sini tidak
-punya titik seperti itu di data uji — `nomor_kk` salah satunya — dan karena itu `confidence`-nya **0**
-kecuali `column_confidence_threshold` request memberinya ambang. Ketiadaannya adalah informasi, bukan cacat. Dulu field seperti ini jatuh ke
-`FIELD_CONFIDENCE_THRESHOLD` (0.5), dan terukur di dokumen uji `nomor_kk` pada >= 0.5 hanya 83% benar.
+punya titik seperti itu di data uji — `nomor_kk` salah satunya. Ketiadaannya adalah informasi, bukan cacat:
+terukur di dokumen uji `nomor_kk` pada >= 0.5 hanya 83% benar.
 
 **`bin_edges`** = tepi bin dari rendah ke tinggi, terpisah untuk kedua keluarga model. Sengaja tidak
 selebar sama: bin teratas dipotong tepat di titik presisi 100% terukur, yang tidak jatuh pas di kisi mana
@@ -1053,9 +1068,8 @@ Angka 100% itu **diukur pada held-out, bukan dijamin**. Yang boleh dijanjikan ke
 bawah Clopper-Pearson-nya. Untuk menjanjikan 99.9% dibutuhkan ~3000 sel berurutan tanpa satu pun salah di
 bin teratas; yang tersedia sekarang 1686 sel seluruhnya.
 
-**Scoring hanya menilai sembilan field kontrak** (2 dokumen + 7 anggota), bukan seluruh 11 + 15 yang
-diextraction structuring. Alasannya: tiap field butuh kalibratornya sendiri, dan melatih 26 kalibrator untuk
-9 angka yang dipakai adalah pemborosan. Kunci di sini memakai **nama internal**; penggantian nama ke
+**Scoring menilai sembilan field kontrak** (2 dokumen + 7 anggota) — persis yang dipancarkan structuring
+sejak draf 16. Kunci di sini memakai **nama internal**; penggantian nama ke
 kontrak keluar terjadi di orchestrator (3.3.1).
 
 `payload` menyimpan persis apa yang diskor supaya angka-angka itu bisa direproduksi tanpa menjalankan ulang
@@ -1127,9 +1141,9 @@ Scoring adalah tahap terakhir: tidak ada handoff, tidak ada baris outbox. Dalam 
 `{status_code: 200, downstream_status: completed, downstream_stage: SCORING, result_data: <data kontrak
 extract-ocr>}`.
 
-Karena scoring merakit `result_data` dalam bentuk kontrak, ia memakai `FIELD_CONFIDENCE_THRESHOLD` juga.
-**Nilainya harus sama persis dengan yang dipakai orchestrator**, kalau tidak baris outcome dan respons
-`extract-ocr` bisa berbeda untuk request yang sama.
+Scoring merakit `result_data` dalam bentuk kontrak dari `decisions` yang ia simpan, dan orchestrator
+memproyeksikan jawabannya dari `decisions` yang sama, jadi baris outcome dan respons `extract-ocr` tidak bisa
+berbeda untuk request yang sama. Tidak ada lagi env ambang yang harus disinkronkan (draf 16).
 
 **Kewajiban yang dibawa dari `K2Orchestrator` dan tidak boleh hilang:** hasil akhir mengandung PII (NIK,
 nama, alamat). Sebelum ditulis ke tabel audit, hasil itu harus dienkripsi (Fernet, `PII_ENCRYPTION_KEY`)
@@ -1153,8 +1167,8 @@ dengan nilam:
 ```
 
 - **Selesai:** `result` **sama persis** dengan `data` jawaban 200 `extract-ocr` untuk request yang sama —
-  sembilan field dengan `confidence` 0/1 dari threshold request itu (bukan lagi probabilitas mentah seperti
-  sebelum draf 15). `pipeline_name_sequence` yang berakhir sebelum scoring: hasil service terakhirnya apa
+  sembilan field dengan `confidence` 0/1 dari threshold request itu, atau probabilitasnya untuk field tanpa
+  threshold (draf 16). `pipeline_name_sequence` yang berakhir sebelum scoring: hasil service terakhirnya apa
   adanya. Tahap membawa jawaban itu di body callback yang disimpan sebagai `answer`; callback per tahap
   tidak pernah mengirimnya.
 - **Ditolak gerbang validitas KK** (setelah 202): `{"status": "completed", "result": null, "guardrails": 1,
@@ -1230,7 +1244,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | Field | Tipe | Keterangan |
 |---|---|---|
 | `value` | string | `""` kalau tidak ditemukan, tidak pernah `null` |
-| `confidence` | `0` \| `1` | 1 bila P(nilai ini persis benar) dari trust model mencapai ambang field itu (3.3); 0 bila tidak, atau tidak ada nilai/skor. **Tidak pernah `null`** |
+| `confidence` | `0` \| `1` \| float 0–1 | dengan ambang dari request: 1 bila P(nilai ini persis benar) dari trust model mencapai ambang itu (3.3), 0 bila tidak atau tidak ada nilai/skor. Tanpa ambang: P itu sendiri (float), 0 bila tidak ada nilai/skor. **Tidak pernah `null`** |
 
 ### `GuardrailsResult`
 
@@ -1241,8 +1255,8 @@ supaya penambahan field di hulu tidak memecah hilir.
 | `document.verdict` | `accepted` \| `reject` \| `unassessable` | `unassessable` = gambar tidak bisa dinilai; tetap `200`, `passed: false` |
 | `document.confidence` | float 0–1 \| null | keyakinan pada vonis; null kalau `unassessable` |
 | `document.probability_bad` | float 0–1 \| null | keluaran mentah model; fitur trust model; null kalau `unassessable` |
-| `document.threshold_used` | float | ambang yang berlaku saat penilaian |
-| `document.threshold_target` | `accept` \| `reject` | sisi yang dikenai ambang: selalu `reject` |
+| `document.threshold_used` | float \| null | ambang dari request yang memutuskan; `null` bila request tidak membawa ambang (dokumen lolos) |
+| `document.threshold_target` | `accept` \| `reject` \| null | sisi yang dikenai ambang (orchestrator selalu mengirim `reject`); `null` tanpa ambang |
 
 ### `OcrPayload`
 
@@ -1257,8 +1271,8 @@ supaya penambahan field di hulu tidak memecah hilir.
 
 ### `StructuringPayload`
 
-Bentuk K2Regex-v2: datar, 11 field dokumen sebagai kunci tingkat atas + `anggota_keluarga[]` × 15 field
-(tiap field `{value, ocr_conf, crf_conf}`) + `reject_reason`. Tidak ada `document_type`, `flag`, atau
+Bentuk K2Regex-v2 yang dipangkas: datar, 2 field dokumen sebagai kunci tingkat atas + `anggota_keluarga[]` × 7
+field (tiap field `{value, ocr_conf, crf_conf, features}`) + `reject_reason`. Tidak ada `document_type`, `flag`, atau
 `flag_reason`. Bentuk lengkap dan aturannya di [7.3](#73-hasil-tahap-structuring).
 
 ### Daftar field
@@ -1268,14 +1282,12 @@ Ada **dua daftar** yang tidak boleh tertukar.
 **A. Nama internal** — dipakai structuring dan scoring, tersimpan di `nilam_structuring_results` dan
 `nilam_scoring_results`, terbaca lewat `GET /v1/<tahap>/jobs/{request_id}`:
 
-- Dokumen (11): `nomor_kk`, `nama_kepala_keluarga`, `alamat`, `desa_kelurahan`, `rt`, `rw`, `kecamatan`,
-  `kabupaten_kota`, `provinsi`, `kode_pos`, `tanggal_dikeluarkan`.
-- Anggota (15): `nama_lengkap`, `nik`, `jenis_kelamin`, `tempat_lahir`, `tanggal_lahir`, `agama`,
-  `pendidikan`, `jenis_pekerjaan`, `golongan_darah`, `status_perkawinan`, `tanggal_perkawinan`,
-  `status_hubungan_dalam_keluarga`, `kewarganegaraan`, `ayah`, `ibu`.
+- Dokumen (2): `nomor_kk`, `nama_kepala_keluarga`.
+- Anggota (7): `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_keluarga`,
+  `ayah`, `ibu`.
 
-`no_paspor` dan `no_kitap` sengaja tidak diextraction. Scoring hanya menilai sembilan di antaranya —
-padanan internal dari daftar B.
+Kesembilannya adalah padanan internal dari daftar B, dan structuring tidak mengextraction field lain (lihat
+3.3.1).
 
 **B. Nama kontrak keluar** — hanya muncul di `data` pada `POST` / `GET /v1/extract-ocr`:
 
@@ -1354,7 +1366,7 @@ kodenya sendiri.
 | Rate limit, CORS, Elastic APM | di orchestrator | dipertahankan apa adanya | tidak |
 
 **Yang perlu dibuat baru:** service `scoring` (8044), pustaka bersama padanan `ocr_common` (envelope,
-request_id, pipeline stage/outbox/repository, klien HTTP), dan tabel `nilam_ocr_jobs`/`nilam_ocr_results`,
+request_id, pipeline stage/outbox/repository, klien HTTP), dan tabel `nilam_ocr_extraction_jobs`/`nilam_ocr_extraction_results`,
 `nilam_structuring_jobs`/`_results`, `nilam_scoring_jobs`/`_results`, `nilam_pipeline_outbox`. Tabel outcome **tidak** dibuat
 di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adalah nama tabel dan kolomnya
 ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)).
@@ -1400,9 +1412,8 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/extraction/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
-| `FIELD_CONFIDENCE_THRESHOLD` | tidak | `0.5` | **cadangan** untuk `confidence` 0/1 di `data`, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`) dan request tidak mengirim `column_confidence_threshold` |
-| `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results`. Kosong = putusan tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
-| `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `nilam_guardrails_results`; lewat = dicatat di log, request tetap dijawab |
+| `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results` dan `nilam_ocr_results` (hasil final). Kosong = putusan dan hasil final tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
+| `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `nilam_guardrails_results` atau `nilam_ocr_results`; lewat = dicatat di log, request tetap dijawab |
 | `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
 
 Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat API, bukan lewat database.
@@ -1421,7 +1432,6 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 | `PIPELINE_OUTBOX_MAX_BACKOFF_SECONDS` / `_MAX_AGE_SECONDS` | tidak | `300` / `86400` | batas backoff, dan umur sebelum pesan jadi dead letter |
 | `PIPELINE_OUTBOX_STALE_AFTER_SECONDS` | tidak | `300` | relay menulis `WARNING` selama pesan tertua lebih tua dari ini |
 | `ORCHESTRATION_OUTCOME_TABLE` | **produksi: ya** | kosong | nama tabel outcome milik Orkestrasi pusat ([2.6](#26-tabel-outcome-dan-cara-hasil-sampai-ke-pemanggil)). Kosong = tidak menulis, dan keadaan akhir hanya terbaca lewat polling — hanya untuk dev |
-| `FIELD_CONFIDENCE_THRESHOLD` | scoring saja | `0.5` | **cadangan**, dipakai hanya bila hasil scoring tidak membawa ambang sama sekali (backend `mock`, [8.3](#83-hasil-tahap-scoring)). Tetap harus sama dengan orchestrator; ambang per field tidak perlu disinkronkan karena ikut di dalam hasil |
 | `SCORING_BACKEND` | scoring saja | `mock` | `mock` mengarang angka dan **ditolak di luar `ENVIRONMENT=local`**; `calibrated` memuat artefak terlatih |
 | `SCORING_MODEL_PATH` | scoring, `calibrated` | `weights/kk_trust_model.joblib` | artefak joblib: dua keluarga model, masing-masing dengan urutan kolom, tepi bin, dan ambang per field-nya sendiri. Ketiganya bukan konfigurasi — semuanya berpindah bersama bobotnya |
 | `PII_ENCRYPTION_KEY` | scoring, produksi: ya | – | Fernet, untuk enkripsi hasil sebelum audit ([8.5](#85-menutup-request)) |
@@ -1434,7 +1444,6 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 
 | Variabel | Wajib? | Default | Keterangan |
 |---|---|---|---|
-| `GUARDRAILS_THRESHOLD` | tidak | `0.5` | `is_bad` = `probability_bad >= threshold`. Satu-satunya tuas gerbang mutu gambar di pipeline ini |
 | `GUARDRAILS_FETCH_URL` | tidak | `false` | `true` = guardrails mengunduh sendiri dari `file_url` alih-alih menerima byte dari orchestrator |
 | `FILE_URL_ALLOWED_HOSTS` | kalau `GUARDRAILS_FETCH_URL=true` | kosong | sama artinya dengan di orchestrator |
 
@@ -1447,7 +1456,8 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
    perlu disepakati dengan tim mereka, termasuk apakah `result_data` cukup memuat sembilan field kontrak
    atau mereka menginginkan lebih.
 2. **Ambang guardrails menanggung beban lebih besar.** Tanpa gerbang legibilitas per field,
-   `GUARDRAILS_THRESHOLD` (default 0.5) adalah satu-satunya gerbang keras untuk mutu gambar. Ambang itu
+   ambang guardrails (sejak draf 16 hanya `guardrails_confidence_threshold` per request; tanpa itu dokumen
+   lolos) adalah satu-satunya gerbang keras untuk mutu gambar. Ambang itu
    dikalibrasi ketika masih ada gerbang kedua di hilir, jadi perlu ditinjau ulang.
 
    `make e2e-samples` (`scripts/e2e_samples.py`, dokumen sungguhan di `test/data/`) kini mengukurnya
@@ -1491,6 +1501,27 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 16 — 7 Oktober 2026
+
+1. **Hasil structuring hanya sembilan field kontrak** (§3.3.1, §7.3, §10): 2 field dokumen + 7 per anggota,
+   untuk semua backend. Tujuh belas field kartu lainnya tidak lagi diextraction maupun disimpan. Model
+   structuring `kk_model` tidak membacanya, dan tidak ada tahap yang memakainya. `StructuringPayload` hanya
+   mewajibkan sembilan field; kunci lain yang masih terbawa hasil lama diteruskan, tidak ditolak.
+2. **`features` boleh membawa `null` per fitur** (§7.3): fitur `kk_model` yang tidak hingga dikirim `null`,
+   dan scoring menilai field itu `null`. Sebelumnya payload seperti itu ditolak 422 di endpoint scoring.
+3. **Tabel tahap OCR berganti nama** (§2.6, §6.3, migrasi `0004`): `nilam_ocr_jobs`/`nilam_ocr_results`
+   menjadi `nilam_ocr_extraction_jobs`/`nilam_ocr_extraction_results` (juga versi `nilam_testing_`).
+4. **Tabel baru `nilam_ocr_results`: hasil final OCR KK** (§2.6): orchestrator meng-upsert envelope
+   `/v1/extract-ocr` per `request_id` (`status_code`, `status_desc`, `message`, `data`, `errors`,
+   `guardrails`, `created_at`, `updated_at`) setiap kali `POST`/`GET` menjawab. Best-effort.
+5. **Guardrails tanpa ambang = lolos** (§3.1, §5.1, §5.2, §10, §13.3): tanpa `guardrails_confidence_threshold`
+   (atau `threshold` di §5.1) dokumen lolos dengan `threshold_used: null`, dan `probability_bad` dikembalikan
+   apa adanya. `GUARDRAILS_THRESHOLD`, `GUARDRAILS_THRESHOLD_URL` dan kawan-kawannya, serta ambang bawaan 0.5
+   dihapus.
+6. **Scoring tanpa ambang = probabilitas** (§3.1, §3.3, §8.3, §10, §13): `confidence` field yang tidak diberi
+   ambang oleh `column_confidence_threshold` adalah probabilitas trust model apa adanya (float), bukan 0/1.
+   Ambang milik model tidak lagi memutuskan; `FIELD_CONFIDENCE_THRESHOLD` dihapus.
 
 ### draf 15 — 5 Oktober 2026
 

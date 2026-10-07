@@ -20,35 +20,19 @@ def _field(value: str, ocr_conf: float | None, crf_conf: float | None = None) ->
     return {"value": value, "ocr_conf": ocr_conf, "crf_conf": crf_conf}
 
 
-# The §7.3 shape, as `jobs.py` documents it too. Flat: eleven document keys at the top level, then
-# `anggota_keluarga` and `reject_reason`. Values are synthetic (`ocr_common.synthetic_kk`).
+# The §7.3 shape, as `jobs.py` documents it too. Flat: the two document keys at the top level, then
+# `anggota_keluarga` (seven keys per member) and `reject_reason`. Values are synthetic
+# (`ocr_common.synthetic_kk`); `features` is left out of the example for length.
 STRUCTURED_EXAMPLE = {
     "nomor_kk": _field("9924187486671285", 0.9991),
     "nama_kepala_keluarga": _field("BUDI SANTOSO", 0.9873),
-    "alamat": _field("JL. MERDEKA NO. 12", 0.9642),
-    "desa_kelurahan": _field("CIHAPIT", 0.9810),
-    "rt": _field("003", 0.9755),
-    "rw": _field("007", 0.9755),
-    "kecamatan": _field("BANDUNG WETAN", 0.9888),
-    "kabupaten_kota": _field("KOTA BANDUNG", 0.9901),
-    "provinsi": _field("JAWA BARAT", 0.9934),
-    "kode_pos": _field("40114", 0.9702),
-    "tanggal_dikeluarkan": _field("12-03-2019", 0.9219),
     "anggota_keluarga": [
         {
             "nama_lengkap": _field("BUDI SANTOSO", 0.9954, 0.9931),
             "nik": _field("9908680101601956", 0.9975, 0.9887),
-            "jenis_kelamin": _field("LAKI-LAKI", 0.9968, 0.9954),
-            "tempat_lahir": _field("BANDUNG", 0.9891, 0.9803),
-            "tanggal_lahir": _field("01-01-1960", 0.9903, 0.9877),
-            "agama": _field("ISLAM", 0.9944, 0.9912),
             "pendidikan": _field("SD/SEDERAJAT", 0.9840, 0.9102),
             "jenis_pekerjaan": _field("KARYAWAN SWASTA", 0.9611, 0.8774),
-            "golongan_darah": _field("-", 0.7120, 0.4415),
-            "status_perkawinan": _field("KAWIN", 0.9821, 0.9688),
-            "tanggal_perkawinan": _field("08-08-2010", 0.9560, 0.9341),
             "status_hubungan_dalam_keluarga": _field("KEPALA KELUARGA", 0.9788, 0.9440),
-            "kewarganegaraan": _field("WNI", 0.9972, 0.9955),
             "ayah": _field("RIZKY SANTOSO", 0.9705, 0.8312),
             "ibu": _field("NURUL NURHALIZA", 0.9682, 0.8190),
         }
@@ -71,9 +55,9 @@ REJECTED_EXAMPLE = {
     operation_id="structureTexts",
     summary="Turn OCR boxes into named fields, synchronous (no job, no callback)",
     description=(
-        "Maps raw OCR boxes to the Kartu Keluarga fields: eleven document fields and fifteen per household "
-        "member, each with two scores that are deliberately not fused (`ocr_conf` is how sure the recogniser "
-        "was of the glyphs, `crf_conf` how sure the parser is that the text belongs in that column). "
+        "Maps raw OCR boxes to the Kartu Keluarga fields the contract carries: two document fields and seven "
+        "per household member, each with two scores that are deliberately not fused (`ocr_conf` is how sure "
+        "the recogniser was of the glyphs, `crf_conf` how sure the parser is that the text belongs in that column). "
         "\n\n"
         "This is the existing `K2Regex-v2` endpoint, kept as it is for the ML team's own calls, which is why "
         "`texts` still requires at least one box here. The asynchronous job endpoint deliberately does not: an "

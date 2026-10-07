@@ -182,7 +182,7 @@ def test_the_legacy_sync_endpoint_still_refuses_an_empty_texts_list(client, auth
 
 
 def test_the_job_endpoint_accepts_a_body_without_an_ocr_block(client, auth):
-    """Serah-terima lewat referensi (dianjurkan untuk KK): tahap ini membaca `ocr_results` sendiri.
+    """Serah-terima lewat referensi (dianjurkan untuk KK): tahap ini membaca `ocr_extraction_results` sendiri.
     Tanpa DATABASE_URL di uji ini, jawabannya 422 yang menjelaskan sebabnya -- bukan 500."""
     response = client.post(JOBS, json={"request_id": "REQ_byref", "document_type": "kk"}, headers=auth)
     assert response.status_code == 422

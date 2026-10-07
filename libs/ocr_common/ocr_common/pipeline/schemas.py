@@ -124,7 +124,9 @@ class OcrPayload(_Forwarded):
 
     model_config = ConfigDict(
         json_schema_extra={
-            "description": "Result of the OCR stage (`nilam_ocr_results`), forwarded to structuring and scoring."
+            "description": (
+                "Result of the OCR stage (`nilam_ocr_extraction_results`), forwarded to structuring and scoring."
+            )
         }
     )
 
@@ -178,50 +180,45 @@ class StructuredFieldPayload(_Forwarded):
         ge=0,
         le=1,
         description=(
-            "Forward-backward marginal of the column placement. ALWAYS null for document fields, which are found "
-            "by regex or position and never pass through Viterbi, and null for member cells Viterbi did not place"
+            "How sure structuring is that the text belongs in this field: with `kk_model`, the lowest box-class "
+            "probability of the field's boxes; with `kk_regex`, the forward-backward marginal of the column "
+            "placement. ALWAYS null for document fields, and null for a member field that was not found"
         ),
         examples=[None],
     )
-    features: dict[str, float] | None = Field(
+    features: dict[str, float | None] | None = Field(
         None,
         description=(
-            "The trust model's input vector for this field, present only for the NINE scored contract fields "
-            "and null everywhere else. It exists because the two scores above do not separate a correct value "
-            "from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a "
-            "coin, while the parser internals that do carry the signal are computed and then discarded. "
-            "Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES` "
-            "(document fields); scoring assembles them and never recomputes one, because the same feature "
-            "computed in two places is how a model ends up good in training and bad in production"
+            "The trust model's input vector for this field; null when the field is empty, and a single feature "
+            "is null when it came out non-finite (`kk_field` then scores the field null). It exists because "
+            "the two scores above do not separate a correct value from a wrong one: over 1686 hand-labelled "
+            "cells `crf_conf` scores AUC 0.502, no better than a coin, while the parser internals that do carry "
+            "the signal are computed and then discarded. Names are pinned by `kk.FIELD_FEATURES` (42, the same "
+            "for every field, from `kk_model`) or by `kk.MEMBER_CELL_FEATURES` / `kk.DOC_CELL_FEATURES` (from "
+            "`kk_regex`); scoring assembles them and never recomputes one, because the same feature computed "
+            "in two places is how a model ends up good in training and bad in production"
         ),
         examples=[{"marg_min": 0.9967, "margin_min": 0.9934, "emis_assigned_min": 0.0, "lebar_rel": 0.87}],
     )
 
 
 class StructuredMemberPayload(_Forwarded):
-    """One row of `anggota_keluarga`. All fifteen keys are always present, even when empty."""
+    """One row of `anggota_keluarga`. All seven keys are always present, even when empty."""
 
     nama_lengkap: StructuredFieldPayload
     nik: StructuredFieldPayload
-    jenis_kelamin: StructuredFieldPayload
-    tempat_lahir: StructuredFieldPayload
-    tanggal_lahir: StructuredFieldPayload
-    agama: StructuredFieldPayload
     pendidikan: StructuredFieldPayload
     jenis_pekerjaan: StructuredFieldPayload
-    golongan_darah: StructuredFieldPayload
-    status_perkawinan: StructuredFieldPayload
-    tanggal_perkawinan: StructuredFieldPayload
     status_hubungan_dalam_keluarga: StructuredFieldPayload
-    kewarganegaraan: StructuredFieldPayload
     ayah: StructuredFieldPayload
     ibu: StructuredFieldPayload
 
 
 class StructuringPayload(_Forwarded):
-    """The structuring stage result as scoring receives it: the flat K2Regex-v2 shape.
+    """The structuring stage result as scoring receives it: the flat K2Regex-v2 shape, cut to the nine
+    fields the contract carries (2 document + 7 per member) -- everything scoring reads.
 
-    The eleven document fields are top-level keys -- there is no `fields` wrapper -- and there is no
+    The document fields are top-level keys -- there is no `fields` wrapper -- and there is no
     `document_type`, `flag` or `flag_reason`. The keys are spelled out rather than left as a mapping
     because this is the shape the freeze pins down, and a renamed key is exactly what the model
     should catch.
@@ -237,17 +234,6 @@ class StructuringPayload(_Forwarded):
         ..., description="The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator"
     )
     nama_kepala_keluarga: StructuredFieldPayload
-    alamat: StructuredFieldPayload
-    desa_kelurahan: StructuredFieldPayload
-    rt: StructuredFieldPayload = Field(
-        ..., description="Shares one `ocr_conf` with `rw`: both are cut from the same OCR box"
-    )
-    rw: StructuredFieldPayload
-    kecamatan: StructuredFieldPayload
-    kabupaten_kota: StructuredFieldPayload
-    provinsi: StructuredFieldPayload
-    kode_pos: StructuredFieldPayload
-    tanggal_dikeluarkan: StructuredFieldPayload
     anggota_keluarga: list[StructuredMemberPayload] = Field(
         default_factory=list,
         description="One entry per row on the card, in card order. May be empty, which the validity gate rejects",
@@ -303,10 +289,8 @@ class ScoringPayload(_Forwarded):
             "The confidence above which a field of that name was correct on every held-out sample -- one per "
             "scored field, keyed by INTERNAL name. They travel in the result rather than in configuration "
             "because they are a property of the trained model, not of the deployment, and because this is what "
-            "makes the orchestrator's `confidence` and the outcome row's identical by construction instead of "
-            "by keeping two env vars in step. A field absent here had no such point and is 0 unless the request's "
-            "`column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD` applies only to a result "
-            "that carries no thresholds at all (the `mock` backend)"
+            "makes them auditable next to the scores. For reference only: they no longer decide a field's "
+            "`confidence`; only the request's `column_confidence_threshold` does"
         ),
         examples=[{"nik": 0.9637, "ayah": 0.9353, "pendidikan": 0.9929}],
     )
@@ -322,10 +306,11 @@ class ScoringPayload(_Forwarded):
     decisions: dict[str, Any] | None = Field(
         None,
         description=(
-            "The 0/1 decision per CONTRACT field, with the threshold that decided it: "
+            "The decision per CONTRACT field, with the threshold that decided it: "
             "`{no_kk: {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`. "
             "The outcome row and the `extract-ocr` answer are projected from it, so both say the same for one "
-            "request. `threshold` null: no threshold applied, so `confidence` is 0"
+            "request. `confidence` is 0/1 against `threshold`; `threshold` null: the request gave the field no "
+            "threshold, so `confidence` is the trust model's probability itself (a float, 0 without a value)"
         ),
     )
 

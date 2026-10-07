@@ -24,6 +24,11 @@ _ACCEPTED_REPORT = {
     "reason": None,
     "document": {"verdict": "accepted", "confidence": 0.9713, "probability_bad": 0.0287, "threshold_used": 0.5},
 }
+_NO_THRESHOLD_REPORT = {
+    "passed": True,
+    "reason": None,
+    "document": {"verdict": "accepted", "confidence": 0.1179, "probability_bad": 0.8821, "threshold_used": None},
+}
 _REJECTED_REPORT = {
     "passed": False,
     "reason": REASON_REJECT,
@@ -45,9 +50,10 @@ ThresholdField = Form(
     gt=0,
     lt=1,
     description=(
-        "Threshold for this request only, overriding every configured source; sent with `threshold_target`, "
-        "or neither (as in nilam). Strictly between 0 and 1. Ignored by the `remote` backend, which judges "
-        "under its own"
+        "Threshold for this request; sent with `threshold_target`, or neither (as in nilam). Strictly between "
+        "0 and 1. **Omitted: the document passes** (`verdict: accepted`, `threshold_used: null`) and "
+        "`probability_bad` is answered as the model gave it; no configured threshold applies. Ignored by the "
+        "`remote` backend, which judges under its own"
     ),
     examples=[0.5],
 )
@@ -64,7 +70,8 @@ ThresholdTargetField = Form(
 
 
 def _given_threshold(threshold: float | None, target: str | None) -> Threshold | None:
-    """Rung 1 of the R15 chain: the request's own threshold and side, both or neither (422 otherwise)."""
+    """The request's own threshold and side, both or neither (422 otherwise). None: nothing decides, the
+    document passes."""
     if threshold is None and target is None:
         return None
     if threshold is None or target is None:
@@ -85,8 +92,9 @@ def _given_threshold(threshold: float | None, target: str | None) -> Threshold |
         "`extract-ocr` and forwards `data` unchanged to the OCR stage when `passed`.\n\n"
         "**Always 200 when the document was received**: read `data.passed`. An image the model cannot "
         'judge is `verdict: "unassessable"` with `probability_bad: null` and `passed: false`, not an '
-        "error status. The 400s below are about the *request*, not about the document: an intake that "
-        "names neither or both of `file` and `file_url`, a refused `file_url`, or a `file_url` while "
+        "error status. **Without `threshold`** every judged document passes, and `probability_bad` is the "
+        "float for the caller to decide on. The 400s below are about the *request*, not about the document: "
+        "an intake that names neither or both of `file` and `file_url`, a refused `file_url`, or a `file_url` while "
         "`GUARDRAILS_FETCH_URL=false`. A `threshold` outside (0, 1), or one without its `threshold_target`, "
         "is 422. Type and size are checked by the orchestrator before this endpoint is called."
     ),
@@ -94,6 +102,7 @@ def _given_threshold(threshold: float | None, target: str | None) -> Threshold |
         200: success_examples(
             "The document was judged",
             accepted=("Accepted", envelope(200, "OK", _ACCEPTED_REPORT, RID)),
+            no_threshold=("No threshold sent: passed", envelope(200, "OK", _NO_THRESHOLD_REPORT, RID)),
             rejected=("Rejected", envelope(200, "OK", _REJECTED_REPORT, RID)),
             unassessable=("Could not be judged", envelope(200, "OK", _UNASSESSABLE_REPORT, RID)),
         ),

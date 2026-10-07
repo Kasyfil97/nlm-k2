@@ -127,7 +127,7 @@ def test_the_same_request_id_twice_is_one_job(client, auth):
 
 
 def test_a_job_sent_as_file_url_keeps_the_url_so_it_can_be_run_again(client, auth):
-    """§3.1: the URL is stored in `ocr_jobs.input`, which is what lets the reaper run an abandoned
+    """§3.1: the URL is stored in `ocr_extraction_jobs.input`, which is what lets the reaper run an abandoned
     job again. Hence the advice that a presigned URL outlive `PIPELINE_JOB_LEASE_SECONDS`.
 
     The download itself then fails (nothing is serving that host), which is the right outcome and
@@ -159,7 +159,7 @@ def test_an_inline_upload_cannot_be_run_again_and_says_so(client, auth):
 
 
 def _stored_input(request_id: str) -> dict:
-    """What `ocr_jobs.input` holds for this job. Reached through the in-memory repository's own
+    """What `ocr_extraction_jobs.input` holds for this job. Reached through the in-memory repository's own
     store rather than an endpoint: nothing exposes `input`, and nothing should -- it carries the
     presigned URL."""
     from app.dependencies import get_pipeline

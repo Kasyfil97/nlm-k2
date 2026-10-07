@@ -24,6 +24,7 @@ from ocr_common.testing_endpoints import testing_path
 
 from app.config import Settings, get_settings
 from app.ml.base import Structurer
+from app.ml.kk_model import KKModelStructurer
 from app.ml.kk_regex import KKRegexStructurer
 from app.ml.mock import MockStructurer
 from app.services.job_service import StructuringJobService
@@ -35,10 +36,11 @@ DB_TABLE_PREFIX = "structuring"
 
 # STRUCTURING_BACKEND -> how to build it. Add a backend here and, if it needs settings, in config.py.
 # `kk_regex` takes no settings: the parser reads its template from beside its own source, so there is
-# no weights directory to point at and nothing to misconfigure.
+# no weights directory to point at and nothing to misconfigure. `kk_model` loads STRUCTURING_MODEL_PATH.
 STRUCTURER_BACKENDS: dict[str, Factory[Structurer]] = {
     "mock": lambda settings: MockStructurer(),
     "kk_regex": lambda settings: KKRegexStructurer(),
+    "kk_model": lambda settings: KKModelStructurer(settings.structuring_model_path),
 }
 
 

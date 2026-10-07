@@ -17,6 +17,7 @@ from ocr_common.pipeline import (
     build_stage_pipeline,
     build_stale_job_reaper,
 )
+from ocr_common.pipeline.tables import OCR_STAGE_TABLE_PREFIX
 from ocr_common.registry import Factory, build_backend
 from ocr_common.testing_endpoints import testing_path
 
@@ -29,7 +30,7 @@ from app.ml.remote import RemoteOcrEngine
 from app.services.extraction_service import ExtractionService
 from app.services.job_service import ExtractionJobService
 
-DB_TABLE_PREFIX = "ocr"
+DB_TABLE_PREFIX = OCR_STAGE_TABLE_PREFIX
 
 
 def _build_kk_ocr(settings: Settings) -> KkOcrEngine:
