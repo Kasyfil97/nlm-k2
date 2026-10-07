@@ -1,7 +1,8 @@
 """The tables of this repository, defined once here and used by the services, the Alembic migrations
 and the tests. They all live in the schema `PIPELINE_SCHEMA` (`nilam_ocr_kk`), not in `public`, and every name
-starts with `TABLE_PREFIX` (`nilam_`): the callers name a table without it (`ocr`, `testing_`), the prefix is put
-on here. `orchestration_outcome_table` and `orchestration_api_events_table` describe tables the orchestrator owns.
+starts with `TABLE_PREFIX` (`nilam_`): the callers name a table without it (`ocr_extraction`, `testing_`), the
+prefix is put on here. `orchestration_outcome_table` and `orchestration_api_events_table` describe tables the
+orchestrator owns.
 """
 
 from sqlalchemy import (
@@ -24,7 +25,10 @@ from sqlalchemy.dialects.postgresql import ENUM
 from ocr_common.pipeline.database import JSON_TYPE, PIPELINE_SCHEMA, TABLE_PREFIX
 from ocr_common.testing_endpoints import TESTING_TABLE_PREFIX
 
-PIPELINE_TABLE_PREFIXES = ("ocr", "structuring", "scoring")
+# The OCR stage's tables are `nilam_ocr_extraction_jobs/_results` (0004): `nilam_ocr_results` is the final
+# result the orchestrator answers, see `final_results_table`.
+OCR_STAGE_TABLE_PREFIX = "ocr_extraction"
+PIPELINE_TABLE_PREFIXES = (OCR_STAGE_TABLE_PREFIX, "structuring", "scoring")
 
 
 def pipeline_tables(table_prefix: str, metadata: MetaData) -> tuple[Table, Table]:
@@ -102,12 +106,12 @@ def guardrails_results_table(metadata: MetaData, table_prefix: str = "") -> Tabl
     documents included (they never reach a stage table). Append-only: the same request_id sent again is
     judged again. Ported from nilam.
 
-    `threshold` is the report's `threshold_used`; `threshold_target` stays null (the KK report has no
-    per-request target) and `threshold_source` is `service` -- the guardrails service's own threshold --
-    until a per-request threshold exists here. `n_pages` is the page count the orchestrator counted (1 for
-    an image; only page 1 of a PDF is judged). `pipeline_name_sequence` is the request's (null: the full
-    pipeline), so the orchestrator's GET can answer a request that never reached a stage: guardrails only,
-    or rejected here. `report` keeps the whole report, `probability_bad` included."""
+    `threshold` / `threshold_target` are the report's `threshold_used` / `threshold_target`; `threshold_source` is
+    `request` (sent with the request), `service` (the `remote` model service stated its own) or `none` (no
+    threshold: the document passed, only `probability_bad` was answered). `n_pages` is the page count the
+    orchestrator counted (1 for an image; only page 1 of a PDF is judged). `pipeline_name_sequence` is the
+    request's (null: the full pipeline), so the orchestrator's GET can answer a request that never reached a
+    stage: guardrails only, or rejected here. `report` keeps the whole report, `probability_bad` included."""
     name = f"{TABLE_PREFIX}{table_prefix}guardrails_results"
     return Table(
         name,
@@ -127,6 +131,31 @@ def guardrails_results_table(metadata: MetaData, table_prefix: str = "") -> Tabl
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("ds", Text, nullable=False),
         Index(f"idx_{name}_request_id", "request_id"),
+        Index(f"idx_{name}_ds", "ds"),
+        schema=PIPELINE_SCHEMA,
+    )
+
+
+def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
+    """`nilam_ocr_results`: the final answer of the orchestrator for one request, the envelope of
+    `/v1/extract-ocr` as it was last given (`nilam_testing_ocr_results` with the testing prefix). One row per
+    request_id, upserted by every POST and GET that answers it: `status_code` moves from 202 to 200/400/422,
+    `created_at` stays the first answer's and `updated_at` is the last one's. `guardrails` is the envelope's
+    0/1 flag (1: rejected by guardrails or the KK gate)."""
+    name = f"{TABLE_PREFIX}{table_prefix}ocr_results"
+    return Table(
+        name,
+        metadata,
+        Column("request_id", Text, primary_key=True),
+        Column("status_code", Integer, nullable=False),
+        Column("status_desc", Text, nullable=True),
+        Column("message", Text, nullable=True),
+        Column("data", JSON_TYPE, nullable=True),
+        Column("errors", JSON_TYPE, nullable=True),
+        Column("guardrails", Integer, nullable=True),
+        Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        Column("ds", Text, nullable=False),
         Index(f"idx_{name}_ds", "ds"),
         schema=PIPELINE_SCHEMA,
     )
@@ -187,11 +216,13 @@ def orchestration_api_events_table(name: str) -> Table:
 
 def repo_metadata() -> MetaData:
     """Every table this repository migrates, for Alembic's autogenerate and `alembic check`: the stage tables,
-    the outbox and the guardrails verdicts, again with the `testing_` prefix for the testing endpoints."""
+    the outbox, the guardrails verdicts and the final results, again with the `testing_` prefix for the testing
+    endpoints."""
     metadata = MetaData()
     for lane_prefix in ("", TESTING_TABLE_PREFIX):
         for table_prefix in PIPELINE_TABLE_PREFIXES:
             pipeline_tables(f"{lane_prefix}{table_prefix}", metadata)
         outbox_table(metadata, lane_prefix)
         guardrails_results_table(metadata, lane_prefix)
+        final_results_table(metadata, lane_prefix)
     return metadata

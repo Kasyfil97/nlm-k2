@@ -9,7 +9,6 @@ from ocr_common.testing import TEST_API_KEY
 from app.config import Settings
 
 MODEL_SERVICE = "http://nlm-k2-guardrails-model:8081"
-LOCALHOST = "http://127.0.0.1:9999"
 
 
 def _deployed(environment: Environment = "production", guardrails_backend: str = "kk_quality", **extra) -> Settings:
@@ -42,11 +41,6 @@ def test_localhost_model_service_is_refused_outside_local():
         _deployed(guardrails_backend="remote", guardrails_model_url="http://localhost:8081")
 
 
-def test_localhost_threshold_source_is_refused_outside_local():
-    with pytest.raises(ValidationError, match="GUARDRAILS_THRESHOLD_URL points to localhost"):
-        _deployed(guardrails_threshold_url=LOCALHOST)
-
-
 def test_settings_of_the_pipeline_are_ignored(monkeypatch):
     """The entry-point and stage settings live in other services; an environment that still sets
     them (an old ConfigMap, a shared .env) must not stop guardrails from starting."""
@@ -61,23 +55,14 @@ def test_settings_of_the_pipeline_are_ignored(monkeypatch):
 # --- R15: the threshold, and its name ---------------------------------------------------------
 
 
-def test_the_threshold_env_key_is_the_contract_one(monkeypatch):
-    """§13.3 calls it GUARDRAILS_THRESHOLD. nilam's GUARDRAILS_REJECT_THRESHOLD is not read, and a
-    deployment that still sets it must not silently run on 0.5 while believing otherwise -- which
-    is only visible if the contract name is the one that works."""
+def test_no_threshold_is_configured(monkeypatch):
+    """Only the request's threshold decides; an environment that still sets the old keys starts all the same and
+    they are not read."""
     monkeypatch.setenv("GUARDRAILS_THRESHOLD", "0.62")
-    monkeypatch.setenv("GUARDRAILS_REJECT_THRESHOLD", "0.01")
-    assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").guardrails_threshold == 0.62
-
-
-def test_the_threshold_is_unset_by_default_so_the_lower_rungs_can_be_reached():
-    assert Settings(api_key=TEST_API_KEY, _env_file=None, environment="local").guardrails_threshold is None
-
-
-@pytest.mark.parametrize("value", [0, 1, 1.5, -0.1])
-def test_a_threshold_outside_the_open_unit_interval_is_refused_at_start(value):
-    with pytest.raises(ValidationError):
-        _deployed(guardrails_threshold=value)
+    monkeypatch.setenv("GUARDRAILS_THRESHOLD_URL", "http://127.0.0.1:8090")
+    settings = _deployed()
+    assert not hasattr(settings, "guardrails_threshold")
+    assert not hasattr(settings, "guardrails_threshold_url")
 
 
 # --- R18a: the download switch ------------------------------------------------------------------

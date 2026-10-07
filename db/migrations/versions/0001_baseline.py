@@ -20,13 +20,16 @@ from collections.abc import Sequence
 
 from alembic import op
 
-from ocr_common.pipeline.tables import PIPELINE_TABLE_PREFIXES
 from ocr_common.testing_endpoints import TESTING_TABLE_PREFIX
 
 revision: str = "0001_baseline"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+# The stages as they were named at this revision (0004 renames `ocr` to `ocr_extraction`); written out so the
+# baseline does not move with `PIPELINE_TABLE_PREFIXES`.
+PIPELINE_TABLE_PREFIXES = ("ocr", "structuring", "scoring")
 
 # One pair per stage. `input` carries what a later run needs besides the earlier stages' stored
 # results (document_type, guardrails report, file_url), so a job left behind by a dead process can

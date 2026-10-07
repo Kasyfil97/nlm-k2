@@ -7,6 +7,7 @@ from ocr_common.errors import UnprocessableEntity
 from ocr_common.kk import DOCUMENT_TYPE, contract_data, contract_fields, final_result
 from ocr_common.pipeline import StagePipeline, Work, stored
 from ocr_common.pipeline.results import StageResults, load_upstream
+from ocr_common.pipeline.tables import OCR_STAGE_TABLE_PREFIX
 from ocr_common.types import FinalResult, ScoringResult, StructuringResult
 
 from app.services.confidence_service import ConfidenceService
@@ -19,13 +20,11 @@ class ScoringJobService:
         self,
         pipeline: StagePipeline,
         confidence: ConfidenceService,
-        confidence_threshold: float = 0.5,
         *,
         results: StageResults | None = None,
     ):
         self._pipeline = pipeline
         self._confidence = confidence
-        self._confidence_threshold = confidence_threshold
         self._results = results
 
     async def submit(
@@ -40,8 +39,8 @@ class ScoringJobService:
     ) -> dict[str, Any]:
         """Scoring is always the last service of a pipeline_name_sequence, so it ends every request it runs
         for; `sequence` is only kept with the job for the orchestrator's GET. `column_thresholds` (the central
-        orchestrator's `column_confidence_threshold`) decide each field's 0/1 `confidence` before the trust
-        model's own thresholds do (`kk.scored_fields`)."""
+        orchestrator's `column_confidence_threshold`) decide each field's 0/1 `confidence`; a field without one
+        gets the probability itself (`kk.scored_fields`)."""
         if structuring is None and self._results is None:
             raise UnprocessableEntity(
                 "structuring is missing: the request refers to the structuring result by request_id, but this "
@@ -84,14 +83,14 @@ class ScoringJobService:
     def _outcome_data(
         self, chain_structuring: Callable[[], Mapping[str, Any]], column_thresholds: Mapping[str, float] | None
     ) -> Callable[[Mapping[str, Any]], Mapping[str, Any]]:
-        """The outcome row's `data`: the 0/1 decisions stored with the result, so the row and the
+        """The outcome row's `data`: the decisions stored with the result, so the row and the
         orchestrator's answer are the same projection of the same numbers. A result stored before
         `decisions` existed is decided again here."""
 
         def data(scoring: Mapping[str, Any]) -> Mapping[str, Any]:
             if scoring.get("decisions"):
                 return contract_data(scoring["decisions"])
-            return contract_fields(chain_structuring(), scoring, self._confidence_threshold, column_thresholds)
+            return contract_fields(chain_structuring(), scoring, column_thresholds)
 
         return data
 
@@ -114,14 +113,13 @@ class ScoringJobService:
             )
             ocr_result = ocr
             if ocr_result is None and self._results is not None:
-                ocr_result = await self._results.get("ocr", request_id)
+                ocr_result = await self._results.get(OCR_STAGE_TABLE_PREFIX, request_id)
             return await run_in_threadpool(
                 self._confidence.score,
                 document_type,
                 guardrails,
                 ocr_result,
                 chain["structuring"],
-                self._confidence_threshold,
                 column_thresholds,
             )
 

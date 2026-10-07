@@ -18,9 +18,10 @@ menunggu sebentar lalu menjawab 200, atau 202 kalau pipeline belum selesai.
 
 ## Status
 
-Batch pertama sedang berjalan: orchestrator, guardrails, dan extraction. **Scoring sudah memakai trust
-model yang sungguhan** (`SCORING_BACKEND=calibrated`, artefak di `services/scoring/weights/`);
-structuring masih stub.
+Batch pertama sedang berjalan: orchestrator, guardrails, dan extraction. **Structuring dan scoring
+memakai pasangan model terlatih** (`STRUCTURING_BACKEND=kk_model` m04 + `SCORING_BACKEND=kk_field` s11,
+artefak di `services/{structuring,scoring}/weights/`; lihat "Bobot model"). Catatan di bawah ini
+ditulis sebelum pasangan itu ada, saat structuring masih stub.
 
 > **Baca ini sebelum membaca `make smoke` yang hijau.** Yang teruji ujung ke ujung adalah **pipanya**
 > — transaksi, idempotensi, lease, outbox, dead letter, tabel outcome, bentuk kontrak — dan model OCR
@@ -62,6 +63,11 @@ structuring masih stub.
   `ORCHESTRATION_CALLBACK_MAX_AGE_SECONDS` (600), saklar `ORCHESTRATION_CALLBACK_ENABLED`.
 - Endpoint QC satu tahap: `POST /v1/structuring-direct` dan `POST /v1/scoring-direct`.
 - Semua tabel di schema `nilam_ocr_kk` dengan awalan `nilam_` (migrasi `0003`, lihat [`db/README.md`](db/README.md)).
+- Tahap OCR menyimpan di `nilam_ocr_extraction_jobs`/`_results`; `nilam_ocr_results` menyimpan hasil final
+  `extract-ocr` per `request_id` dari orchestrator (migrasi `0004`).
+- Ambang hanya dari request: tanpa `guardrails_confidence_threshold` dokumen lolos guardrails (dengan
+  `probability_bad`-nya); field tanpa `column_confidence_threshold` mendapat `confidence` berupa probabilitas
+  (float), bukan 0/1.
 - Upload dengan tipe yang tidak didukung (`application/octet-stream`, `jpg`, ...) dibaca dari tanda tangan berkasnya.
 - Tools laptop: [`tools/tracker`](tools/tracker) (UI pipeline, outbox, callback, skenario gagal) dan
   [`tools/load-tester`](tools/load-tester) (k6).
@@ -96,6 +102,31 @@ diambil, dan artefak yang tidak lengkap atau tidak cocok dibatalkan alih-alih di
 
 Bobotnya gitignored. Untuk pengembangan tanpa bobot sama sekali, setel `GUARDRAILS_BACKEND=mock`
 (hanya jalan di `ENVIRONMENT=local`).
+
+**Structuring + scoring berpasangan.** `STRUCTURING_BACKEND=kk_model` (model key per kotak m04) dan
+`SCORING_BACKEND=kk_field` (trust model s11) dilatih bersama, dan confidence s11 hanya sah di atas
+structuring m04. Artefaknya ada di path yang sudah dibaca masing-masing service dan ikut repo:
+
+| service | path | dari |
+|---|---|---|
+| structuring | `services/structuring/weights/kk_structuring_model.joblib` | `STRUCTURING_MODEL_URI` |
+| scoring | `services/scoring/weights/kk_trust_model.joblib` | `SCORING_MODEL_URI` |
+
+Keduanya ditulis bersama oleh `scoring/training/export_nlm_k2.py` di ruang kerja training. Di container,
+keduanya **diunduh ulang setiap container start** (`fetch_weights.py --force`, bukan saat build image) dari URI
+masing-masing, jadi unggah kedua berkas itu bersamaan lalu restart kedua service. Default URI di image (bisa
+ditimpa lewat env):
+
+| service | URI |
+|---|---|
+| structuring | `gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/structuring/kk_structuring_model.joblib` |
+| scoring | `gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/scoring/kk_trust_model.joblib` |
+
+Guardrails sama: keenam artefak K2Quality diunduh ulang setiap start (hanya untuk `GUARDRAILS_BACKEND=kk_quality`)
+dari awalan `gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/guardrails/` (`GUARDRAILS_MODEL_URI`) dan
+diverifikasi terhadap `model_hashes.json`.
+ `make kk-model-parity` memastikan keluaran service sama persis dengan rantai training
+pada korpus `../raw_ocr_v6`. Rinciannya di [`services/scoring/weights/README.md`](services/scoring/weights/README.md).
 
 ### Smoke test ujung ke ujung
 

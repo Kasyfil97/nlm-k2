@@ -14,6 +14,7 @@ from app.clients.guardrails import GuardrailsClient, build_guardrails_client
 from app.clients.stages import StageStatusClient, build_stage_status_clients
 from app.config import Settings, get_settings
 from app.services.extract_service import ExtractOcrService
+from app.services.final_results import FinalResults, NoFinalResults, SqlFinalResults
 from app.services.guardrails_log import GuardrailsLog, NoGuardrailsLog, SqlGuardrailsLog
 from app.services.pipeline_waiter import PipelineWaiter
 
@@ -54,9 +55,23 @@ def get_guardrails_log() -> GuardrailsLog:
     return _guardrails_log()
 
 
+def _final_results(table_prefix: str = "") -> FinalResults:
+    settings = get_settings()
+    if not settings.database_url:
+        return NoFinalResults()
+    return SqlFinalResults(
+        settings.database_url, table_prefix=table_prefix, timeout=settings.guardrails_log_timeout_seconds
+    )
+
+
+@lru_cache
+def get_final_results() -> FinalResults:
+    return _final_results()
+
+
 # The testing endpoints (TESTING_ENDPOINTS): the same check and wait, on the stages' `-test` endpoints
 # (see ocr_common.testing_endpoints). Guardrails keeps nothing, so its client is the live one; its verdicts
-# go to testing_guardrails_results.
+# go to testing_guardrails_results, its answers to testing_ocr_results.
 
 
 @lru_cache
@@ -75,6 +90,11 @@ def get_testing_guardrails_log() -> GuardrailsLog:
 
 
 @lru_cache
+def get_testing_final_results() -> FinalResults:
+    return _final_results(TESTING_TABLE_PREFIX)
+
+
+@lru_cache
 def get_testing_pipeline_waiter() -> PipelineWaiter:
     return PipelineWaiter(
         get_testing_stage_status_clients(), poll_interval=get_settings().pipeline_poll_interval_seconds
@@ -90,8 +110,9 @@ def get_extract_service(
     waiter: PipelineWaiter = Depends(get_pipeline_waiter),
     settings: Settings = Depends(get_settings),
     log: GuardrailsLog = Depends(get_guardrails_log),
+    results: FinalResults = Depends(get_final_results),
 ) -> ExtractOcrService:
-    return ExtractOcrService(guardrails, extraction, waiter, settings, log)
+    return ExtractOcrService(guardrails, extraction, waiter, settings, log, results)
 
 
 def get_testing_extract_service(
@@ -100,5 +121,6 @@ def get_testing_extract_service(
     waiter: PipelineWaiter = Depends(get_testing_pipeline_waiter),
     settings: Settings = Depends(get_settings),
     log: GuardrailsLog = Depends(get_testing_guardrails_log),
+    results: FinalResults = Depends(get_testing_final_results),
 ) -> ExtractOcrService:
-    return ExtractOcrService(guardrails, extraction, waiter, settings, log)
+    return ExtractOcrService(guardrails, extraction, waiter, settings, log, results)

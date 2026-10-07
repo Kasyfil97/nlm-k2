@@ -33,14 +33,19 @@ RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser /app
 USER appuser
 
+# Bobot TIDAK ikut image: keenam artefak K2Quality diunduh dari awalan GUARDRAILS_MODEL_URI setiap kali
+# container start (lihat CMD). Default di bawah boleh ditimpa lewat env (.env, helm).
 ENV PORT=8041 \
     GUARDRAILS_BACKEND=kk_quality \
     GUARDRAILS_WEIGHTS_DIR=weights \
     GUARDRAILS_DEVICE=cpu \
-    WEIGHTS_DIR=/app/weights
+    WEIGHTS_DIR=/app/weights \
+    GUARDRAILS_MODEL_URI=gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/guardrails/
 EXPOSE 8041
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8041\")}/health', timeout=3)" || exit 1
 
-CMD ["sh", "-c", "python scripts/fetch_weights.py guardrails && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# Hanya `kk_quality` butuh bobot (`remote`/`mock` tidak). --force: unduh ulang setiap start, supaya restart
+# container mengambil artefak terbaru di GCS; diverifikasi terhadap model_hashes.json.
+CMD ["sh", "-c", "if [ \"${GUARDRAILS_BACKEND:-}\" = \"kk_quality\" ]; then python scripts/fetch_weights.py guardrails --force; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

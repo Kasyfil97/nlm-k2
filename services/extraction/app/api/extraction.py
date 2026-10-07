@@ -1,7 +1,7 @@
 """`POST /v1/extraction/extract`: the OCR of one document, synchronous -- no job, no callback, no table.
 
 For debugging and for the ML team: the same backend and the same §7.1 payload the async stage stores
-in `nilam_ocr_results`, answered in the request. Because it is that payload and not a looser debug shape,
+in `nilam_ocr_extraction_results`, answered in the request. Because it is that payload and not a looser debug shape,
 its `data` can be sent as it is to structuring's `POST /v1/ocr_postprocess`.
 """
 

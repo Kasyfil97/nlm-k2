@@ -51,9 +51,8 @@ class QualityModel(Protocol):
     """A model that runs in this process: bytes in, one probability out."""
 
     name: str
-    #: The threshold stored alongside the weights, or None when the artifacts carry none. This is
-    #: the fourth rung of the R15 chain, below `GUARDRAILS_THRESHOLD` and above the 0.5 floor, and
-    #: None means the rung is simply absent rather than "0.5".
+    #: The threshold stored alongside the weights, or None when the artifacts carry none. Information
+    #: only: the verdict is decided by the request's threshold alone.
     reject_threshold: float | None
     metadata: dict[str, Any]
 

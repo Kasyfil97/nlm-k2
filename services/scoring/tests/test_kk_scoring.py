@@ -24,17 +24,9 @@ def member(name: str, nik: str, **overrides) -> dict:
     base = {
         "nama_lengkap": field(name),
         "nik": field(nik),
-        "jenis_kelamin": field("LAKI-LAKI"),
-        "tempat_lahir": field("BANDUNG"),
-        "tanggal_lahir": field("01-01-1990"),
-        "agama": field("ISLAM"),
         "pendidikan": field("S1"),
         "jenis_pekerjaan": field("KARYAWAN SWASTA"),
-        "golongan_darah": field("O"),
-        "status_perkawinan": field("KAWIN"),
-        "tanggal_perkawinan": field("08-08-2015"),
         "status_hubungan_dalam_keluarga": field("KEPALA KELUARGA"),
-        "kewarganegaraan": field("WNI"),
         "ayah": field("SUTRISNO"),
         "ibu": field("SITI AMINAH"),
     }
@@ -45,15 +37,6 @@ def structuring(*members: dict, nomor_kk: str = "9924187486671285") -> dict:
     document = {
         "nomor_kk": field(nomor_kk),
         "nama_kepala_keluarga": field("BUDI SANTOSO"),
-        "alamat": field("JL. MERDEKA NO. 12"),
-        "desa_kelurahan": field("CIHAPIT"),
-        "rt": field("003"),
-        "rw": field("007"),
-        "kecamatan": field("BANDUNG WETAN"),
-        "kabupaten_kota": field("KOTA BANDUNG"),
-        "provinsi": field("JAWA BARAT"),
-        "kode_pos": field("40114"),
-        "tanggal_dikeluarkan": field("12-03-2019"),
         "anggota_keluarga": list(members),
         "reject_reason": None,
     }
@@ -98,7 +81,7 @@ def test_the_payload_is_kept_as_an_audit_trail(client, auth):
 
 
 def test_an_empty_field_scores_null(client, auth):
-    blank = member("SITI NURHALIZA", "9908114806713444", golongan_darah=field(""), jenis_pekerjaan=field(""))
+    blank = member("SITI NURHALIZA", "9908114806713444", jenis_pekerjaan=field(""))
     client.post(JOBS, json=job_body("REQ_null", blank), headers=auth)
 
     scored = wait_for_job(client, f"{JOBS}/REQ_null")["result"]["anggota_keluarga"][0]
@@ -139,7 +122,7 @@ def test_the_projection_is_the_same_function_the_orchestrator_calls(client, auth
     client.post(JOBS, json=job_body("REQ_projection", *members), headers=auth)
 
     scored = wait_for_job(client, f"{JOBS}/REQ_projection")["result"]
-    data = contract_fields(structuring(*members), scored, 0.5)
+    data = contract_fields(structuring(*members), scored)
 
     assert set(data) == {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
     assert len(data["anggota_keluarga"]) == 2
@@ -155,7 +138,7 @@ def test_a_shorter_score_list_is_refused_rather_than_truncated(client, auth):
 
     short = {**scored, "anggota_keluarga": scored["anggota_keluarga"][:1]}
     with pytest.raises(ValueError, match="anggota_keluarga"):
-        contract_fields(structuring(*members), short, 0.5)
+        contract_fields(structuring(*members), short)
 
 
 # --- endpoint sinkron -----------------------------------------------------------------------

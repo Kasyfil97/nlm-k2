@@ -130,7 +130,10 @@ logs-%:
 
 smoke:
 	$(PY) scripts/smoke_e2e.py
+# Pasangan kk_model (structuring) + kk_field (scoring) = rantai training, per dokumen korpus ../raw_ocr_v6.
+kk-model-parity:
+	$(PY) scripts/check_kk_model_parity.py
 e2e-samples:
 	$(PY) scripts/e2e_samples.py
 
-.PHONY: dev env test _require_git check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke e2e-samples
+.PHONY: dev env test _require_git check-legacy lint format typecheck lock lock-db lock-check openapi openapi-gateway api-docs test-lib typecheck-lib db-upgrade db-check db-revision db-external weights build up up-db down ps smoke kk-model-parity e2e-samples

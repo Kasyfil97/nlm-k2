@@ -58,7 +58,7 @@ def test_the_rejection_path_logs_nothing_either(client, auth, caplog):
         response = client.post(
             "/v1/guardrails/check",
             headers=auth,
-            data={"request_id": RID},
+            data={"request_id": RID, "threshold": "0.5", "threshold_target": "reject"},
             files=image_upload(f"blur-{FILENAME}", CONTENT),
         )
     assert response.json()["data"]["passed"] is False

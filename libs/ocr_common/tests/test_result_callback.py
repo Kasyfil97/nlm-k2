@@ -129,14 +129,20 @@ def test_a_scoring_body_queued_before_answer_existed_is_projected_from_its_decis
     assert (body["result"], body["guardrails"]) == (ANSWER, 0)
 
 
-def test_a_scoring_body_without_decisions_gets_the_0_1_data_at_the_default_threshold():
+def test_a_scoring_body_without_decisions_gets_the_probabilities():
+    """The request's thresholds were not kept with such a body, so no field has one: the probabilities."""
     body = result_callback_body(stage_callback_body(RID, "SCORING", "DONE", result=_final()))
 
     assert body is not None
     result = body["result"]
-    assert result["no_kk"] == {"value": "3273012345678901", "confidence": 1}
-    assert result["anggota_keluarga"][0]["ibu"] == {"value": "SITI AMINAH", "confidence": 0}
-    assert result["anggota_keluarga"][0]["status_hubungan_dalam_rumah_tangga"]["confidence"] == 1
+    scores = _final()["scoring"]
+    assert result["no_kk"] == {"value": "3273012345678901", "confidence": scores["fields"]["nomor_kk"]}
+    member = scores["anggota_keluarga"][0]
+    assert result["anggota_keluarga"][0]["ibu"] == {"value": "SITI AMINAH", "confidence": member["ibu"]}
+    assert (
+        result["anggota_keluarga"][0]["status_hubungan_dalam_rumah_tangga"]["confidence"]
+        == member["status_hubungan_dalam_keluarga"]
+    )
 
 
 def test_a_rejection_is_completed_with_null_result_guardrails_1_and_the_reason():

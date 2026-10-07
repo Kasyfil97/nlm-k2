@@ -10,14 +10,15 @@ from ocr_common.config import PipelineSettings
 class Settings(PipelineSettings):
     port: int = 8044
 
-    # Bawaannya `calibrated`: model terlatih adalah jalur yang sesungguhnya, jadi ia tidak boleh
-    # bergantung pada seseorang mengingat untuk menyalakannya. `mock` mengarang angka, ditolak di luar
-    # ENVIRONMENT=local, dan sekarang opt-in -- uji yang memang mengujinya menyebutnya sendiri.
-    scoring_backend: str = "calibrated"
+    # Bawaannya `kk_field`: trust model s11 di atas structuring `kk_model` -- model terlatih adalah
+    # jalur yang sesungguhnya, jadi ia tidak boleh bergantung pada seseorang mengingat untuk
+    # menyalakannya. `calibrated` adalah pasangan lama `kk_regex` (artefak format lama). `mock`
+    # mengarang angka, ditolak di luar ENVIRONMENT=local, dan opt-in -- uji yang mengujinya menyebutnya.
+    scoring_backend: str = "kk_field"
 
-    #: Artefak joblib dari repo pelatihan: dua keluarga model (anggota & dokumen), masing-masing
-    #: dengan urutan kolom, tepi bin, dan ambang per field-nya sendiri. Ketiganya BUKAN konfigurasi
-    #: -- semuanya berpindah bersama bobotnya, kalau tidak angkanya diam-diam berubah arti.
+    #: Artefak joblib dari repo pelatihan (`scoring/training/export_nlm_k2.py` untuk `kk_field`):
+    #: model, kolom yang dipakai saat fit, dan ambang per field-nya sendiri. Semuanya BUKAN
+    #: konfigurasi -- berpindah bersama bobotnya, kalau tidak angkanya diam-diam berubah arti.
     scoring_model_path: Path = Path("weights/kk_trust_model.joblib")
 
     scoring_approve_threshold: float = 0.8

@@ -12,6 +12,7 @@ that can be wrong while the numbers still look plausible:
 Each of those produces output that passes a smoke test and is wrong.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -25,9 +26,25 @@ from ocr_common.kk import (
 
 from app.ml.calibrated import CalibratedTrustModel
 
-ARTIFACT = Path(__file__).resolve().parent.parent / "weights" / "kk_trust_model.joblib"
+# `weights/kk_trust_model.joblib` kini artefak `kk_field` (s11); artefak `calibrated` (v2, pasangan
+# `kk_regex`) ada di riwayat git. Arahkan ke sana untuk menjalankan uji ini:
+#   git show 38598f2:services/scoring/weights/kk_trust_model.joblib > /tmp/calibrated.joblib
+#   CALIBRATED_TRUST_MODEL=/tmp/calibrated.joblib pytest tests/test_calibrated_model.py
+ARTIFACT = Path(
+    os.environ.get("CALIBRATED_TRUST_MODEL")
+    or Path(__file__).resolve().parent.parent / "weights" / "kk_trust_model.joblib"
+)
 
-pytestmark = pytest.mark.skipif(not ARTIFACT.exists(), reason="weights/kk_trust_model.joblib tidak ada")
+
+def _is_calibrated(path: Path) -> bool:
+    import joblib
+
+    return path.exists() and "member" in joblib.load(path)
+
+
+pytestmark = pytest.mark.skipif(
+    not _is_calibrated(ARTIFACT), reason=f"{ARTIFACT} bukan artefak `calibrated` (set CALIBRATED_TRUST_MODEL)"
+)
 
 
 @pytest.fixture(scope="module")
@@ -108,14 +125,10 @@ def test_the_model_reports_its_own_thresholds_and_bin_edges(model):
     assert edges[-1] == 1.0, "bin teratas harus mencakup 1.0"
 
 
-def test_a_field_without_a_threshold_is_0_unless_the_request_gives_one(model):
-    """`nomor_kk` (dan di v2 `nama_lengkap`) tidak punya ambang: di data uji tidak ada titik yang di
-    atasnya semua sel benar.
-
-    Ketiadaannya adalah informasi, bukan cacat -- dan justru karena itu field ini tidak boleh jatuh
-    ke FIELD_CONFIDENCE_THRESHOLD. Terukur, `nomor_kk` pada >= 0.5 hanya 83% benar. Setinggi apa
-    pun skornya, `contract_fields` tidak meloloskannya -- kecuali `column_confidence_threshold` dari
-    request memberinya ambang.
+def test_a_field_without_a_request_threshold_is_its_probability(model):
+    """`nomor_kk` (dan di v2 `nama_lengkap`) tidak punya ambang milik model: di data uji tidak ada titik
+    yang di atasnya semua sel benar. Ambang model tidak lagi memutuskan: tanpa `column_confidence_threshold`
+    dari request, `confidence` adalah probabilitasnya apa adanya; dengan ambang dari request, 0/1.
     """
     from ocr_common.kk import contract_fields
 
@@ -130,9 +143,10 @@ def test_a_field_without_a_threshold_is_0_unless_the_request_gives_one(model):
         "anggota_keluarga": [dict.fromkeys(SCORED_MEMBER_FIELDS, 0.99)],
         "thresholds": model.thresholds,
     }
-    data = contract_fields(document, yakin, 0.5)
-    assert data["no_kk"]["confidence"] == 0, "0.99 tanpa ambang milik model tetap 0"
-    assert contract_fields(document, yakin, 0.5, {"no_kk": 0.9})["no_kk"]["confidence"] == 1
+    data = contract_fields(document, yakin)
+    assert data["no_kk"]["confidence"] == 0.99, "tanpa ambang dari request: probabilitasnya"
+    assert contract_fields(document, yakin, {"no_kk": 0.9})["no_kk"]["confidence"] == 1
+    assert contract_fields(document, yakin, {"no_kk": 0.995})["no_kk"]["confidence"] == 0
 
 
 # --- the four ways this can be wrong while still looking right ------------------------------
@@ -194,8 +208,7 @@ def test_the_column_order_of_the_artifact_is_what_is_used(model):
     menggeser seluruh vektor -- dan tetap menghasilkan angka yang kelihatan wajar."""
     lurus = member(1)
     terbalik = {
-        name: {**cell, "features": dict(reversed(list(cell["features"].items())))}
-        for name, cell in lurus.items()
+        name: {**cell, "features": dict(reversed(list(cell["features"].items())))} for name, cell in lurus.items()
     }
     assert model.predict(payload(lurus)) == model.predict(payload(terbalik))
 
@@ -308,8 +321,8 @@ def test_the_sync_endpoint_serves_the_calibrated_model(client, auth, model):
 
 def test_the_projection_turns_the_scores_into_the_outgoing_contract(model):
     """Ujung ke ujung sampai bentuk yang keluar: hasil model -> `contract_fields` -> sembilan field
-    `{value, confidence 0|1}`, diputuskan dengan ambang milik model itu sendiri."""
-    from ocr_common.kk import CONTRACT_MEMBER_FIELDS, contract_fields
+    `{value, confidence 0|1}`, diputuskan dengan ambang dari request."""
+    from ocr_common.kk import CONTRACT_MEMBER_FIELDS, contract_fields, parse_column_thresholds
 
     from tests.test_kk_scoring import member as base_member
     from tests.test_kk_scoring import structuring as base_structuring
@@ -321,7 +334,7 @@ def test_the_projection_turns_the_scores_into_the_outgoing_contract(model):
         )
     )
     scoring = model.predict({"structuring": document, "avg_doc_score": 0.98, "min_doc_score": 0.74})
-    data = contract_fields(document, scoring, 0.5)
+    data = contract_fields(document, scoring, parse_column_thresholds({"all_field": 0.5}))
 
     assert set(data) == {"no_kk", "nama_kepala_keluarga", "anggota_keluarga"}
     assert len(data["anggota_keluarga"]) == 2
@@ -331,10 +344,14 @@ def test_the_projection_turns_the_scores_into_the_outgoing_contract(model):
             assert set(cell) == {"value", "confidence"}, name
             assert cell["confidence"] in (0, 1)
 
-    # `confidence` harus mengikuti ambang model, bukan yang global: dengan ambang global 0.0 semuanya
-    # akan lolos, dan uji ini tidak akan membuktikan apa pun kalau angkanya diabaikan.
-    longgar = contract_fields(document, {**scoring, "thresholds": {}}, 0.0)
+    # `confidence` mengikuti ambang dari request: dengan 0.0 semua field bernilai lolos, dan uji ini tidak
+    # akan membuktikan apa pun kalau angkanya diabaikan.
+    longgar = contract_fields(document, scoring, parse_column_thresholds({"all_field": 0.0}))
     assert all(cell["confidence"] == 1 for orang in longgar["anggota_keluarga"] for cell in orang.values())
+    # Tanpa ambang: probabilitasnya, float.
+    mentah = contract_fields(document, scoring)
+    for orang, skor in zip(mentah["anggota_keluarga"], scoring["anggota_keluarga"], strict=True):
+        assert orang["nik"]["confidence"] == skor["nik"]
 
 
 def test_the_job_stores_the_thresholds_with_the_scores(client, auth, model):
@@ -356,7 +373,7 @@ def test_the_job_stores_the_thresholds_with_the_scores(client, auth, model):
 
     document = _with_features(base_structuring(base_member("BUDI SANTOSO", "9908680101601956")))
     fastapi_app.dependency_overrides[get_job_service] = lambda: ScoringJobService(
-        get_pipeline(), ConfidenceService(model), 0.5, results=get_results()
+        get_pipeline(), ConfidenceService(model), results=get_results()
     )
     try:
         submitted = client.post(

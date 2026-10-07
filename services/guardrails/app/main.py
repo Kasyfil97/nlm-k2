@@ -6,7 +6,7 @@ from ocr_common.web.app import create_app
 
 from app.api import guardrails
 from app.config import get_settings
-from app.dependencies import get_quality_model, get_reject_threshold
+from app.dependencies import get_quality_model
 
 settings = get_settings()
 
@@ -14,9 +14,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     model = get_quality_model()
-    threshold = get_reject_threshold()
     yield
-    await threshold.aclose()
     close = getattr(model, "aclose", None)  # only the HTTP-backed models hold a connection
     if close is not None:
         await close()
@@ -33,7 +31,8 @@ app = create_app(
         "`reject`, or `unassessable` when the image could not be judged at all -- and never an HTTP error "
         "for the document itself. The model runs in this process (`kk_quality`: patch blur CNN + XGBoost + "
         "isotonic calibration) or in the ML team's quality service (`remote`). This is the only image-quality "
-        "gate in the pipeline, so `GUARDRAILS_THRESHOLD` is the single lever for refusing a bad photo. All "
+        "gate in the pipeline, and only the request's `threshold` refuses a bad photo: without one the "
+        "document passes and `probability_bad` is answered. All "
         "endpoints except /health, /ready and /metrics require an X-API-Key header."
     ),
     tags=[

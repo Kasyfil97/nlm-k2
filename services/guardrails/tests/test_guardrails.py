@@ -28,8 +28,11 @@ async def _check(model, *, filename="kk.jpg", override=None, **overrides) -> dic
 # --- the verdicts --------------------------------------------------------------------------
 
 
+HALF = Threshold(0.5, "reject")
+
+
 async def test_a_good_image_is_accepted_and_confidence_is_the_complement():
-    report = await _check(StubModel(0.0287))
+    report = await _check(StubModel(0.0287), override=HALF)
     assert report["passed"] is True
     assert report["reason"] is None
     assert report["document"] == {
@@ -44,7 +47,7 @@ async def test_a_good_image_is_accepted_and_confidence_is_the_complement():
 
 
 async def test_a_bad_image_is_rejected_with_an_indonesian_reason():
-    report = await _check(StubModel(0.8821))
+    report = await _check(StubModel(0.8821), override=HALF)
     assert report["passed"] is False
     assert report["document"] == {
         "verdict": "reject",
@@ -59,8 +62,20 @@ async def test_a_bad_image_is_rejected_with_an_indonesian_reason():
 
 async def test_the_threshold_is_inclusive_at_the_boundary():
     """§5.2 defines `is_bad` as `probability_bad >= threshold`, so exactly at it is a rejection."""
-    assert (await _check(StubModel(0.5)))["document"]["verdict"] == "reject"
-    assert (await _check(StubModel(0.4999)))["document"]["verdict"] == "accepted"
+    assert (await _check(StubModel(0.5), override=HALF))["document"]["verdict"] == "reject"
+    assert (await _check(StubModel(0.4999), override=HALF))["document"]["verdict"] == "accepted"
+
+
+async def test_without_a_threshold_even_a_bad_image_passes_with_its_probability():
+    report = await _check(StubModel(0.8821))
+    assert (report["passed"], report["reason"]) == (True, None)
+    assert report["document"] == {
+        "verdict": "accepted",
+        "confidence": 0.1179,
+        "probability_bad": 0.8821,
+        "threshold_used": None,
+        "threshold_target": None,
+    }
 
 
 async def test_an_image_that_cannot_be_judged_is_a_verdict_and_not_an_error():
@@ -73,27 +88,26 @@ async def test_an_image_that_cannot_be_judged_is_a_verdict_and_not_an_error():
     assert report["document"]["verdict"] == "unassessable"
     assert report["document"]["probability_bad"] is None
     assert report["document"]["confidence"] is None
-    assert report["document"]["threshold_used"] == 0.5
+    assert report["document"]["threshold_used"] is None
+    judged_with = await _check(unassessable_model(), override=HALF)
+    assert (judged_with["passed"], judged_with["document"]["threshold_used"]) == (False, 0.5)
 
 
 async def test_the_report_fits_the_frozen_pipeline_shape():
     """The same block travels to extraction, structuring and scoring, so it has to parse as the
     frozen `GuardrailsResult` -- not merely look like it."""
     for model in (StubModel(0.0287), StubModel(0.8821), unassessable_model()):
-        report = await _check(model)
-        parsed = GuardrailsResult.model_validate(report)
-        assert parsed.model_dump() == report
+        for override in (None, HALF):
+            report = await _check(model, override=override)
+            parsed = GuardrailsResult.model_validate(report)
+            assert parsed.model_dump() == report
 
 
-# --- the threshold chain (R15) ---------------------------------------------------------------
+# --- the request's threshold ------------------------------------------------------------------
 
 
-async def test_the_per_request_threshold_beats_the_environment():
-    model = StubModel(0.30)
-    lenient = await _check(model, guardrails_threshold=0.9)
-    assert (lenient["document"]["verdict"], lenient["document"]["threshold_used"]) == ("accepted", 0.9)
-
-    strict = await _check(model, override=Threshold(0.25, "reject"), guardrails_threshold=0.9)
+async def test_the_per_request_threshold_decides_and_is_reported():
+    strict = await _check(StubModel(0.30), override=Threshold(0.25, "reject"))
     assert strict["document"]["verdict"] == "reject"
     assert strict["document"]["threshold_used"] == 0.25, "the report states the threshold that decided"
 
@@ -108,24 +122,23 @@ async def test_the_accept_side_compares_the_complement_of_probability_bad():
     assert fails["document"]["verdict"] == "reject"
 
 
-async def test_the_environment_beats_the_value_stored_with_the_weights():
-    model = StubModel(0.30, reject_threshold=0.2)
-    assert (await _check(model))["document"]["threshold_used"] == 0.2
-    assert (await _check(model, guardrails_threshold=0.9))["document"]["threshold_used"] == 0.9
-
-
-async def test_the_floor_is_half_when_nothing_else_says_otherwise():
-    assert (await _check(StubModel(0.30)))["document"]["threshold_used"] == 0.5
+async def test_the_value_stored_with_the_weights_does_not_decide():
+    report = await _check(StubModel(0.30, reject_threshold=0.2))
+    assert (report["passed"], report["document"]["threshold_used"]) == (True, None)
 
 
 # --- the mock backend (R25 depends on it) ------------------------------------------------------
+
+
+#: The mock's trigger names reject only under a threshold, as any bad image does.
+HALF_FORM = {"threshold": "0.5", "threshold_target": "reject"}
 
 
 @pytest.mark.parametrize("trigger", REJECT_TRIGGERS)
 def test_the_mock_rejects_its_trigger_names(client, auth, trigger):
     response = client.post(
         "/v1/guardrails/check",
-        data={"request_id": "OCR_3"},
+        data={"request_id": "OCR_3", **HALF_FORM},
         files=image_upload(f"{trigger}.jpg", JPEG),
         headers=auth,
     )
@@ -150,19 +163,19 @@ def test_the_mock_matches_the_trigger_anywhere_in_the_name(client, auth):
     an exact file name."""
     response = client.post(
         "/v1/guardrails/check",
-        data={"request_id": "OCR_5"},
+        data={"request_id": "OCR_5", **HALF_FORM},
         files=image_upload("scan-notkk-002.jpg", JPEG),
         headers=auth,
     )
     assert response.json()["data"]["passed"] is False
 
 
-def test_the_mock_occupies_no_rung_of_the_threshold_chain():
-    """It has no checkpoint, so it must not look like one: a 0.5 here would be indistinguishable
-    from the 0.5 floor and would hide a chain that stopped working."""
-    from app.ml.mock import MockQualityModel
-
-    assert MockQualityModel().reject_threshold is None
+def test_without_a_threshold_the_mock_passes_its_trigger_names_too(client, auth):
+    response = client.post(
+        "/v1/guardrails/check", data={"request_id": "OCR_5a"}, files=image_upload("blur.jpg", JPEG), headers=auth
+    )
+    data = response.json()["data"]
+    assert (data["passed"], data["document"]["probability_bad"]) == (True, PROBABILITY_BAD_REJECT)
 
 
 # --- the HTTP surface ---------------------------------------------------------------------------
@@ -193,8 +206,8 @@ def test_check_returns_the_report_in_the_envelope(client, auth):
             "verdict": "accepted",
             "confidence": round(1 - PROBABILITY_BAD_ACCEPT, 4),
             "probability_bad": PROBABILITY_BAD_ACCEPT,
-            "threshold_used": 0.5,
-            "threshold_target": "reject",
+            "threshold_used": None,
+            "threshold_target": None,
         },
     }
 

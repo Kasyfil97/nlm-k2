@@ -21,6 +21,7 @@ from ocr_common.registry import Factory, build_backend
 from app.config import Settings, get_settings
 from app.ml.base import TrustModel
 from app.ml.calibrated import CalibratedTrustModel
+from app.ml.kk_field import FieldTrustModel
 from app.ml.mock import MockTrustModel
 from app.services.confidence_service import ConfidenceService
 from app.services.job_service import ScoringJobService
@@ -28,10 +29,12 @@ from app.services.job_service import ScoringJobService
 DB_TABLE_PREFIX = "scoring"
 
 # SCORING_BACKEND -> how to build the trust model. `mock` fabricates numbers and is refused outside
-# ENVIRONMENT=local by `Settings._guard_scoring`; `calibrated` loads the trained artifact.
+# ENVIRONMENT=local by `Settings._guard_scoring`; `kk_field` (default, pair of structuring `kk_model`) and
+# `calibrated` (pair of `kk_regex`, old artifact format) load the trained artifact at SCORING_MODEL_PATH.
 TRUST_MODEL_BACKENDS: dict[str, Factory[TrustModel]] = {
     "mock": lambda settings: MockTrustModel(),
     "calibrated": lambda settings: CalibratedTrustModel(settings.scoring_model_path),
+    "kk_field": lambda settings: FieldTrustModel(settings.scoring_model_path),
 }
 
 
@@ -92,7 +95,6 @@ def get_job_service() -> ScoringJobService:
     return ScoringJobService(
         get_pipeline(),
         get_confidence_service(),
-        get_settings().field_confidence_threshold,
         results=get_results(),
     )
 
@@ -101,7 +103,6 @@ def get_testing_job_service() -> ScoringJobService:
     return ScoringJobService(
         get_testing_pipeline(),
         get_confidence_service(),
-        get_settings().field_confidence_threshold,
         results=get_testing_results(),
     )
 

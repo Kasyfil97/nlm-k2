@@ -7,10 +7,10 @@ info:
 
 
     The orchestrator POSTs /v1/extraction/jobs once the guardrails model passed the document and gets
-    202; this service reads the image in the background, stores the result (`nilam_ocr_results`) and hands
-    the job to the structuring service in the same transaction. /v1/extraction/extract runs the same OCR
-    synchronously and stores nothing, for debugging. All endpoints except /health require an X-API-Key
-    header.
+    202; this service reads the image in the background, stores the result (`nilam_ocr_extraction_results`)
+    and hands the job to the structuring service in the same transaction. /v1/extraction/extract runs
+    the same OCR synchronously and stores nothing, for debugging. All endpoints except /health require
+    an X-API-Key header.
 
 
     ## Conventions (the same for every nlm-k2 service)
@@ -346,10 +346,11 @@ paths:
         guardrails check.
 
 
-        Records the job (`nilam_ocr_jobs`, idempotent per request_id), answers **202 immediately**, then
-        in the background: reads the document (`file`, or downloads `file_url`), runs detection + recognition,
-        stores `{text, score, poly}` per line (`nilam_ocr_results`), and hands the job to the structuring
-        service -- result, hand-off and the orchestrator''s outcome row in one transaction.
+        Records the job (`nilam_ocr_extraction_jobs`, idempotent per request_id), answers **202 immediately**,
+        then in the background: reads the document (`file`, or downloads `file_url`), runs detection +
+        recognition, stores `{text, score, poly}` per line (`nilam_ocr_extraction_results`), and hands
+        the job to the structuring service -- result, hand-off and the orchestrator''s outcome row in
+        one transaction.
 
 
         **This stage never rejects a document.** An image with no readable text is a successful job whose
@@ -852,7 +853,7 @@ components:
         file:
           anyOf:
           - type: string
-            contentMediaType: application/octet-stream
+            format: binary
           - type: string
           - type: 'null'
           title: File
@@ -919,15 +920,16 @@ components:
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
-            threshold for every field; a key for a single field overrides it. A field left out (or the
-            whole map omitted) uses the trust model''s own threshold for that field; a field the model
-            has none for (`no_kk`) is then `0`. A JSON object string; kept with the job and handed on'
+            threshold for every field; a key for a single field overrides it. A field without a threshold
+            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
+            a float from 0 to 1 (0 when there is no value). A JSON object string; kept with the job and
+            handed on'
           examples:
           - '{"no_kk": 0.9, "nik": 0.8}'
         file:
           anyOf:
           - type: string
-            contentMediaType: application/octet-stream
+            format: binary
           - type: string
           - type: 'null'
           title: File
@@ -1413,7 +1415,8 @@ components:
       additionalProperties: true
       type: object
       title: OcrPayload
-      description: Result of the OCR stage (`nilam_ocr_results`), forwarded to structuring and scoring.
+      description: Result of the OCR stage (`nilam_ocr_extraction_results`), forwarded to structuring
+        and scoring.
     OutboxRelease:
       properties:
         stage:

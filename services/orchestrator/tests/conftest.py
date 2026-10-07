@@ -15,9 +15,11 @@ set_test_env(AUTH_DISABLED="false", RATE_LIMIT_REQUESTS="100000")
 from app.config import get_settings  # noqa: E402
 from app.dependencies import (  # noqa: E402
     get_extraction_client,
+    get_final_results,
     get_guardrails_client,
     get_guardrails_log,
     get_pipeline_waiter,
+    get_testing_final_results,
     get_testing_guardrails_log,
 )
 from app.main import app  # noqa: E402
@@ -50,15 +52,6 @@ NOMOR_KK = nomor_kk()
 _DOC_VALUES = {
     "nomor_kk": NOMOR_KK,
     "nama_kepala_keluarga": HOUSEHOLD[0].nama_lengkap,
-    "alamat": "JL. MERDEKA NO. 12",
-    "desa_kelurahan": "CIHAPIT",
-    "rt": "003",
-    "rw": "007",
-    "kecamatan": "BANDUNG WETAN",
-    "kabupaten_kota": "KOTA BANDUNG",
-    "provinsi": "JAWA BARAT",
-    "kode_pos": "40114",
-    "tanggal_dikeluarkan": "12-03-2019",
 }
 
 
@@ -114,8 +107,9 @@ OCR_RESULT: dict[str, Any] = {
     "min_doc_score": 0.9991,
 }
 # What the endpoint must answer for the fixtures above, through the one function the scoring stage
-# also calls (§8.5). Pinned against literal values in test_extract_contract.py.
-EXPECTED_DATA = contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5)
+# also calls (§8.5): without column_confidence_threshold, the probabilities themselves. Pinned against
+# literal values in test_extract_contract.py.
+EXPECTED_DATA = contract_fields(STRUCTURING_RESULT, SCORING_RESULT)
 DONE = WaitOutcome(
     "SCORING",
     "DONE",
@@ -202,6 +196,16 @@ class RecordingGuardrailsLog:
         return {"report": mine[-1]["report"], "sequence": mine[-1]["sequence"]} if mine else None
 
 
+class RecordingFinalResults:
+    """Keeps the answers the service asks to save, instead of upserting ocr_results: the latest per request_id."""
+
+    def __init__(self) -> None:
+        self.saved: dict[str, dict] = {}
+
+    async def save(self, request_id, body) -> None:
+        self.saved[request_id] = body
+
+
 class StubWaiter:
     def __init__(self) -> None:
         self.outcome = DONE
@@ -257,6 +261,16 @@ def guardrails_log():
     yield log
     app.dependency_overrides.pop(get_guardrails_log, None)
     app.dependency_overrides.pop(get_testing_guardrails_log, None)
+
+
+@pytest.fixture(autouse=True)
+def final_results():
+    results = RecordingFinalResults()
+    app.dependency_overrides[get_final_results] = lambda: results
+    app.dependency_overrides[get_testing_final_results] = lambda: results
+    yield results
+    app.dependency_overrides.pop(get_final_results, None)
+    app.dependency_overrides.pop(get_testing_final_results, None)
 
 
 @pytest.fixture(autouse=True)

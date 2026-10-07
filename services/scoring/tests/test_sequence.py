@@ -63,17 +63,20 @@ def test_the_0_1_decision_is_stored_with_the_result_with_its_threshold(harness, 
     assert decisions["no_kk"] == {"value": "9924187486671285", "confidence": 1, "threshold": 0.0}
     [orang] = decisions["anggota_keluarga"]
     assert (orang["nik"]["confidence"], orang["nik"]["threshold"]) == (0, 1.0), "the request's 1.0, not the default"
-    # a field the request leaves out: the mock ships no thresholds, so FIELD_CONFIDENCE_THRESHOLD decides
-    assert orang["ayah"]["threshold"] == 0.5
+    # a field the request leaves out: no threshold, so the probability itself
+    [scores] = job["result"]["anggota_keluarga"]
+    assert orang["ayah"] == {"value": orang["ayah"]["value"], "confidence": scores["ayah"], "threshold": None}
 
 
-def test_without_column_confidence_threshold_every_field_uses_the_default(harness, auth):
+def test_without_column_confidence_threshold_every_field_is_its_probability(harness, auth):
     client, _ = harness
     client.post(JOBS, headers=auth, json=job_body("REQ_nocols"))
 
     job = wait_for_job(client, f"{JOBS}/REQ_nocols")
     assert job["column_confidence_threshold"] is None
-    assert job["result"]["decisions"]["no_kk"]["threshold"] == 0.5
+    no_kk = job["result"]["decisions"]["no_kk"]
+    assert (no_kk["threshold"], no_kk["confidence"]) == (None, job["result"]["fields"]["nomor_kk"])
+    assert isinstance(no_kk["confidence"], float)
 
 
 @pytest.mark.parametrize("columns", [{"nomor_kk": 0.9}, {"nik": 1.5}, {"nik": "tinggi"}, [0.9]])

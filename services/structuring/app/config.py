@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Self
 
 from pydantic import model_validator
@@ -9,9 +10,14 @@ from ocr_common.config import PipelineSettings
 class Settings(PipelineSettings):
     port: int = 8043
 
-    # `mock` (fields invented) or `kk_regex` (the vendored K2Regex-v2 layout parser). Only
-    # `kk_regex` derives anything from the submitted image, so `mock` is refused outside `local`.
+    # `mock` (fields invented), `kk_regex` (the vendored K2Regex-v2 layout parser) or `kk_model` (the
+    # trained key classifier m04, the pair of scoring's `kk_field`). Only the last two derive anything
+    # from the submitted image, so `mock` is refused outside `local`.
     structuring_backend: str = "mock"
+
+    #: `kk_model` only: the artifact exported by `scoring/training/export_nlm_k2.py` (three chained
+    #: models + the frozen closed vocabulary). Fetched by `scripts/fetch_weights.py structuring`.
+    structuring_model_path: Path = Path("weights/kk_structuring_model.joblib")
 
     scoring_service_url: str = "http://127.0.0.1:8044"
     scoring_api_key: str | None = None

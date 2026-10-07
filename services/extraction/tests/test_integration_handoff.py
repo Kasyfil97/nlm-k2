@@ -32,7 +32,7 @@ from ocr_common.pipeline.outbox import OutboxRelay
 from ocr_common.pipeline.outbox_sql import SqlOutbox
 from ocr_common.pipeline.outcomes import OrchestrationOutcome
 from ocr_common.pipeline.repository_sql import SqlJobRepository
-from ocr_common.pipeline.tables import orchestration_outcome_table
+from ocr_common.pipeline.tables import OCR_STAGE_TABLE_PREFIX, orchestration_outcome_table
 from ocr_common.testing import RecordingCallback
 from ocr_common.types import OcrEngineResult
 
@@ -110,7 +110,7 @@ def _service(stage: Stage) -> ExtractionJobService:
 @pytest.fixture
 async def ocr(tmp_path):
     await database.dispose_engines()
-    stage = Stage(f"sqlite+aiosqlite:///{tmp_path / 'pipeline.db'}", "ocr", STAGE_OCR)
+    stage = Stage(f"sqlite+aiosqlite:///{tmp_path / 'pipeline.db'}", OCR_STAGE_TABLE_PREFIX, STAGE_OCR)
     await stage.create_tables()
     yield stage
     await database.dispose_engines()
@@ -171,7 +171,7 @@ async def test_the_handoff_carries_no_ocr_payload_by_reference(tmp_path):
     """`PIPELINE_HANDOFF_BY_REFERENCE` is recommended for KK because one card is ~180 boxes and the
     outbox row survives 24 hours as a dead letter. The row must then not contain the card's text."""
     await database.dispose_engines()
-    stage = Stage(f"sqlite+aiosqlite:///{tmp_path / 'byref.db'}", "ocr", STAGE_OCR)
+    stage = Stage(f"sqlite+aiosqlite:///{tmp_path / 'byref.db'}", OCR_STAGE_TABLE_PREFIX, STAGE_OCR)
     await stage.create_tables()
     service = ExtractionJobService(
         stage.pipeline,
@@ -302,7 +302,7 @@ async def _lease_stage(tmp_path, name: str) -> Stage:
     await database.dispose_engines()
     stage = Stage(
         f"sqlite+aiosqlite:///{tmp_path / name}",
-        "ocr",
+        OCR_STAGE_TABLE_PREFIX,
         STAGE_OCR,
         lease=LEASE_SECONDS,
         heartbeat_seconds=0.05,

@@ -296,33 +296,6 @@ paths:
                         nama_kepala_keluarga:
                           value: BUDI SANTOSO
                           ocr_conf: 0.9873
-                        alamat:
-                          value: JL. MERDEKA NO. 12
-                          ocr_conf: 0.9642
-                        desa_kelurahan:
-                          value: CIHAPIT
-                          ocr_conf: 0.981
-                        rt:
-                          value: '003'
-                          ocr_conf: 0.9755
-                        rw:
-                          value: '007'
-                          ocr_conf: 0.9755
-                        kecamatan:
-                          value: BANDUNG WETAN
-                          ocr_conf: 0.9888
-                        kabupaten_kota:
-                          value: KOTA BANDUNG
-                          ocr_conf: 0.9901
-                        provinsi:
-                          value: JAWA BARAT
-                          ocr_conf: 0.9934
-                        kode_pos:
-                          value: '40114'
-                          ocr_conf: 0.9702
-                        tanggal_dikeluarkan:
-                          value: 12-03-2019
-                          ocr_conf: 0.9219
                         anggota_keluarga:
                         - nama_lengkap:
                             value: BUDI SANTOSO
@@ -332,22 +305,6 @@ paths:
                             value: '9908680101601956'
                             ocr_conf: 0.9975
                             crf_conf: 0.9887
-                          jenis_kelamin:
-                            value: LAKI-LAKI
-                            ocr_conf: 0.9968
-                            crf_conf: 0.9954
-                          tempat_lahir:
-                            value: BANDUNG
-                            ocr_conf: 0.9891
-                            crf_conf: 0.9803
-                          tanggal_lahir:
-                            value: 01-01-1960
-                            ocr_conf: 0.9903
-                            crf_conf: 0.9877
-                          agama:
-                            value: ISLAM
-                            ocr_conf: 0.9944
-                            crf_conf: 0.9912
                           pendidikan:
                             value: SD/SEDERAJAT
                             ocr_conf: 0.984
@@ -356,26 +313,10 @@ paths:
                             value: KARYAWAN SWASTA
                             ocr_conf: 0.9611
                             crf_conf: 0.8774
-                          golongan_darah:
-                            value: '-'
-                            ocr_conf: 0.712
-                            crf_conf: 0.4415
-                          status_perkawinan:
-                            value: KAWIN
-                            ocr_conf: 0.9821
-                            crf_conf: 0.9688
-                          tanggal_perkawinan:
-                            value: 08-08-2010
-                            ocr_conf: 0.956
-                            crf_conf: 0.9341
                           status_hubungan_dalam_keluarga:
                             value: KEPALA KELUARGA
                             ocr_conf: 0.9788
                             crf_conf: 0.944
-                          kewarganegaraan:
-                            value: WNI
-                            ocr_conf: 0.9972
-                            crf_conf: 0.9955
                           ayah:
                             value: RIZKY SANTOSO
                             ocr_conf: 0.9705
@@ -648,33 +589,6 @@ paths:
                       nama_kepala_keluarga:
                         value: BUDI SANTOSO
                         ocr_conf: 0.9873
-                      alamat:
-                        value: JL. MERDEKA NO. 12
-                        ocr_conf: 0.9642
-                      desa_kelurahan:
-                        value: CIHAPIT
-                        ocr_conf: 0.981
-                      rt:
-                        value: '003'
-                        ocr_conf: 0.9755
-                      rw:
-                        value: '007'
-                        ocr_conf: 0.9755
-                      kecamatan:
-                        value: BANDUNG WETAN
-                        ocr_conf: 0.9888
-                      kabupaten_kota:
-                        value: KOTA BANDUNG
-                        ocr_conf: 0.9901
-                      provinsi:
-                        value: JAWA BARAT
-                        ocr_conf: 0.9934
-                      kode_pos:
-                        value: '40114'
-                        ocr_conf: 0.9702
-                      tanggal_dikeluarkan:
-                        value: 12-03-2019
-                        ocr_conf: 0.9219
                       anggota_keluarga:
                       - nama_lengkap:
                           value: BUDI SANTOSO
@@ -684,22 +598,6 @@ paths:
                           value: '9908680101601956'
                           ocr_conf: 0.9975
                           crf_conf: 0.9887
-                        jenis_kelamin:
-                          value: LAKI-LAKI
-                          ocr_conf: 0.9968
-                          crf_conf: 0.9954
-                        tempat_lahir:
-                          value: BANDUNG
-                          ocr_conf: 0.9891
-                          crf_conf: 0.9803
-                        tanggal_lahir:
-                          value: 01-01-1960
-                          ocr_conf: 0.9903
-                          crf_conf: 0.9877
-                        agama:
-                          value: ISLAM
-                          ocr_conf: 0.9944
-                          crf_conf: 0.9912
                         pendidikan:
                           value: SD/SEDERAJAT
                           ocr_conf: 0.984
@@ -708,26 +606,10 @@ paths:
                           value: KARYAWAN SWASTA
                           ocr_conf: 0.9611
                           crf_conf: 0.8774
-                        golongan_darah:
-                          value: '-'
-                          ocr_conf: 0.712
-                          crf_conf: 0.4415
-                        status_perkawinan:
-                          value: KAWIN
-                          ocr_conf: 0.9821
-                          crf_conf: 0.9688
-                        tanggal_perkawinan:
-                          value: 08-08-2010
-                          ocr_conf: 0.956
-                          crf_conf: 0.9341
                         status_hubungan_dalam_keluarga:
                           value: KEPALA KELUARGA
                           ocr_conf: 0.9788
                           crf_conf: 0.944
-                        kewarganegaraan:
-                          value: WNI
-                          ocr_conf: 0.9972
-                          crf_conf: 0.9955
                         ayah:
                           value: RIZKY SANTOSO
                           ocr_conf: 0.9705
@@ -747,24 +629,6 @@ paths:
                       nomor_kk:
                         value: ''
                       nama_kepala_keluarga:
-                        value: ''
-                      alamat:
-                        value: ''
-                      desa_kelurahan:
-                        value: ''
-                      rt:
-                        value: ''
-                      rw:
-                        value: ''
-                      kecamatan:
-                        value: ''
-                      kabupaten_kota:
-                        value: ''
-                      provinsi:
-                        value: ''
-                      kode_pos:
-                        value: ''
-                      tanggal_dikeluarkan:
                         value: ''
                       anggota_keluarga: []
                       reject_reason: Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga
@@ -812,13 +676,13 @@ paths:
       tags:
       - Structuring
       summary: Turn OCR boxes into named fields, synchronous (no job, no callback)
-      description: "Maps raw OCR boxes to the Kartu Keluarga fields: eleven document fields and fifteen\
-        \ per household member, each with two scores that are deliberately not fused (`ocr_conf` is how\
-        \ sure the recogniser was of the glyphs, `crf_conf` how sure the parser is that the text belongs\
-        \ in that column). \n\nThis is the existing `K2Regex-v2` endpoint, kept as it is for the ML team's\
-        \ own calls, which is why `texts` still requires at least one box here. The asynchronous job endpoint\
-        \ deliberately does not: an image with no readable text has to reach the validity gate to be rejected\
-        \ there."
+      description: "Maps raw OCR boxes to the Kartu Keluarga fields the contract carries: two document\
+        \ fields and seven per household member, each with two scores that are deliberately not fused\
+        \ (`ocr_conf` is how sure the recogniser was of the glyphs, `crf_conf` how sure the parser is\
+        \ that the text belongs in that column). \n\nThis is the existing `K2Regex-v2` endpoint, kept\
+        \ as it is for the ML team's own calls, which is why `texts` still requires at least one box here.\
+        \ The asynchronous job endpoint deliberately does not: an image with no readable text has to reach\
+        \ the validity gate to be rejected there."
       operationId: structureTexts
       requestBody:
         content:
@@ -847,33 +711,6 @@ paths:
                       nama_kepala_keluarga:
                         value: BUDI SANTOSO
                         ocr_conf: 0.9873
-                      alamat:
-                        value: JL. MERDEKA NO. 12
-                        ocr_conf: 0.9642
-                      desa_kelurahan:
-                        value: CIHAPIT
-                        ocr_conf: 0.981
-                      rt:
-                        value: '003'
-                        ocr_conf: 0.9755
-                      rw:
-                        value: '007'
-                        ocr_conf: 0.9755
-                      kecamatan:
-                        value: BANDUNG WETAN
-                        ocr_conf: 0.9888
-                      kabupaten_kota:
-                        value: KOTA BANDUNG
-                        ocr_conf: 0.9901
-                      provinsi:
-                        value: JAWA BARAT
-                        ocr_conf: 0.9934
-                      kode_pos:
-                        value: '40114'
-                        ocr_conf: 0.9702
-                      tanggal_dikeluarkan:
-                        value: 12-03-2019
-                        ocr_conf: 0.9219
                       anggota_keluarga:
                       - nama_lengkap:
                           value: BUDI SANTOSO
@@ -883,22 +720,6 @@ paths:
                           value: '9908680101601956'
                           ocr_conf: 0.9975
                           crf_conf: 0.9887
-                        jenis_kelamin:
-                          value: LAKI-LAKI
-                          ocr_conf: 0.9968
-                          crf_conf: 0.9954
-                        tempat_lahir:
-                          value: BANDUNG
-                          ocr_conf: 0.9891
-                          crf_conf: 0.9803
-                        tanggal_lahir:
-                          value: 01-01-1960
-                          ocr_conf: 0.9903
-                          crf_conf: 0.9877
-                        agama:
-                          value: ISLAM
-                          ocr_conf: 0.9944
-                          crf_conf: 0.9912
                         pendidikan:
                           value: SD/SEDERAJAT
                           ocr_conf: 0.984
@@ -907,26 +728,10 @@ paths:
                           value: KARYAWAN SWASTA
                           ocr_conf: 0.9611
                           crf_conf: 0.8774
-                        golongan_darah:
-                          value: '-'
-                          ocr_conf: 0.712
-                          crf_conf: 0.4415
-                        status_perkawinan:
-                          value: KAWIN
-                          ocr_conf: 0.9821
-                          crf_conf: 0.9688
-                        tanggal_perkawinan:
-                          value: 08-08-2010
-                          ocr_conf: 0.956
-                          crf_conf: 0.9341
                         status_hubungan_dalam_keluarga:
                           value: KEPALA KELUARGA
                           ocr_conf: 0.9788
                           crf_conf: 0.944
-                        kewarganegaraan:
-                          value: WNI
-                          ocr_conf: 0.9972
-                          crf_conf: 0.9955
                         ayah:
                           value: RIZKY SANTOSO
                           ocr_conf: 0.9705
@@ -946,24 +751,6 @@ paths:
                       nomor_kk:
                         value: ''
                       nama_kepala_keluarga:
-                        value: ''
-                      alamat:
-                        value: ''
-                      desa_kelurahan:
-                        value: ''
-                      rt:
-                        value: ''
-                      rw:
-                        value: ''
-                      kecamatan:
-                        value: ''
-                      kabupaten_kota:
-                        value: ''
-                      provinsi:
-                        value: ''
-                      kode_pos:
-                        value: ''
-                      tanggal_dikeluarkan:
                         value: ''
                       anggota_keluarga: []
                       reject_reason: Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga
@@ -1498,7 +1285,8 @@ components:
       additionalProperties: true
       type: object
       title: OcrPayload
-      description: Result of the OCR stage (`nilam_ocr_results`), forwarded to structuring and scoring.
+      description: Result of the OCR stage (`nilam_ocr_extraction_results`), forwarded to structuring
+        and scoring.
     OutboxRelease:
       properties:
         stage:
@@ -1847,25 +1635,30 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Crf Conf
-          description: Forward-backward marginal of the column placement. ALWAYS null for document fields,
-            which are found by regex or position and never pass through Viterbi, and null for member cells
-            Viterbi did not place
+          description: 'How sure structuring is that the text belongs in this field: with `kk_model`,
+            the lowest box-class probability of the field''s boxes; with `kk_regex`, the forward-backward
+            marginal of the column placement. ALWAYS null for document fields, and null for a member field
+            that was not found'
           examples:
           - null
         features:
           anyOf:
           - additionalProperties:
-              type: number
+              anyOf:
+              - type: number
+              - type: 'null'
             type: object
           - type: 'null'
           title: Features
-          description: 'The trust model''s input vector for this field, present only for the NINE scored
-            contract fields and null everywhere else. It exists because the two scores above do not separate
-            a correct value from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502,
-            no better than a coin, while the parser internals that do carry the signal are computed and
-            then discarded. Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES`
-            (document fields); scoring assembles them and never recomputes one, because the same feature
-            computed in two places is how a model ends up good in training and bad in production'
+          description: 'The trust model''s input vector for this field; null when the field is empty,
+            and a single feature is null when it came out non-finite (`kk_field` then scores the field
+            null). It exists because the two scores above do not separate a correct value from a wrong
+            one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a coin, while
+            the parser internals that do carry the signal are computed and then discarded. Names are pinned
+            by `kk.FIELD_FEATURES` (42, the same for every field, from `kk_model`) or by `kk.MEMBER_CELL_FEATURES`
+            / `kk.DOC_CELL_FEATURES` (from `kk_regex`); scoring assembles them and never recomputes one,
+            because the same feature computed in two places is how a model ends up good in training and
+            bad in production'
           examples:
           - emis_assigned_min: 0.0
             lebar_rel: 0.87
@@ -1882,27 +1675,11 @@ components:
           $ref: '#/components/schemas/StructuredFieldPayload'
         nik:
           $ref: '#/components/schemas/StructuredFieldPayload'
-        jenis_kelamin:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tempat_lahir:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_lahir:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        agama:
-          $ref: '#/components/schemas/StructuredFieldPayload'
         pendidikan:
           $ref: '#/components/schemas/StructuredFieldPayload'
         jenis_pekerjaan:
           $ref: '#/components/schemas/StructuredFieldPayload'
-        golongan_darah:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        status_perkawinan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_perkawinan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
         status_hubungan_dalam_keluarga:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kewarganegaraan:
           $ref: '#/components/schemas/StructuredFieldPayload'
         ayah:
           $ref: '#/components/schemas/StructuredFieldPayload'
@@ -1913,21 +1690,13 @@ components:
       required:
       - nama_lengkap
       - nik
-      - jenis_kelamin
-      - tempat_lahir
-      - tanggal_lahir
-      - agama
       - pendidikan
       - jenis_pekerjaan
-      - golongan_darah
-      - status_perkawinan
-      - tanggal_perkawinan
       - status_hubungan_dalam_keluarga
-      - kewarganegaraan
       - ayah
       - ibu
       title: StructuredMemberPayload
-      description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
+      description: One row of `anggota_keluarga`. All seven keys are always present, even when empty.
     StructuringDirectRequest:
       properties:
         request_id:
@@ -2024,7 +1793,7 @@ components:
           - $ref: '#/components/schemas/OcrPayload'
           - type: 'null'
           description: 'Result of the OCR stage. Left out when the OCR service hands off by reference
-            (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `nilam_ocr_results`
+            (`PIPELINE_HANDOFF_BY_REFERENCE`, recommended for KK): this service then reads `nilam_ocr_extraction_results`
             of the shared database. Its `texts` MAY be empty -- an image with no readable text has to
             reach the validity gate to be rejected there, so this endpoint does not require at least one'
         pipeline_name_sequence:
@@ -2056,9 +1825,9 @@ components:
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
-            threshold for every field; a key for a single field overrides it. A field left out (or the
-            whole map omitted) uses the trust model''s own threshold for that field; a field the model
-            has none for (`no_kk`) is then `0`'
+            threshold for every field; a key for a single field overrides it. A field without a threshold
+            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
+            a float from 0 to 1 (0 when there is no value)'
           examples:
           - nik: 0.8
             no_kk: 0.9
@@ -2204,25 +1973,6 @@ components:
           description: 'The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator'
         nama_kepala_keluarga:
           $ref: '#/components/schemas/StructuredFieldPayload'
-        alamat:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        desa_kelurahan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        rt:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-          description: 'Shares one `ocr_conf` with `rw`: both are cut from the same OCR box'
-        rw:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kecamatan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kabupaten_kota:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        provinsi:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kode_pos:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_dikeluarkan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
         anggota_keluarga:
           items:
             $ref: '#/components/schemas/StructuredMemberPayload'
@@ -2246,15 +1996,6 @@ components:
       required:
       - nomor_kk
       - nama_kepala_keluarga
-      - alamat
-      - desa_kelurahan
-      - rt
-      - rw
-      - kecamatan
-      - kabupaten_kota
-      - provinsi
-      - kode_pos
-      - tanggal_dikeluarkan
       title: StructuringPayload
       description: Result of the structuring stage (`nilam_structuring_results`), forwarded to scoring.
   securitySchemes:

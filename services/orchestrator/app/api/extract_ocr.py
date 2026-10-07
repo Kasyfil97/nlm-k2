@@ -24,7 +24,6 @@ from app.api.extract_contract import (
 )
 from app.api.schemas import ExtractOcrResponse
 from app.clients.guardrails import GuardrailsThreshold
-from app.config import Settings, get_settings
 from app.dependencies import get_extract_service
 from app.middleware import TOO_MANY_REQUESTS
 from app.services.document_checks import TOO_MANY_PAGES_MESSAGE
@@ -153,6 +152,15 @@ def _stage_error_response(code: int, description: str, service: str, message: st
         "description": description,
         "content": {"application/json": {"example": example}},
     }
+
+
+async def _answer(service: ExtractOcrService, response: Response, body: dict[str, Any]) -> dict[str, Any]:
+    """Gives `body` as the answer, with its `status_code` as the HTTP status, and keeps it as the request's final
+    result (`nilam_ocr_results`). Errors raised out of the routes (a bad or too large file, 404) are answered by
+    the exception handlers and not kept: no envelope of this service exists for them."""
+    response.status_code = body["status_code"]
+    await service.answered(body["request_id"], body)
+    return body
 
 
 class _InvalidThreshold(Exception):
@@ -342,7 +350,8 @@ async def extract_ocr(
         description=(
             'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}` with the value '
             "between 0 and 1 (exclusive). Applies to the rejected side. "
-            "Omitted: the guardrails service's own threshold"
+            "Omitted: no threshold applies -- the document passes guardrails and its `probability_bad` travels "
+            "on to scoring"
         ),
         examples=['{"acc_rej": 0.8}'],
     ),
@@ -352,28 +361,33 @@ async def extract_ocr(
         examples=['{"all_field": 0.8}'],
     ),
     service: ExtractOcrService = Depends(get_extract_service),
-    settings: Settings = Depends(get_settings),
 ):
     received_at = time.monotonic()
     if document_type != DOCUMENT_TYPE:
-        response.status_code = 400
-        return extract_body(
-            400,
-            f"Unsupported document_type: {document_type}. Supported: {DOCUMENT_TYPE}",
-            errors="UNSUPPORTED_DOCUMENT_TYPE",
-            request_id=request_id,
-            pipeline_last_stage=ENTRY,
+        return await _answer(
+            service,
+            response,
+            extract_body(
+                400,
+                f"Unsupported document_type: {document_type}. Supported: {DOCUMENT_TYPE}",
+                errors="UNSUPPORTED_DOCUMENT_TYPE",
+                request_id=request_id,
+                pipeline_last_stage=ENTRY,
+            ),
         )
     try:
         sequence = _parse_sequence(pipeline_name_sequence)
     except InvalidSequence as exc:
-        response.status_code = 422
-        return extract_body(
-            422,
-            f"Invalid pipeline_name_sequence: {exc}",
-            errors=INVALID_SEQUENCE_CODE,
-            request_id=request_id,
-            pipeline_last_stage=ENTRY,
+        return await _answer(
+            service,
+            response,
+            extract_body(
+                422,
+                f"Invalid pipeline_name_sequence: {exc}",
+                errors=INVALID_SEQUENCE_CODE,
+                request_id=request_id,
+                pipeline_last_stage=ENTRY,
+            ),
         )
     try:
         guardrails_threshold = _parse_guardrails_threshold(guardrails_confidence_threshold)
@@ -382,13 +396,16 @@ async def extract_ocr(
         except ValueError as exc:
             raise _InvalidThreshold(str(exc)) from exc
     except _InvalidThreshold as exc:
-        response.status_code = 422
-        return extract_body(
-            422,
-            str(exc),
-            errors=INVALID_THRESHOLD_CODE,
-            request_id=request_id,
-            pipeline_last_stage=ENTRY,
+        return await _answer(
+            service,
+            response,
+            extract_body(
+                422,
+                str(exc),
+                errors=INVALID_THRESHOLD_CODE,
+                request_id=request_id,
+                pipeline_last_stage=ENTRY,
+            ),
         )
 
     # The central orchestrator's request_id becomes the id of this request: in the envelope of an error raised
@@ -410,18 +427,15 @@ async def extract_ocr(
             column_thresholds=column_thresholds,
         )
     except StageError as exc:
-        response.status_code = exc.status_code
-        return _stage_error_body(exc, request_id=request_id)
+        return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
     finally:
         reset_request_id(token)
-    status_code, body = extract_response(
+    _, body = extract_response(
         outcome,
         request_id=request_id,
-        threshold=settings.field_confidence_threshold,
         column_thresholds=column_thresholds,
     )
-    response.status_code = status_code
-    return body
+    return await _answer(service, response, body)
 
 
 @router.get(
@@ -504,21 +518,17 @@ async def get_extract_ocr(
     request: Request,
     response: Response,
     service: ExtractOcrService = Depends(get_extract_service),
-    settings: Settings = Depends(get_settings),
 ):
     token = adopt_request_id(request, request_id)
     try:
         outcome = await service.status(request_id)
     except StageError as exc:
-        response.status_code = exc.status_code
-        return _stage_error_body(exc, request_id=request_id)
+        return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
     finally:
         reset_request_id(token)
-    status_code, body = extract_response(
+    _, body = extract_response(
         outcome,
         request_id=request_id,
-        threshold=settings.field_confidence_threshold,
         column_thresholds=outcome.get("column_thresholds"),
     )
-    response.status_code = status_code
-    return body
+    return await _answer(service, response, body)

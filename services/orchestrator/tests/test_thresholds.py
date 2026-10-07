@@ -1,7 +1,7 @@
 """Thresholds from the central orchestrator, per request. Ported from nilam (708d53f / bb63efe).
 
-`column_confidence_threshold` decides each field's 0/1 `confidence`, before the trust model's own
-thresholds; it travels with the job so the GET decides with the same numbers as the POST.
+`column_confidence_threshold` decides each field's 0/1 `confidence`; a field without one gets the probability
+itself. It travels with the job so the GET decides with the same numbers as the POST.
 """
 
 import json
@@ -43,14 +43,17 @@ def test_column_confidence_threshold_reaches_the_pipeline_and_decides_the_fields
     data = response.json()["data"]
     assert data["no_kk"]["confidence"] == 0, "0.94 below the request's 0.95"
     assert data["anggota_keluarga"][1]["jenis_pekerjaan"]["confidence"] == 1, "0.4118 above the request's 0.1"
-    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5, columns)
+    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, columns)
+    assert data["nama_kepala_keluarga"]["confidence"] == SCORING_RESULT["fields"]["nama_kepala_keluarga"]
 
 
-def test_without_thresholds_the_services_defaults_hold(client, auth, stub_extraction):
+def test_without_thresholds_every_confidence_is_the_probability(client, auth, stub_extraction):
     response = _submit(client, auth)
 
     assert stub_extraction.submitted[0]["column_thresholds"] is None
-    assert response.json()["data"] == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5)
+    data = response.json()["data"]
+    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT)
+    assert data["no_kk"]["confidence"] == SCORING_RESULT["fields"]["nomor_kk"]
 
 
 @pytest.mark.parametrize(
@@ -75,14 +78,14 @@ def test_a_threshold_that_cannot_be_read_is_422_and_nothing_runs(
 
 def test_the_decisions_scoring_stored_win_over_deciding_again(client, auth, stub_waiter):
     """The outcome row is written from `decisions`; answering from them too is what keeps the POST, the GET
-    and the row identical even if the orchestrator's FIELD_CONFIDENCE_THRESHOLD drifts from scoring's."""
+    and the row identical."""
     scoring = deepcopy(SCORING_RESULT)
-    scoring["decisions"] = scored_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.99)
+    scoring["decisions"] = scored_fields(STRUCTURING_RESULT, SCORING_RESULT, {"no_kk": 0.99})
     stub_waiter.outcome = _done(scoring)
 
     data = _submit(client, auth).json()["data"]
 
-    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.99)
+    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, {"no_kk": 0.99})
     assert data["no_kk"]["confidence"] == 0
 
 
@@ -97,7 +100,7 @@ def test_the_get_answers_with_the_thresholds_stored_with_the_job(client, auth, s
     data = client.get(f"/v1/extract-ocr/{RID}", headers=auth).json()["data"]
 
     assert data["no_kk"]["confidence"] == 0
-    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, 0.5, {"no_kk": 0.95})
+    assert data == contract_fields(STRUCTURING_RESULT, SCORING_RESULT, {"no_kk": 0.95})
 
 
 # --- the guardrails threshold (ported from nilam 708d53f) ------------------------------------------
@@ -115,7 +118,7 @@ def test_the_guardrails_threshold_reaches_guardrails_and_is_recorded_as_the_requ
     assert record["threshold_from_request"] is True
 
 
-def test_without_a_guardrails_threshold_the_services_own_holds(client, auth, stub_guardrails, guardrails_log):
+def test_without_a_guardrails_threshold_none_is_sent(client, auth, stub_guardrails, guardrails_log):
     _submit(client, auth)
 
     assert stub_guardrails.thresholds == [None]

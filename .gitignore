@@ -30,6 +30,9 @@ services/*/weights/*
 # (trust_model.joblib) sudah dibuang bersama model yang tidak pernah dipakai untuk KK.
 !services/scoring/weights/kk_trust_model.joblib
 !services/scoring/weights/README.md
+# Pasangannya: model structuring `kk_model` (m04). Trust model di atas hanya sah di atas structuring ini,
+# jadi keduanya ikut repo dan diganti bersama (scoring/training/export_nlm_k2.py menulis keduanya).
+!services/structuring/weights/kk_structuring_model.joblib
 
 
 # Keluaran lokal tools: log port-forward tracker dan hasil run k6.

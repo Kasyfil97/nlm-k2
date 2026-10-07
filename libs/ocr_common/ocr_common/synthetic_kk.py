@@ -29,7 +29,7 @@ _RELATION = ("KEPALA KELUARGA", "ISTRI", "ANAK", "ANAK", "ANAK", "FAMILI LAIN")
 
 @dataclass(frozen=True)
 class SyntheticMember:
-    """One row of `anggota_keluarga`, all fifteen internal fields."""
+    """One printed row of a card, all fifteen columns (structuring emits seven of them)."""
 
     nama_lengkap: str
     nik: str

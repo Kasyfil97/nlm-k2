@@ -735,7 +735,7 @@ components:
         file:
           anyOf:
           - type: string
-            contentMediaType: application/octet-stream
+            format: binary
           - type: string
           - type: 'null'
           title: File
@@ -772,8 +772,8 @@ components:
           - type: 'null'
           title: Guardrails Confidence Threshold
           description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
-            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: the guardrails
-            service''s own threshold'
+            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: no threshold
+            applies -- the document passes guardrails and its `probability_bad` travels on to scoring'
           examples:
           - '{"acc_rej": 0.8}'
         column_confidence_threshold:
@@ -786,9 +786,9 @@ components:
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
-            threshold for every field; a key for a single field overrides it. A field left out (or the
-            whole map omitted) uses the trust model''s own threshold for that field; a field the model
-            has none for (`no_kk`) is then `0`. A JSON object string'
+            threshold for every field; a key for a single field overrides it. A field without a threshold
+            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
+            a float from 0 to 1 (0 when there is no value). A JSON object string'
           examples:
           - '{"all_field": 0.8}'
       type: object
@@ -806,18 +806,19 @@ components:
           examples:
           - '3273012345678901'
         confidence:
-          type: integer
-          enum:
-          - 0
-          - 1
+          anyOf:
+          - type: integer
+          - type: number
           title: Confidence
-          description: '1 when the trust model''s probability that this value is exactly correct reaches
-            the field''s threshold, else 0 (also when there is no value), as in nilam. The threshold:
-            the request''s `column_confidence_threshold` for this field, else the trust model''s own for
-            it (the point above which every held-out sample was correct). A field the model has no threshold
-            for (`no_kk`) is 0 unless the request gives it one'
+          description: 'With a threshold for this field in the request''s `column_confidence_threshold`
+            (its own key or `all_field`): 1 when the trust model''s probability that this value is exactly
+            correct reaches it, else 0 (also when there is no value), as in nilam. **Without a threshold**:
+            that probability itself, a float from 0 to 1 as the model gave it (0 when there is no value)'
           examples:
           - 1
+          - 0.9731
+          ge: 0
+          le: 1
       type: object
       required:
       - confidence

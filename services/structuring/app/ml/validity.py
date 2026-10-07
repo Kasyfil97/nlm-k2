@@ -49,7 +49,7 @@ def field(
     value: str,
     ocr_conf: float | None = None,
     crf_conf: float | None = None,
-    features: dict[str, float] | None = None,
+    features: dict[str, float | None] | None = None,
 ) -> StructuredField:
     """`value` is never None, and both scores are None when there is no value (§7.3)."""
     if not value:

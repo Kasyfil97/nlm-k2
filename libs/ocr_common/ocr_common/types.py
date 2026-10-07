@@ -39,7 +39,7 @@ class OcrEngineResult(TypedDict):
 
 
 class OcrResult(OcrEngineResult):
-    """The stored result of the OCR stage (`nilam_ocr_results.result`), forwarded to structuring and scoring.
+    """The stored result of the OCR stage (`nilam_ocr_extraction_results.result`), forwarded to structuring and scoring.
 
     The aggregates are derived from `texts` rather than reported by the model, and are `None` for an
     empty `texts` -- an image with no readable text is a rejection at structuring, not a failure here.
@@ -59,19 +59,19 @@ class StructuredField(TypedDict):
     and `crf_conf` is additionally always `None` for document-level fields, which are found by regex
     or position and never pass through Viterbi.
 
-    `features` is the trust model's input vector for this field, and it is present only for the nine
-    scored contract fields. It exists because the two scores alone do not separate a correct value
-    from a wrong one -- over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a
-    coin -- while the parser internals that do carry the signal are computed and then discarded. The
-    names are pinned by `kk.MEMBER_CELL_FEATURES` and `kk.DOC_CELL_FEATURES`; scoring assembles them
-    and never recomputes one, because a feature computed in two places is how a model ends up good in
-    training and bad in production.
+    `features` is the trust model's input vector for this field, `None` when the field is empty. It
+    exists because the two scores alone do not separate a correct value from a wrong one -- over 1686
+    hand-labelled cells `crf_conf` scores AUC 0.502, no better than a coin -- while the parser
+    internals that do carry the signal are computed and then discarded. The names are pinned by
+    `kk.FIELD_FEATURES` (`kk_model`) or `kk.MEMBER_CELL_FEATURES` / `kk.DOC_CELL_FEATURES` (`kk_regex`);
+    a non-finite one is `None`. Scoring assembles them and never recomputes one, because a feature
+    computed in two places is how a model ends up good in training and bad in production.
     """
 
     value: str
     ocr_conf: float | None
     crf_conf: float | None
-    features: NotRequired[dict[str, float] | None]
+    features: NotRequired[dict[str, float | None] | None]
 
 
 StructuredMember = dict[str, StructuredField]
@@ -80,31 +80,25 @@ StructuredMember = dict[str, StructuredField]
 class StructuredDocument(TypedDict):
     """What a structurer (`app/ml/*` of structuring) returns: the flat K2Regex-v2 shape.
 
-    The eleven document fields are top-level keys -- there is no `fields` wrapper -- plus
-    `anggota_keluarga` and `reject_reason`. `reject_reason` is the first rejecting rule of the KK
-    validity gate; when it is set the pipeline stops at structuring and the client gets a 400 with
-    that message. It lives *in the result payload* on purpose: the orchestrator is stateless and only
-    sees stages through their API, so a reason kept anywhere else could never reach the client.
+    The two document fields are top-level keys -- there is no `fields` wrapper -- plus
+    `anggota_keluarga` (seven fields per member) and `reject_reason`. Only the nine fields the contract
+    carries are emitted; the rest of the card is not read (see `kk.DOC_FIELDS`).
+
+    `reject_reason` is the first rejecting rule of the KK validity gate; when it is set the pipeline
+    stops at structuring and the client gets a 400 with that message. It lives *in the result
+    payload* on purpose: the orchestrator is stateless and only sees stages through their API, so a
+    reason kept anywhere else could never reach the client.
 
     There is no `flag` / `flag_reason` counterpart. nilam has one as a soft signal for its trust
     model; K2Regex-v2 produces nothing equivalent, so it is deliberately not invented here.
 
-    The eleven document keys are spelled out rather than left as a loose mapping: they are what the
+    The document keys are spelled out rather than left as a loose mapping: they are what the
     freeze pins down, and a typo in one of them is exactly the class of error the type exists to
     catch. `kk.DOC_FIELDS` carries the same names at runtime.
     """
 
     nomor_kk: StructuredField
     nama_kepala_keluarga: StructuredField
-    alamat: StructuredField
-    desa_kelurahan: StructuredField
-    rt: StructuredField
-    rw: StructuredField
-    kecamatan: StructuredField
-    kabupaten_kota: StructuredField
-    provinsi: StructuredField
-    kode_pos: StructuredField
-    tanggal_dikeluarkan: StructuredField
     anggota_keluarga: list[StructuredMember]
     reject_reason: NotRequired[str | None]
 
@@ -152,22 +146,24 @@ class ContractField(TypedDict):
     """A field of the orchestrator's `extract-ocr` contract, as in nilam: `{value, confidence}`.
 
     `value` is a string, never `None`, and the object itself is never replaced by null: a field that was
-    not found is `{"value": "", "confidence": 0}`. `confidence` is 1 when the trust model's probability that
-    the value is exactly correct reaches the field's threshold (`kk.scored_fields`), else 0.
+    not found is `{"value": "", "confidence": 0}`. With a threshold for the field, `confidence` is 1 when the
+    trust model's probability that the value is exactly correct reaches it, else 0; without one it is that
+    probability itself, a float (`kk.scored_fields`).
     """
 
     value: str
-    confidence: int
+    confidence: int | float
 
 
 ContractMember = dict[str, ContractField]
 
 
 class ScoredField(TypedDict):
-    """A `ContractField` with the threshold it was decided against; None: no threshold, so `confidence` 0."""
+    """A `ContractField` with the threshold it was decided against; None: no threshold, so `confidence` is the
+    probability itself."""
 
     value: str
-    confidence: int
+    confidence: int | float
     threshold: float | None
 
 

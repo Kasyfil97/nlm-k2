@@ -729,7 +729,7 @@ components:
         file:
           anyOf:
           - type: string
-            contentMediaType: application/octet-stream
+            format: binary
           - type: string
           - type: 'null'
           title: File
@@ -766,8 +766,8 @@ components:
           - type: 'null'
           title: Guardrails Confidence Threshold
           description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
-            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: the guardrails
-            service''s own threshold'
+            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: no threshold
+            applies -- the document passes guardrails and its `probability_bad` travels on to scoring'
           examples:
           - '{"acc_rej": 0.8}'
         column_confidence_threshold:
@@ -780,9 +780,9 @@ components:
             `0`). Keys are the contract names: `no_kk`, `nama_kepala_keluarga`, and the seven member fields
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
-            threshold for every field; a key for a single field overrides it. A field left out (or the
-            whole map omitted) uses the trust model''s own threshold for that field; a field the model
-            has none for (`no_kk`) is then `0`. A JSON object string'
+            threshold for every field; a key for a single field overrides it. A field without a threshold
+            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
+            a float from 0 to 1 (0 when there is no value). A JSON object string'
           examples:
           - '{"all_field": 0.8}'
       type: object
@@ -800,18 +800,19 @@ components:
           examples:
           - '3273012345678901'
         confidence:
-          type: integer
-          enum:
-          - 0
-          - 1
+          anyOf:
+          - type: integer
+          - type: number
           title: Confidence
-          description: '1 when the trust model''s probability that this value is exactly correct reaches
-            the field''s threshold, else 0 (also when there is no value), as in nilam. The threshold:
-            the request''s `column_confidence_threshold` for this field, else the trust model''s own for
-            it (the point above which every held-out sample was correct). A field the model has no threshold
-            for (`no_kk`) is 0 unless the request gives it one'
+          description: 'With a threshold for this field in the request''s `column_confidence_threshold`
+            (its own key or `all_field`): 1 when the trust model''s probability that this value is exactly
+            correct reaches it, else 0 (also when there is no value), as in nilam. **Without a threshold**:
+            that probability itself, a float from 0 to 1 as the model gave it (0 when there is no value)'
           examples:
           - 1
+          - 0.9731
+          ge: 0
+          le: 1
       type: object
       required:
       - confidence
@@ -1187,13 +1188,12 @@ components:
             type: object
           - type: 'null'
           title: Thresholds
-          description: The confidence above which a field of that name was correct on every held-out sample
-            -- one per scored field, keyed by INTERNAL name. They travel in the result rather than in
-            configuration because they are a property of the trained model, not of the deployment, and
-            because this is what makes the orchestrator's `confidence` and the outcome row's identical
-            by construction instead of by keeping two env vars in step. A field absent here had no such
-            point and is 0 unless the request's `column_confidence_threshold` gives it one; `FIELD_CONFIDENCE_THRESHOLD`
-            applies only to a result that carries no thresholds at all (the `mock` backend)
+          description: 'The confidence above which a field of that name was correct on every held-out
+            sample -- one per scored field, keyed by INTERNAL name. They travel in the result rather than
+            in configuration because they are a property of the trained model, not of the deployment,
+            and because this is what makes them auditable next to the scores. For reference only: they
+            no longer decide a field''s `confidence`; only the request''s `column_confidence_threshold`
+            does'
           examples:
           - ayah: 0.9353
             nik: 0.9637
@@ -1230,10 +1230,12 @@ components:
             type: object
           - type: 'null'
           title: Decisions
-          description: 'The 0/1 decision per CONTRACT field, with the threshold that decided it: `{no_kk:
+          description: 'The decision per CONTRACT field, with the threshold that decided it: `{no_kk:
             {value, confidence, threshold}, nama_kepala_keluarga: {...}, anggota_keluarga: [{...}]}`.
             The outcome row and the `extract-ocr` answer are projected from it, so both say the same for
-            one request. `threshold` null: no threshold applied, so `confidence` is 0'
+            one request. `confidence` is 0/1 against `threshold`; `threshold` null: the request gave the
+            field no threshold, so `confidence` is the trust model''s probability itself (a float, 0 without
+            a value)'
       additionalProperties: true
       type: object
       title: ScoringPayload
@@ -1375,25 +1377,30 @@ components:
             minimum: 0.0
           - type: 'null'
           title: Crf Conf
-          description: Forward-backward marginal of the column placement. ALWAYS null for document fields,
-            which are found by regex or position and never pass through Viterbi, and null for member cells
-            Viterbi did not place
+          description: 'How sure structuring is that the text belongs in this field: with `kk_model`,
+            the lowest box-class probability of the field''s boxes; with `kk_regex`, the forward-backward
+            marginal of the column placement. ALWAYS null for document fields, and null for a member field
+            that was not found'
           examples:
           - null
         features:
           anyOf:
           - additionalProperties:
-              type: number
+              anyOf:
+              - type: number
+              - type: 'null'
             type: object
           - type: 'null'
           title: Features
-          description: 'The trust model''s input vector for this field, present only for the NINE scored
-            contract fields and null everywhere else. It exists because the two scores above do not separate
-            a correct value from a wrong one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502,
-            no better than a coin, while the parser internals that do carry the signal are computed and
-            then discarded. Names are pinned by `kk.MEMBER_CELL_FEATURES` (member cells) and `kk.DOC_CELL_FEATURES`
-            (document fields); scoring assembles them and never recomputes one, because the same feature
-            computed in two places is how a model ends up good in training and bad in production'
+          description: 'The trust model''s input vector for this field; null when the field is empty,
+            and a single feature is null when it came out non-finite (`kk_field` then scores the field
+            null). It exists because the two scores above do not separate a correct value from a wrong
+            one: over 1686 hand-labelled cells `crf_conf` scores AUC 0.502, no better than a coin, while
+            the parser internals that do carry the signal are computed and then discarded. Names are pinned
+            by `kk.FIELD_FEATURES` (42, the same for every field, from `kk_model`) or by `kk.MEMBER_CELL_FEATURES`
+            / `kk.DOC_CELL_FEATURES` (from `kk_regex`); scoring assembles them and never recomputes one,
+            because the same feature computed in two places is how a model ends up good in training and
+            bad in production'
           examples:
           - emis_assigned_min: 0.0
             lebar_rel: 0.87
@@ -1410,27 +1417,11 @@ components:
           $ref: '#/components/schemas/StructuredFieldPayload'
         nik:
           $ref: '#/components/schemas/StructuredFieldPayload'
-        jenis_kelamin:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tempat_lahir:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_lahir:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        agama:
-          $ref: '#/components/schemas/StructuredFieldPayload'
         pendidikan:
           $ref: '#/components/schemas/StructuredFieldPayload'
         jenis_pekerjaan:
           $ref: '#/components/schemas/StructuredFieldPayload'
-        golongan_darah:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        status_perkawinan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_perkawinan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
         status_hubungan_dalam_keluarga:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kewarganegaraan:
           $ref: '#/components/schemas/StructuredFieldPayload'
         ayah:
           $ref: '#/components/schemas/StructuredFieldPayload'
@@ -1441,46 +1432,19 @@ components:
       required:
       - nama_lengkap
       - nik
-      - jenis_kelamin
-      - tempat_lahir
-      - tanggal_lahir
-      - agama
       - pendidikan
       - jenis_pekerjaan
-      - golongan_darah
-      - status_perkawinan
-      - tanggal_perkawinan
       - status_hubungan_dalam_keluarga
-      - kewarganegaraan
       - ayah
       - ibu
       title: StructuredMemberPayload
-      description: One row of `anggota_keluarga`. All fifteen keys are always present, even when empty.
+      description: One row of `anggota_keluarga`. All seven keys are always present, even when empty.
     StructuringPayload:
       properties:
         nomor_kk:
           $ref: '#/components/schemas/StructuredFieldPayload'
           description: 'The KK number. Note `nomor_kk`, not `no_kk`: the rename happens in the orchestrator'
         nama_kepala_keluarga:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        alamat:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        desa_kelurahan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        rt:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-          description: 'Shares one `ocr_conf` with `rw`: both are cut from the same OCR box'
-        rw:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kecamatan:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kabupaten_kota:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        provinsi:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        kode_pos:
-          $ref: '#/components/schemas/StructuredFieldPayload'
-        tanggal_dikeluarkan:
           $ref: '#/components/schemas/StructuredFieldPayload'
         anggota_keluarga:
           items:
@@ -1505,15 +1469,6 @@ components:
       required:
       - nomor_kk
       - nama_kepala_keluarga
-      - alamat
-      - desa_kelurahan
-      - rt
-      - rw
-      - kecamatan
-      - kabupaten_kota
-      - provinsi
-      - kode_pos
-      - tanggal_dikeluarkan
       title: StructuringPayload
       description: Result of the structuring stage (`nilam_structuring_results`), forwarded to scoring.
   securitySchemes:

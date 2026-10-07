@@ -130,15 +130,15 @@ services:
     startupFailureThreshold: 30
     terminationGracePeriodSeconds: 30
     env:
-      # kk_quality = inti K2Quality; menolak start tanpa keenam artefak di GUARDRAILS_WEIGHTS_DIR (ikut di image).
+      # kk_quality = inti K2Quality; menolak start tanpa keenam artefak di GUARDRAILS_WEIGHTS_DIR. Artefaknya
+      # diunduh setiap pod start dari GUARDRAILS_MODEL_URI (awalan, scripts/fetch_weights.py --force).
       GUARDRAILS_BACKEND: kk_quality
       GUARDRAILS_WEIGHTS_DIR: weights
+      GUARDRAILS_MODEL_URI: gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/guardrails/
       GUARDRAILS_DEVICE: cpu
       # Samakan dengan limits.cpu; tanpa ini torch membuat thread sebanyak core node.
       GUARDRAILS_TORCH_THREADS: "2"
-      # Ambang reject dari Orkestrasi pusat; isi begitu endpoint-nya ada. Kosong = default 0.5 (checkpoint).
-      # GUARDRAILS_THRESHOLD_URL: http://<orkestrasi-pusat>
-      # GUARDRAILS_THRESHOLD_PATH: /v1/thresholds/guardrails
+      # Tidak ada ambang di sini: hanya `threshold` per request yang menolak; tanpa itu dokumen lolos.
     resources:
       requests:
         cpu: "1"
@@ -184,7 +184,11 @@ services:
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      STRUCTURING_BACKEND: kk_regex
+      # kk_model = m04 (pasangan SCORING_BACKEND=kk_field); bobotnya dari STRUCTURING_MODEL_URI.
+      STRUCTURING_BACKEND: kk_model
+      STRUCTURING_MODEL_PATH: weights/kk_structuring_model.joblib
+      # Diunduh setiap pod start (scripts/fetch_weights.py --force), tidak ikut image.
+      STRUCTURING_MODEL_URI: gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/structuring/kk_structuring_model.joblib
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:
@@ -206,8 +210,11 @@ services:
     replicaCount: 1
     startupFailureThreshold: 15
     env:
-      SCORING_BACKEND: calibrated
+      # kk_field = trust model s11, hanya sah di atas STRUCTURING_BACKEND=kk_model.
+      SCORING_BACKEND: kk_field
       SCORING_MODEL_PATH: weights/kk_trust_model.joblib
+      # Diunduh setiap pod start (scripts/fetch_weights.py --force), tidak ikut image.
+      SCORING_MODEL_URI: gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/scoring/kk_trust_model.joblib
       SCORING_APPROVE_THRESHOLD: "0.8"
       SCORING_REVIEW_THRESHOLD: "0.5"
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"

@@ -8,7 +8,7 @@ What stayed behind, and why it could:
   values it really needed (the artifact file names, the NR-IQA switch) are constants here.
 * `src/services/database_service.py` -- only ever reached from `routes.py` / `main.py`.
 * `src/services/threshold_provider.py` -- the database-backed threshold and its `PUT /config`.
-  R15 replaces the whole thing with the chain in `app/clients/reject_threshold.py`.
+  Replaced by the request's own threshold (`app/clients/reject_threshold.py`); none is configured here.
 * NR-IQA (PyIQA TOPIQ-NR + QualiCLIP) -- off by default in K2Quality (`quality.enable_nriqa:
   false`), because XGBoost handles NaN natively. The two feature slots are still filled with NaN so
   the vector keeps its canonical length and ordering; only the two optional models are gone.
@@ -606,10 +606,9 @@ class KKQualityModel:
                 f"{len(self.feature_names)}; these artifacts are not from the same export"
             )
 
-        #: R15, fourth rung. K2Quality keeps its operating point in `config.yaml` (`quality.threshold`),
-        #: NOT in any of the six artifacts, so this key does not exist in today's export and the rung
-        #: is inert until the ML team writes it into `blur_cnn_meta.json`. None -- not 0.5 -- so that
-        #: an absent rung stays visible instead of merging into the floor below it.
+        #: Information only, shown in the model's metadata: no stored threshold decides a verdict any more
+        #: (only the request's does). K2Quality keeps its operating point in `config.yaml`
+        #: (`quality.threshold`), NOT in any of the six artifacts, so today's export has no such key.
         self.reject_threshold: float | None = _optional_threshold(meta)
 
         self.metadata: dict[str, Any] = {

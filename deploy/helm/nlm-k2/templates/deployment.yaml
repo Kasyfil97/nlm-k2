@@ -131,8 +131,13 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            # Root filesystem read-only: bobot diunduh saat start (scripts/fetch_weights.py) ke sini.
+            - name: weights
+              mountPath: /app/weights
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: weights
           emptyDir: {}
       {{- with $.Values.nodeSelector }}
       nodeSelector:

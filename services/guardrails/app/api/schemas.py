@@ -20,7 +20,8 @@ class DocumentResult(BaseModel):
     verdict: Verdict = Field(
         ...,
         description=(
-            "`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it, and "
+            "`reject` when `probability_bad` reaches `threshold_used`, `accepted` below it or when the request sent "
+            "no threshold, and "
             "`unassessable` when the model could not judge the image at all (undecodable, not an image, "
             "or dimensions outside the range it was trained on). `unassessable` is a verdict and not an "
             "error: this endpoint always answers 200"
@@ -52,10 +53,9 @@ class DocumentResult(BaseModel):
         gt=0,
         lt=1,
         description=(
-            "The threshold in force for this request: the `threshold` form field, else the central "
-            "orchestrator's (`GUARDRAILS_THRESHOLD_URL`), else `GUARDRAILS_THRESHOLD`, else the value "
-            "stored with the weights, else 0.5. Echoed because it can change without a deploy here. Null "
-            "with the `remote` backend when that service does not state its own"
+            "The threshold that decided: the request's `threshold` form field. Null when the request sent "
+            "none (the document then passes), and with the `remote` backend when that service does not state "
+            "its own"
         ),
         examples=[0.5],
     )
@@ -63,8 +63,8 @@ class DocumentResult(BaseModel):
         None,
         description=(
             "The side `threshold_used` applied to: `reject` (rejected when `probability_bad >= threshold_used`) "
-            "or `accept` (accepted when `1 - probability_bad >= threshold_used`). `reject` unless the request "
-            "sent `threshold_target`. Null with the `remote` backend"
+            "or `accept` (accepted when `1 - probability_bad >= threshold_used`), as the request sent it. Null "
+            "when the request sent no threshold, and with the `remote` backend"
         ),
         examples=["reject"],
     )

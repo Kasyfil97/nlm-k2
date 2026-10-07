@@ -1,0 +1,2100 @@
+{
+ "_meta": {
+  "note": "sha256 kanonik keluaran rantai training per dokumen (export_nlm_k2.baseline_rows); tanpa PII",
+  "scorer": "s11_blend_lr_hgb",
+  "structuring_model": "m04_06102026",
+  "n_docs": 418
+ },
+ "hashes": {
+  "PH2404MCSN": {
+   "values": "a8f1d647e6978cc4d819e3ddea63e32c6fa0d453f05063c542aa168a3973a5cf",
+   "scores": "274578a27b8bec1340319b92a247b5604d8f73ff8183f20cab22b819935507be",
+   "n_fields": 29
+  },
+  "PH2406EKFG": {
+   "values": "0c7e1ff850c8306cb82c82a97f3a2c6934114f429ac6ee96ce1182527b260bf2",
+   "scores": "3acfc41a08b76b87dbc719770f0636ea59d11575e85e6d8fb915cecf93657094",
+   "n_fields": 23
+  },
+  "PH2406XIKA": {
+   "values": "fb2f439babca0d152b86a3480c262bcc164b9a36df13cf5c891cb9c58a12c8be",
+   "scores": "868e8a5ae3cc74d45ab900446fc83465e62702eede3f3a6c8bc4166ed04b7ab8",
+   "n_fields": 9
+  },
+  "PH2407D2VL": {
+   "values": "77c54c7175538967b1ea014d171ce97c0dfb3e18a9b7351d39cc1a9505cbf61d",
+   "scores": "11da02bfff0cf2b38c127dc91281a774939c879e65ff9c30f922679664de40f6",
+   "n_fields": 9
+  },
+  "PH2407JO83": {
+   "values": "5ded95257cf25e8311cf48b635adea5d2cc986335cc596290df2f7c8a65b24f4",
+   "scores": "6f294a404a5d0289543b6e0bee9f2466098bab64099cc9559de5e6a389b197a5",
+   "n_fields": 44
+  },
+  "PH2407UYR8": {
+   "values": "1e0d120ff8510900918e9aa753dcfcb6aa65003fca04e2abb381c409793db991",
+   "scores": "c3d368a9c1c7b444c5c3b1e16830e8704b8ec6a2f9efe173fd40d0f7f9103536",
+   "n_fields": 16
+  },
+  "PH24097UC1": {
+   "values": "e982035f8b613341c995fe7914582e79b09b5538e5452e87c540ac96ab7c25db",
+   "scores": "13e4b718c6d34cbddffaa863f914b8ee7dd751163d85f9c5c89632ca9a31a319",
+   "n_fields": 23
+  },
+  "PH2409MQKB": {
+   "values": "25341426db49f3ace12d42ec67e2bcd643cd37ae3e4d634ced8c86d839da8bd3",
+   "scores": "9b31c7d605e274be11de43a7a551b1c12266e0df9bc85360fad85b6bd3722031",
+   "n_fields": 23
+  },
+  "PH2410LU7C": {
+   "values": "4ec486bcb8a67c89390790b546a9481b7b41a9bb44a86fa3cd4e795d8b891637",
+   "scores": "559b4ab60e6c69da7ca174bb589985f8867e4be4e6449209b756b8e351d8b645",
+   "n_fields": 23
+  },
+  "PH2411D9Y4": {
+   "values": "c2b8745053778dc0a21e1750548839d95a45e0ae758644f99fe496e8ebc8a282",
+   "scores": "9118a4adeb13fd3a88c7a117c4b3d653e8d2d171e516c5b0b85a39d9ffcf1036",
+   "n_fields": 8
+  },
+  "PH2412UXQR": {
+   "values": "8aa4a8112ee37b997639199b45b32bddf363f4e35b61e585b4cefb774a632d43",
+   "scores": "d15fb99a70ab871ed4802c866a06a9f5259f8ddb1076434a13f98be9caaddee8",
+   "n_fields": 9
+  },
+  "PH2501SZF4": {
+   "values": "5787d066eb0d2c49f30754cf61034e84b780fad0b8a7c1973c6d18d739a0da4a",
+   "scores": "926fa99e15c0da22bcb9a1a7ee8434e1eccbb24592409080893be3eb1a12d898",
+   "n_fields": 44
+  },
+  "PH2501TPS3": {
+   "values": "da7df368910570a4379247f496fc885b2485bf72206597cfa44c34e1c6c6c318",
+   "scores": "1e4d7796883e4ea83fa372489d77d49e076a48cabacffa243f70ffad1775bd71",
+   "n_fields": 30
+  },
+  "PH2501XWQP": {
+   "values": "67a3e3c7040d5405669269cfb1eefde247d730f100322e5d7c9f6a57701da923",
+   "scores": "ae1f658dceb0d8e9445421d54ec9f54c25c9e046da6b1e8c26f7ddabe5fbc9af",
+   "n_fields": 23
+  },
+  "PH25024N7A": {
+   "values": "60ab6187821a8f2732dc2c4234075a7e35856da4e10fad1806ba28290a6263c5",
+   "scores": "70848ac43d665cce302089ebe363847abe16ac832b4e408c37d58fb44d1cb4e8",
+   "n_fields": 23
+  },
+  "PH25024RCK": {
+   "values": "8508dbe582e39542afbb4113f75ef82cf73960dd2198a64f7ff650e52f23b1e2",
+   "scores": "690e31c6304ff6af1c82bf51b88b63ce10fd58621bb8cab3bfbb4ece9a916989",
+   "n_fields": 30
+  },
+  "PH25027PAV": {
+   "values": "23306297d879f287e3fddb4a5c7631f383a3e17d6d1c56ef1fb900af62bedd9b",
+   "scores": "b20fbfc9d7256455a5e6c906a3e72450a6ff2a4517617f9bc20d04880ef6ce16",
+   "n_fields": 23
+  },
+  "PH25028MO3": {
+   "values": "052164aab70e4754ac237e6336ad62b09d856eb4be29393e040d9fcb9ae489ab",
+   "scores": "4cc389aabad68fb8d69434f7a53390454e12f6d0e6a611dc0517230c6e0622cd",
+   "n_fields": 16
+  },
+  "PH25029Z4V": {
+   "values": "4bc2e978f8cbe839a200fb7eaf5031fe5fb26bec3d7e29a70bbdf2ad3c86b1c6",
+   "scores": "59e1e782be0b98b81a833218371a71a70d746d28e702000643299b00c28d8778",
+   "n_fields": 23
+  },
+  "PH2502CI1O": {
+   "values": "227f4072ef07013d1573ffefa96df5541e744c7ef8ea8d81f2be52b5678f92dc",
+   "scores": "b6ff51d981163da8afbb23aefb94f87d6ffcc78b73e7b2bdb61096864b4c602b",
+   "n_fields": 16
+  },
+  "PH2502DBO2": {
+   "values": "780466ea74632212d9a6777afbe1b1e2ae8747a8e18303edb07a1458a8ed02e8",
+   "scores": "f981d19b476166ea00de8db31f5e98c8ae51c98f956cc494090cba5be7b67615",
+   "n_fields": 9
+  },
+  "PH2502F62S": {
+   "values": "4ee75fb26bf75691df47622e4fa128c535d820b0994121c4c0a2789dfa70779a",
+   "scores": "4cabe6d1588b53a67b682a378ae7c4e0ff6005b3d41aec7a38b70b8d88d62898",
+   "n_fields": 44
+  },
+  "PH2502GBJ6": {
+   "values": "00f7dca3054317a60c138a25486d16ff7b23daa76dc42253d97ac0c84a42ab88",
+   "scores": "e53b28ecf46fd0943b08eba318dc9b12d3555f301efdfe43c954f61d16e40027",
+   "n_fields": 21
+  },
+  "PH2502HUQ6": {
+   "values": "48d82627795f5764d4090b70850a4b588998d4c5cd307bfec030359fca2ec499",
+   "scores": "074f6d1810cd63a422a18a5c0636da9d6d453c1c982949ca3a9f949f8dd7fd83",
+   "n_fields": 37
+  },
+  "PH2502JOMT": {
+   "values": "e9cf3413fcbf74b45240c29ee2198810ac43691286850bbc400f5f294da3bb43",
+   "scores": "2d898b4ead33db5fa88db3936fa70999bf025a6a75b1c04f744aa1c4d13aa29e",
+   "n_fields": 9
+  },
+  "PH2502U56D": {
+   "values": "4f26d51f3395bee2b324c0bdd578d8fe9632efb53315f83107445aad1acda660",
+   "scores": "b3a64c5c098c6b61a5a4596533f4ef639be0c6ed80a5192ac97a9bf785dc13d6",
+   "n_fields": 23
+  },
+  "PH2502XKEH": {
+   "values": "234f394e8f778147034455bb672f0fb81a83977cf5322cdd8e7f6f7b1cd5b129",
+   "scores": "5895c8f7b4c61d8f11ec8082a83973528449003f20841038767405b139f59dc8",
+   "n_fields": 30
+  },
+  "PH2503165V": {
+   "values": "64ccd0e25689582dc0ebdb09b9e6f93b50ee5c3051fe6f67ce49bb5593050037",
+   "scores": "21dc2d480fa28265ef0cfc43f16968bf6db6199442569849a47e1ec3fa1eb4ec",
+   "n_fields": 23
+  },
+  "PH25033OMU": {
+   "values": "38172c6314dfa146b9b65b2743e0e348874e788bc07d0d40c8137571dd3a75a7",
+   "scores": "cd60be9afa58ab902c83592d22681043775a2c5bbdd8374d38c3efc17dbb47a1",
+   "n_fields": 9
+  },
+  "PH2503AV93": {
+   "values": "589d4ef561c869cfb0dfed5d04f9b7e8f3a3de563209ab99bb8ef413869a0908",
+   "scores": "78f7ab0a579072586a23daeb1927be3c6a9ab564ae524c4a6cda1ffd2a017e0f",
+   "n_fields": 16
+  },
+  "PH2503GA4W": {
+   "values": "6be1b87e7b738faa25b9b180f4f3eb7682c29121a730d104b774bcc0bf08c55e",
+   "scores": "09de9c455d0bbfc4ac6a5b74d43ce930a552c17579419819f8764df2840f0b97",
+   "n_fields": 23
+  },
+  "PH2503GQ8Z": {
+   "values": "d3f0bb687ed012ad21aa307deaa14f3e902d131ca5c76d4fc10a32525e4eadc8",
+   "scores": "b8ba4e4a9befe2e345cc74c95f3385a6ca74baff50a455b8fdfdc84d39aef34c",
+   "n_fields": 30
+  },
+  "PH2503HXBU": {
+   "values": "c9568329f0c85eb0333918a62f833a586690d51ba97772bf3462c7d2f74c2375",
+   "scores": "5a46bab01573066c87d5c8b4a2efaf2141d1f2cd9fad962d46335beb67ae7a82",
+   "n_fields": 37
+  },
+  "PH2503XO3T": {
+   "values": "95a5dc17fa81ceb674340776feae53c5991b8cba57ae3dc7fe1eb563a0dd9dc4",
+   "scores": "547d3693c51d9ad3d57a5d9edf9679e8ed8802331c08f78b172cf8e11bf83fa6",
+   "n_fields": 16
+  },
+  "PH2504ALU5": {
+   "values": "cf5cac26ffd70d75d34255f708a2fc36fc60b9cdf3af9b365ec32baebd703bc8",
+   "scores": "f4c604f4c8a4e369669f4e0667bdb18b80711beb24855d6660bc43c7d2a65609",
+   "n_fields": 30
+  },
+  "PH2504E4AU": {
+   "values": "d2730d18ca699f240aebab2f22ec4c7ab495aa299b506b31e659a353b9ef5f81",
+   "scores": "aef76fc9c9da251b3e2883fe727e996190615a702d65d6593c4f094cc0edac8c",
+   "n_fields": 37
+  },
+  "PH2504EYLV": {
+   "values": "10d0ce54580a2f01cbc2d3835ca2139601a55dc1fc2eb92e48848fb1038d087d",
+   "scores": "e4ca91f151aadc110b429ee720402259666506e64d3a97b6fa0e85c345d729c7",
+   "n_fields": 9
+  },
+  "PH2504LI6W": {
+   "values": "54070ac99c6bce47bf152d9b13d0763689d553caba17dc339235813db26961d3",
+   "scores": "ef029ce73b8f9a3d4def87036250e5347d21a2d42b86e5d5c1eb48e102f430cb",
+   "n_fields": 23
+  },
+  "PH2504N6KF": {
+   "values": "ecb6391a072859fdcbe7d2a25ec22cdeb3c9f551d5aad070004faa42ae86b41c",
+   "scores": "b06e8b87c24fc5fc0babcbec01e806865b31904acfaf0b8d62257aabf8a2703e",
+   "n_fields": 23
+  },
+  "PH2504RI6Y": {
+   "values": "abb3af8c92b227d34dcd422b9f83239880ad16f716c4190625cf2331d4624147",
+   "scores": "cefa431131aa9a432e93b8fd600dc4f5267c86d61d546e0f63a215267fe43160",
+   "n_fields": 23
+  },
+  "PH25052AXU": {
+   "values": "a3a7e93226b37bc7ce7735bbbc82f2a37abef629e7482c516bbda73e59d20de5",
+   "scores": "eff5e1ab5e89ad16f498c622afbf614b86423ef4c3c7db90e13cecfbee948bfc",
+   "n_fields": 44
+  },
+  "PH250556SF": {
+   "values": "118e92037d70381a2dd11a74c52f85d01e2aaf0733ad49838a7a9e6ce6bd65d5",
+   "scores": "b7b634f42cebfa02fd4885e0f2c4489879960069698b4f8990fe1eadfd3a5a38",
+   "n_fields": 17
+  },
+  "PH25055CY2": {
+   "values": "0d30111a77dd71e28e5b6bfaf6a7531aa0d8b192deb9478cf851eb16d3e89fe2",
+   "scores": "bfe9e9ca159e94db2470946dfa610d433dc48490ed2593c73be5ddcba70ec4e7",
+   "n_fields": 37
+  },
+  "PH25058SJ1": {
+   "values": "f285c48b44dd4e3f17dbb6ca148006930beb966ce778a79098cb3161df4b5210",
+   "scores": "5883010720411886003cb4148cbc2f55870e0ec624fe9146a7d3e76120561eba",
+   "n_fields": 16
+  },
+  "PH2505FZ31": {
+   "values": "d08544d04bebb88b5c824a211319533b0929a0a4f0fc9823b5c5a99ef3f3234b",
+   "scores": "61d6fdf287ab786657b332df970eaa82c209ebd0269ed6e8e7ecae35119fe49a",
+   "n_fields": 30
+  },
+  "PH2505G1EQ": {
+   "values": "ac645bc6ab87c3c6e76f2eb275a744dedfbfc0b3a49b0bec05f3f110fc7b6dbf",
+   "scores": "9034389cfb1f81cc3f5122f55c8661ec48a00873913921c03ada28284eb768fc",
+   "n_fields": 23
+  },
+  "PH2505I5KR": {
+   "values": "5a7f2f9888c54a6287772a6d212ac2893e9bb82a7a86d9075f055e4542cf16d8",
+   "scores": "b67cdd06d22e667ad0a008650a2e2b1a3f22720477b267ea643d2232ef129dbf",
+   "n_fields": 16
+  },
+  "PH2505QU3A": {
+   "values": "3301dbcd838e53a7455074d83842ccacd2567713becabc312ee20d324bdfbfe8",
+   "scores": "ba37a1714e5df7189686e9b235f664d41f343513792126fc5239ee90736ff70b",
+   "n_fields": 9
+  },
+  "PH2505TNKS": {
+   "values": "41716ac112d5f3fcec0de65931eb68c4e9f7db9e049c3a7e1771089d38c3fe61",
+   "scores": "8e5b8bba6b7390b489721867a28c3a59d22852295ca24f3aa1e2edca511b0f51",
+   "n_fields": 16
+  },
+  "PH2505VM9L": {
+   "values": "1f6b4f874b6efabebac48c8af0b9a148512d82e535d00e0ce9d44374a2f9019a",
+   "scores": "8f756c5e132a5b187ca0b1743cb9b00ffa59a6ce0f7f8727e4eeab833e7f6adc",
+   "n_fields": 23
+  },
+  "PH2505Y2XL": {
+   "values": "279c76742729d592d1f0a92e6d6ca3e78e4240b78e3be5bda30bc8e2413fd0e8",
+   "scores": "71688f7beb4b69250dc427f12121b8ae7c24d59514c15744a624e0bfb946765a",
+   "n_fields": 30
+  },
+  "PH250618UL": {
+   "values": "08d5f2962bcce24193b3cee098b8b4ecda9ce2e61a5f2ef9d99162fe954a6564",
+   "scores": "3d79120b9fb4ecfea0761fcb14f5e89a646d29554f51cd6eec1276bc583022dd",
+   "n_fields": 37
+  },
+  "PH25062PQD": {
+   "values": "800d833cefd78c5483451c5da7d00df841faff9e3a5b8ce3a298ab4f7256a5f7",
+   "scores": "4dc5c5fda6860164f0d76680bd1bb8bcadd1f370d0467011fa64ef092797595b",
+   "n_fields": 23
+  },
+  "PH2506APFV": {
+   "values": "6727994e3793917f381f5b2c9ec975806db546f2f17d0b35cfe8f0c6af39d7bc",
+   "scores": "1c921c462ba82d901e6d9f741f9adb2c59f0096542344001058a7405671691ec",
+   "n_fields": 30
+  },
+  "PH2506CD8Z": {
+   "values": "2b6bd2cd507083115f129e7258c4caeaf870a54f082c89a95c7b676b4b98a7ab",
+   "scores": "3cd34d416410826db08947fc3fd9c469c0fb74d9d772499b05e865b7e3623791",
+   "n_fields": 23
+  },
+  "PH2506O1A6": {
+   "values": "e6168689670e25f7cc298795c5f29f2edca51744b6b512f9de6ec2a7534a722b",
+   "scores": "9341ca071388d19817be764b2372eeff9a3050fab208e993b7df903f3f9eedea",
+   "n_fields": 30
+  },
+  "PH2506W8U1": {
+   "values": "f10f0bae21c3de5245c2508fae76323612e62b26cbe08dddfaf0c6ff76fceff7",
+   "scores": "64a13276e622fbdb80280ef4766c1ea81b7b9d07b7d5bd2b5357779915e5d1fd",
+   "n_fields": 16
+  },
+  "PH2506Z352": {
+   "values": "f977aa9234ffc8e354e1c2b8be37cb4564320ee16574e1d6057e8b8d3073e869",
+   "scores": "415f96d053f75634cf09a722d71dbe90a1fd24478121c9d6e398aa25c1656499",
+   "n_fields": 8
+  },
+  "PH2506ZG62": {
+   "values": "ecc84c4a89e1c2d8d8f6777fe68bc40f539546b520cc906ea4234d6bf7641138",
+   "scores": "2f249dc63c9c0329b1b8ee1d76d53694413bc634f05bfa9b45820883baee1920",
+   "n_fields": 44
+  },
+  "PH25073FZM": {
+   "values": "50fa032adcb885cdfac12903a8661c15e1edb1da85c02b15926972e3b18ae616",
+   "scores": "9b2425e863c5a6c67c882a1378650c3ae68f301d65b8d3d6959f90953f7c52b0",
+   "n_fields": 37
+  },
+  "PH2507467G": {
+   "values": "12542eff886c80d4676fe2b5df430fbc08ec365d797f9087628ffade72416d04",
+   "scores": "6b52c09cef14658b2b834890fac56022414d74e7d565c226568e578b84dbcf4e",
+   "n_fields": 23
+  },
+  "PH250769AZ": {
+   "values": "5583290b7c66fc839f16b20a0e62230070cd715e8b9115a872a902db661366e5",
+   "scores": "318ce27d539cd257985aacc852784714525f794424f16f1a7183ecb634841d12",
+   "n_fields": 23
+  },
+  "PH2507LYX2": {
+   "values": "95c386b6f55459e73aa0046b86b55dc07a964faf241782d792aa5a93093adb83",
+   "scores": "00dd4bfcbd66f7c262e10f491d1d6bb6385354e848801f8ed46c6bd3d9a2901d",
+   "n_fields": 8
+  },
+  "PH2507UGHD": {
+   "values": "307966017cc26ed318a68744e61eece87a4e41873453733b25f0cf2652345554",
+   "scores": "f99d4711f88a8c4558940d6bb9dd42dca64825649af97b279abafac5c01500ce",
+   "n_fields": 23
+  },
+  "PH250945BM": {
+   "values": "486cad36d8de1ef1015eab23e82fb053952df557a5e11dda20e46c38c41f58f1",
+   "scores": "70d61e693bfe56d1d0a4600398ef1231f0ca8d7e649aba3e3c1a28bc97c7dc21",
+   "n_fields": 30
+  },
+  "PH25096A2T": {
+   "values": "7cfc715f293ddcdce901501fa095399f84ae26e946b9b99be1b5aa3021792044",
+   "scores": "738f473570299faf0717499d3e2195b28941d00228ad42d70bf037ca1a95c289",
+   "n_fields": 9
+  },
+  "PH25096FPH": {
+   "values": "76949cea782e20cc8e13b2614f2cd3c6bf7f93ff492cc4f698917eeda3231951",
+   "scores": "b90c2d41debafc37ba92ee9ab58a9c45339571276551b2d88a4a9e67569b4c3d",
+   "n_fields": 23
+  },
+  "PH250973D8": {
+   "values": "8b3bbf100757b770298fecd1e8911b679a82c182470293e4775b64d159f71857",
+   "scores": "68988bcb3fa464e21093ba3d63b328447d354db8553b9870ad16d7452289e157",
+   "n_fields": 30
+  },
+  "PH25098THQ": {
+   "values": "3419eac6d197ba703b016ad1bf4d46794e9dcd690cc8bbdef3aa4fc38b3a70c7",
+   "scores": "b6f17f9cb9066e3d026cb9c773ae1fec4f863e4e6de4923503f077604a073004",
+   "n_fields": 37
+  },
+  "PH2509GF6U": {
+   "values": "bc5c7b15a291b2aa8c8ee014767aa7c564209405395227d52a28213820100050",
+   "scores": "2abbbca8091d0ec64bbf344f3a60b1afee01f4d407fd0e10fb837e4891ae0bf5",
+   "n_fields": 37
+  },
+  "PH2509SN6Y": {
+   "values": "f68d782a48c0b3dfd04ab5387256b4a4dfe11477be925e628d498f7472b71b75",
+   "scores": "ab342404ec72dd165fb5b4dbc1963dfff2ba947699ff6e3fe3bf5c5857b4d9cd",
+   "n_fields": 30
+  },
+  "PH2509T6WL": {
+   "values": "94b4f07a35e89dc6056a98d58565f67c70e137de1d5e4bd8407bcfc7694f08a3",
+   "scores": "2f2dd4bcd322799854456225a26f8957fe6407a55bc04f12024c942e7b54498d",
+   "n_fields": 37
+  },
+  "PH2509VFDO": {
+   "values": "9c281845e7d13f2cf7519e3bfafe5c0cadab5b2680ec2e28d585404f75941e30",
+   "scores": "a4644497ca0b93eadd93320e2ee723914d0cc54c4bf4ebb43ed8d3d31e6e21b8",
+   "n_fields": 16
+  },
+  "PH2509W19S": {
+   "values": "f99679e1d38ed7fd8a98953e1ee362da8cf9c51a748ba0c358879735661ba900",
+   "scores": "0fcb324249bafe88a156102224cbd3d4fdf63e3b7ac5ce3142580ede7748f593",
+   "n_fields": 23
+  },
+  "PH2509YOZA": {
+   "values": "478817c3e7a0ed72e447d5ce110a07592eaa7e44c30870270a14b0ed279e05a5",
+   "scores": "194ec78eb3379a1f80e6495649890541bc3af7958e40fabe5da21627fa3e717b",
+   "n_fields": 30
+  },
+  "PH2509ZIAO": {
+   "values": "9b7409d37c451f941d3dc0f1cbf4676addb0ec3e1f9fdcb833cbe5b83552e549",
+   "scores": "3f45080362c73f5d148323b6222ca7436768fea63dd9f7fc7a68f6832d268108",
+   "n_fields": 30
+  },
+  "PH251026YS": {
+   "values": "7777ed2ac5ceb9dbdeb15028f019fb5e3e46eda58a5d78f058bf12b1f3f10294",
+   "scores": "de2bd620a572298f176e66fbfff6d98fb12393e3644c76b24af804e0d8e9a8d6",
+   "n_fields": 9
+  },
+  "PH251037TC": {
+   "values": "5052d42961c078cf3061a05cbd242af9b4505435fd3456154a0dcf8aee3a6423",
+   "scores": "5544deef35e558082077d0705a5cad718d3be34da5c1f18935a01cb50372ebab",
+   "n_fields": 23
+  },
+  "PH25105EHR": {
+   "values": "23d8ab70c6bb60295ab3b2fdce9cc05e6b6f1ead62fcfddd3806fa3f89c6edfa",
+   "scores": "d1923bd98bbbaff4f8c6328f8a55c69727ee96a04e2ff2be16c898498b713923",
+   "n_fields": 37
+  },
+  "PH251098Q4": {
+   "values": "a7989ff4d06b7194fcd77bd32ee32d06ece9a00987e3213f49e113d0930792d0",
+   "scores": "69f02277fea2775dcf798f7a89ef4ddde57865ae086d06aee5aeeeafa24c293d",
+   "n_fields": 37
+  },
+  "PH2510FX1N": {
+   "values": "ad90bde4721e1d96e898ababb0a608766d2d7f2e50e63ecedceaa3f43246b139",
+   "scores": "efac92d7c0bbe2944ff2f8ae0369f38c2ffd4356ecc2e657916c36c8a5779763",
+   "n_fields": 37
+  },
+  "PH2510LFRK": {
+   "values": "2b2fcb1a4392cd908e5c0a02ea35be70ca580335d9f962303c962b762835ff3c",
+   "scores": "be0094eb4808ad72f63e81849ccde9fa04a6bac26a13672bfc15ce46b51127b5",
+   "n_fields": 37
+  },
+  "PH2510Q1V2": {
+   "values": "6b3c83a8cfc1ca7031a79f86f91d00b4fb7c0374f4555110f9e6445518c72c5e",
+   "scores": "32ab0649673fdf461eff57a4ce92f1248ad8d4d567fc017c598c5f9734ef619b",
+   "n_fields": 16
+  },
+  "PH2510W4OD": {
+   "values": "7ac2fadeb90c6b76eaa6478565137f253d0a31a9066f56c927037449c6622c29",
+   "scores": "36cdabf81a62b42fcf86c53e4bffb5422dca97921fa1d48ad9af22949bf2ff48",
+   "n_fields": 30
+  },
+  "PH25115KJP": {
+   "values": "0ac2883a891f5737752cb30b050b3ad905822a5ca33f63c7a7daf3b27ac6152a",
+   "scores": "92ada0a1a674a1b89a1f049aab8c35cacf8b9692a00cda7eeeb272e72d48ba09",
+   "n_fields": 23
+  },
+  "PH25117IC6": {
+   "values": "32d271373b573ff46af0a018c478396b147bd32da38ce83c51a702dfaf2c7da7",
+   "scores": "0434ece0d9332c5aa941f71e34aa4d9d5ac69cb7d4ed7f3659f6ca935d8e335b",
+   "n_fields": 30
+  },
+  "PH2511AYME": {
+   "values": "d59fdc06decf54a24003e0c37fb337452d5820383165e2d2db5e9aa8b8a650bb",
+   "scores": "8cc39463d46450e3e853a54a1442b6de5c97ec297f8bbbd81413b187f947814b",
+   "n_fields": 23
+  },
+  "PH2511B5G9": {
+   "values": "ff7456d22e212ff73da24864bd313075ac79df9b5e625b2f1e9e902a29683a9c",
+   "scores": "5f7ca45a0842962edd272e6cfb9482b435aa041a7aa2f0daf232f7d7f520f199",
+   "n_fields": 30
+  },
+  "PH2511IOA8": {
+   "values": "4f51b0435b4a9519fe2d74de4500ada4d0eed983e6f8bedb007f01f15f3d1778",
+   "scores": "790f63bbaf066ccfeaa77eed3d22652456a3f829d27111786d44f9cfa1f7fc4c",
+   "n_fields": 16
+  },
+  "PH2511KRSG": {
+   "values": "1cacc3484767f040bfea168cd345afda679fbaed378e9bb9f28842d4b2a61bc9",
+   "scores": "fd1227339279aff5dc3985bba3368a743b70141d80b433dc0f9dbe0a1732637e",
+   "n_fields": 9
+  },
+  "PH2511NR1W": {
+   "values": "9e234358309ac579bbfc6379965725d4b1f5586cca3654e6b6693105af453885",
+   "scores": "e3dbca1af4d59f94283bc87f65231439a2a85a10290d0bb26cbead6697d1e182",
+   "n_fields": 23
+  },
+  "PI2511JBUV": {
+   "values": "e621b523e76fee6a17d744fa6ff4bbf840fcd28a68915a7c4e4adc945138961d",
+   "scores": "6f07ccc008a6516ac615fc81b65a6500cee1f78423d033b4fac08e6cf17b18cd",
+   "n_fields": 22
+  },
+  "PI2511JLFQ": {
+   "values": "61e0a95d7afc89b791985ed9994a257e0c40b699241417c1b139e75841652180",
+   "scores": "3ed057cc908fc7f8e77c93a479671fe72a2575ec6d0ac741b5c03c858ed92225",
+   "n_fields": 29
+  },
+  "PJ24071ZCR": {
+   "values": "d0f2ee8583e1f77dfb69879bd33fcfe2c05327a9486a913599420d16569d2453",
+   "scores": "a740d489586ade5d3471a8bbcf3dcdb8210ebc0327a6c75be0d93b81ab3967ce",
+   "n_fields": 9
+  },
+  "PJ2501W9S4": {
+   "values": "2c5ad003566f5c985b27f846f5434742959636b237a9c659aa4295acb848d306",
+   "scores": "19ec91b5c05f2ed468dcf9195ed02bc6319c29bcf1959cd26009b90bd719d812",
+   "n_fields": 29
+  },
+  "PJ2509Q69J": {
+   "values": "d2b2052f4a2a0c83100f462b4124488afcaf3416a0260c200380a0fde2892d28",
+   "scores": "8c16ff0079d5cbc8eab6863279edcdcb503c1ab2d873557d19b132ff5de163ea",
+   "n_fields": 21
+  },
+  "PJ2511ZV7M": {
+   "values": "bb683b05a8a201137ec381fd8fc97f7cd7ad61088b5828faf0c4440226bdd9ef",
+   "scores": "80b49e3fb0a6d2de1e27a35de58f1ab1b2e8d5601f2264c89022b0f7fe9674f1",
+   "n_fields": 15
+  },
+  "PK25022O3P": {
+   "values": "2a0acb1185c5fa4cf16ec43da6aa42746c077bbf99ba8edd25c395555b41edf1",
+   "scores": "092b9285e43aa24fb3c25d8a535d3e4f3ed3aa3c9f1920db6d605944f2eb6057",
+   "n_fields": 22
+  },
+  "PK2507EWYM": {
+   "values": "3bac1610dbb0de85cee54cbcac6732907b5e388583c51f14a449832d6a5a2cac",
+   "scores": "4898bd62f2a5c19c74c93d10d460d1d850fc1e8d9bc6e618692283da62a61730",
+   "n_fields": 7
+  },
+  "PK2509416B": {
+   "values": "8f3fe6c8884fab251157878cd2de7fe73af2aa0e443412a2e6a865397a1e32b9",
+   "scores": "8d2c950b457d1851cc5e223fe71ce8810672ea6c850029a639df11acdfd623de",
+   "n_fields": 58
+  },
+  "PH2403SHU6": {
+   "values": "03658ad3353b0bb1c9ac5e4f20e1e6fbf37b6055b9a881ffe2cc53957433a54c",
+   "scores": "32f44ef6f50e5b4bcb09d9eac84ee6117ad9623a07f60429d323f8ffc43fce1b",
+   "n_fields": 30
+  },
+  "PH24041HIW": {
+   "values": "7915b4d4a087b2b076168c0f274636f56f449c1c123a015f233c3701f773d999",
+   "scores": "77e67058f41b3d8280070203823f5afe862d878445107c8448461b866550a708",
+   "n_fields": 30
+  },
+  "PH2405VTMR": {
+   "values": "7c26e184a2234f8f5cb30494d4442ab94742d39a25284d6139d2686772c3fa2f",
+   "scores": "e8ddd739b99439cb8c71363caeb52085e347b20f74f762651265eeb896387a11",
+   "n_fields": 44
+  },
+  "PH2406Z947": {
+   "values": "a7f0a6e775e5c8d2eb0155e9671cfb25528b6f253d0d7b0904c32e70682ba40e",
+   "scores": "fdac22d2f79360fa387e182f1ad1f9a9c8d6c51bc10a94e259ebaff406f0e036",
+   "n_fields": 23
+  },
+  "PH2407QWVC": {
+   "values": "207d7733e8e8f0234426e8fd819670e54f0f5d2385d962a870393f5e8c159147",
+   "scores": "d9c0e788fd9fb1c080a5762daedb52e079e65b604cb5d103a6b7c7a3225e5f6c",
+   "n_fields": 19
+  },
+  "PH2407SHM6": {
+   "values": "8085e8570c06654c9713834b16913f0d451695ceab6ee91807405a9dc93b296c",
+   "scores": "ed6c1e4273e17172b5e4c9f09f56b1f36839e1667ccfe9c309f0bbccb434246d",
+   "n_fields": 35
+  },
+  "PH2410LA8E": {
+   "values": "ed3e61a1fb1c75d3be23a730306f35a9f82f1598fa680ad19d720cb926c08361",
+   "scores": "c800718b9c575f9446eb8fba35846bff8cf8dc682cf671cbf852bcccf3195027",
+   "n_fields": 37
+  },
+  "PH2412HQJG": {
+   "values": "58dec977e50872f8685d53a33d8f5929554833fde9e5a65ec11c721e95874e08",
+   "scores": "be85599a4b713f61b8b6510ad0d3d1d3e30fe37de0f22d2529a2fe2d47537dc7",
+   "n_fields": 30
+  },
+  "PH2412VMQS": {
+   "values": "4cc8d6a007bd5a985ec504e9a8a8e37ecaddddeda2a6853177a322ceb9622ecb",
+   "scores": "cf31126e7f362fae3b5f7d54a7b48b7f5d1a5f1932de1d1f3e6b316432abe184",
+   "n_fields": 9
+  },
+  "PH25029PFH": {
+   "values": "d572f7eeeaa79b71cad11016f89d4d32aee756be248c79a2ea8808adb886f1bd",
+   "scores": "74b6cd1186337398c2eab9fd83e0c6005f76d6b4927b66d29048ebab6bbf9896",
+   "n_fields": 36
+  },
+  "PH2502H8SF": {
+   "values": "bdb259aabac92d2b0290b277db8308d7d9559d51cbd8e42547dd3a56e3b8118b",
+   "scores": "a7dde48a311dfb6caaaa8a2ced7cad61d664d8f42f9b37b6488d0679fb866f3e",
+   "n_fields": 44
+  },
+  "PH2502WATL": {
+   "values": "d0eae7c9ec55e129e31e3fe007d3d931a6e358337f7de7135ee4629f41179801",
+   "scores": "6d359817036adb51315fa7311d8500c371f11bdaaaae33bf2ccaff23844cd5df",
+   "n_fields": 15
+  },
+  "PH2502X8KU": {
+   "values": "668bfa575787aaaf87f889ce644a711b396c714de7bf23799bb49bd25d6259b1",
+   "scores": "02d8439acf7cc933f3de585cfc5ec96cebac685a0a2fc334ee9f9f84af6e7498",
+   "n_fields": 30
+  },
+  "PH25037SG9": {
+   "values": "8b872fcf9088e65f2f2f6f900ba27e083d9080017966727a8f4477cb1ac02910",
+   "scores": "ce8c444fda8cfe157f79c2ecc1a07007a223c11f6b9739a1016f12a9acb05f48",
+   "n_fields": 17
+  },
+  "PH2505DLHM": {
+   "values": "3dc8a63f78d84fe24a8d024d0dd0f066f5c586f90f1e99fbd52c6227c1b0459f",
+   "scores": "a9948d82e3e0f12875a91426e8014e6a9eb6d2fbeddab7c000739d582387ad75",
+   "n_fields": 35
+  },
+  "PH25068AZJ": {
+   "values": "222e3d24fcbabeaff3e2b1bec0a09b2cfac6caecc92853c3c8d7120a9feda34d",
+   "scores": "cddaaabbd44729d40d4899b428d5c505bf0f8f0381d73ce73bd490d2c72da899",
+   "n_fields": 23
+  },
+  "PH2506EGDU": {
+   "values": "987c1ff82c73158a54a323633e6ebaa51812bdf781a9d80aa209a6fab60a966c",
+   "scores": "cc8cc968f5a35911dd8d234ba756bae3c6721b4ca2da629c548e677281b71d19",
+   "n_fields": 21
+  },
+  "PH25093VSQ": {
+   "values": "550349278a6ded652cabc2bdbf1d8773bd5c20debd7caaa65ed21381ec18c4fa",
+   "scores": "7585024cf8fa5a91bbca9a87e6f4b73c7d063a775ff36c1058ffa18e78bbb605",
+   "n_fields": 23
+  },
+  "PH25094N2A": {
+   "values": "780897f2e1172f5dc21996ade114df7949f163bd99e6e1715bb4a710e10236dd",
+   "scores": "5351bfb2c0f720ac810b34e436e5bbefeff4f5eec071d4ebe2fcfe8d4e96b769",
+   "n_fields": 57
+  },
+  "PH2509KYUV": {
+   "values": "49f5559431775c21e74dcc388faec126dbb8f2dcc1a58151cc783b1847c3a23a",
+   "scores": "6b35e774a38da2ddc99f190c2ce66714e4788f9bd0c9123e7fe8470c266eab27",
+   "n_fields": 37
+  },
+  "PH2509N2RV": {
+   "values": "60974f9930e1ae61606b62ca2c3395ccf995a520d94817f9259495bb8b0d4d3e",
+   "scores": "1fa90c6d79492ce4a8af7d0e3bc2b2dc176404f649a466d364f9664e2f5aac89",
+   "n_fields": 34
+  },
+  "PH2509U7Z2": {
+   "values": "96768f6ace6206420291b1761a12603ef64dbce0bf811fe7ac8d2df9d45eb361",
+   "scores": "ff88a6501234710404ac88854c82c2402703eb4169fda92cfe74c650db7b27d6",
+   "n_fields": 44
+  },
+  "PH25102WM1": {
+   "values": "e5281e020c99c3574b767ff335c82a961ea7a89b5bd6c269e8a258109ebb8b86",
+   "scores": "366bb1f637e2d6f63c867be51d98adf215d9e24b5c8c8170587ad91b7253b088",
+   "n_fields": 22
+  },
+  "PH25104P6R": {
+   "values": "f3c6bf261ee83a03e14f5fa4478f1809c9b5db6eea0189243dcce371bfdfb17e",
+   "scores": "4b65af731861aaa433aca6faf86e9a9fb6697f79a0e7af6ad24a096b3137084e",
+   "n_fields": 23
+  },
+  "PH2510DX5J": {
+   "values": "302ed3598dcae794ef7fd4cba37bc91ebad13d50c46df9567a04ecd1207ef6f9",
+   "scores": "bd0e3de17ec4c2625366808cbab9340dce273e5125ffb6dff959416538c40c22",
+   "n_fields": 30
+  },
+  "PH2510KUBZ": {
+   "values": "5e3c0ddf6bcb52648b1ce57e33a2e0e5881c1b49ffc01c90ea078320b2fd5256",
+   "scores": "5bcc5dbff64d46261a3a39e19d4ea5f4ce8e74bc4c78e8107a7adfb9a1778e28",
+   "n_fields": 30
+  },
+  "PH2510OR8Z": {
+   "values": "5dade820f902058a944dd21ccaabcf42fdf146e3bf8aa7036067fccf68c0c855",
+   "scores": "17074d97b10025ac40dc2be465726fbc4a2b7d922bba5b31df327c33c0161608",
+   "n_fields": 30
+  },
+  "PH2510VCIJ": {
+   "values": "9b68945f2754073f820fa5a4b6f54da0803f294ddcae31915779aff369ab62e8",
+   "scores": "bc7d796ea82a5a3940dc48a5d54e9f5f383fd8c5f3f681207f44432ede913059",
+   "n_fields": 30
+  },
+  "PH25117QAF": {
+   "values": "5cafb9cc487a36bcf805a2583a78581e4fd06cdd7f309ae0a1467ef540cc8c97",
+   "scores": "147f53b5232f94ff025039892ad6fc1e94de6ebd24286ece84f605457a7e4afb",
+   "n_fields": 30
+  },
+  "PH2511A1RU": {
+   "values": "b1b7fd9f04de192a8ebec37c6417b4c4a9e6d0c57fde030d74476c7ac64408f0",
+   "scores": "c151603add092051e206d62c5933abc459f79ce4173bcb568419e5d73da24061",
+   "n_fields": 42
+  },
+  "PH2511DZV2": {
+   "values": "06efc8e6bb008736e3069a14d37885087424a08589aa3019dac499de670e81ef",
+   "scores": "55f11aea4e15f0c06d225367d912954d8f5498607a30a1d1154afe322416429f",
+   "n_fields": 15
+  },
+  "PH2511PKX1": {
+   "values": "1ced9180c495047ba1acc38f87bb574cea492c7c438af681f22667f7e1bd72ba",
+   "scores": "dc807f2dc4a229136a75ca4ad3009c64ef5946d9850fbf2a99efe1c70ee4f5de",
+   "n_fields": 43
+  },
+  "PH2511RF5V": {
+   "values": "edbb16953558740b8aa29b004982acba7307c29ce5387ca645b519276e54c937",
+   "scores": "e6cd6f6454f599817ca39ae906388e29053f43ba3a34892b2baf81a859716ea3",
+   "n_fields": 9
+  },
+  "PH251239N5": {
+   "values": "0b3fc580db0db892dee917a673f6f6aaa26326cd9ea9f266581e9db127c1382d",
+   "scores": "2ea32a3a8064310edc130346a06ef2be1477af0f2a35378c85b3c2078c77ef43",
+   "n_fields": 23
+  },
+  "PH25123TD4": {
+   "values": "9738d6b7ff43e8eecba5b12dfecdb58f3f8e28b297b7c78d0c2b95cd1b13267a",
+   "scores": "7fd7c0126acb7d6469cb7d5bb40013c9c04304c53e7a4e66d4caaa90eda572d2",
+   "n_fields": 20
+  },
+  "PH25123W27": {
+   "values": "2b33b8dd9dc2344156c133a1381a53ea9977d14a1e2a8d1f4fb00b88355d69dc",
+   "scores": "eea255a98b5fc876d44288c312c8e639b482d36755983f35457d55836eda50ef",
+   "n_fields": 9
+  },
+  "PH25125TJU": {
+   "values": "e0c6c071070fc05ceceb6682d9a69d255061416d2d1c5e3cf18294bd94594264",
+   "scores": "9d287f3389920d01b09f8479ff565b8631d74ff905905efdf38dca7e645c2a80",
+   "n_fields": 30
+  },
+  "PH25127DCW": {
+   "values": "2ccb6a23f29a846e4f2454566a5d61307a1f1c4c52e28bd95766785305b7cf0b",
+   "scores": "7927b629386680630d9f8984bb3150f6c0dd39d004730da73b2e1266fa46a2c6",
+   "n_fields": 23
+  },
+  "PH25127ISR": {
+   "values": "26ad924edc4d0d22f77e3d968f06faf10f45925d05c24645d7b9b189ddadd1ed",
+   "scores": "c4592311dbde0011be45200116fda04a573cfbb3ca2009a03fb0335f613c813a",
+   "n_fields": 23
+  },
+  "PH2512AMCY": {
+   "values": "08d35f3e2aac6afbb7495428ef30302eea23a0471af8874ebca0ff8f016e7715",
+   "scores": "96ae807295fd34aadf27ba51f2e2709f90a14ccc35fcea65987e4e4b657bf365",
+   "n_fields": 20
+  },
+  "PH2512BKJ1": {
+   "values": "3f6b62716047d29439107baf0af45454c42a37ccd4ef2449959ac45d0a6bc55b",
+   "scores": "bc5a9604a6c885cf2b072e70f87bcfff29d1a2964fd847bc569628a5bae71f46",
+   "n_fields": 9
+  },
+  "PH2512CA64": {
+   "values": "ba31ce3c587a2ffbea31567139714e2b235aa252f5424d3be4730a72e5f5defe",
+   "scores": "7406c9886b17746a4db545dab4727e5d630dfac63d8d923c69c48c566fdbcedd",
+   "n_fields": 37
+  },
+  "PH2512CF35": {
+   "values": "d70be942fd839ed3f444f86ce2c15b5c8829d6376eb74ce0ac2129ace8e04540",
+   "scores": "1fc3c60ebbac6e864d39f4973eeb60b75ac6180d7c0b53c76a3f0cfc48d51098",
+   "n_fields": 16
+  },
+  "PH2512FYR5": {
+   "values": "b25c2f25afdfe0197158c003e15027e61c6a3f316bdbe87db678e8552f4db476",
+   "scores": "7087a259dbc8327476623af82a319f404dcb352ff25e28b0ac57d39ade8beacf",
+   "n_fields": 30
+  },
+  "PH2512HK85": {
+   "values": "31d826499a807eeac4a225276299b5f950a6752f7122a783d0eb81d210c28251",
+   "scores": "60f21e14b94781e882cc160e69acbfc21f6fd3698905b3c8fd1f7b5f4ecbe783",
+   "n_fields": 16
+  },
+  "PH2512JZU2": {
+   "values": "1a8e5db3d6900d3333b179608347f1ab332c50772bd92fe4588722989c3fd3c1",
+   "scores": "080bf2eece5bca96690425353eff57fd8bb4739127c5a47d12c7db76ff97b521",
+   "n_fields": 36
+  },
+  "PH2512M8BT": {
+   "values": "074f6d1a838d37d74383515b2e6bee2d2b41c3954cf1f197b81bdfab98fd9d04",
+   "scores": "17f42ccc2b2108bc28342ab2f52b037b079fc02eab0aec20b105eda4286d51d3",
+   "n_fields": 29
+  },
+  "PH2512RH37": {
+   "values": "b80e29c762b143c673f59097991e8d53f05dc6107e357e37e425707f66c49df6",
+   "scores": "2662bbdfc9078e5558ba9dbc46618f14bea53343d2bef1636bff5f250bd30344",
+   "n_fields": 28
+  },
+  "PH2512SRW1": {
+   "values": "135d88c965b2565092a15a77d91df795f65e459da783d53dfc846f4f57d1e9a6",
+   "scores": "de4deb2092666a3324b5757cb8200040fe0e6cd1e4da257df7f3bfe910efc2ed",
+   "n_fields": 9
+  },
+  "PH2512X4AM": {
+   "values": "d9223d172a5808136ae71c1a94fd854f7c16b2c608cfc4e1aac7f543532724c6",
+   "scores": "d20b22176caf328f4ac8fa70a2ad0410235ffd21cd8cca79b3d3def5773fc81b",
+   "n_fields": 23
+  },
+  "PI24047569": {
+   "values": "5ff5c74d46a5fc895a49e00484f8f04ade621f37e203eb86516478a0db5b026a",
+   "scores": "7456fc76af9a6db70bcd44effdb0c3c7296c086b6a40b82f2fc94896a898687d",
+   "n_fields": 23
+  },
+  "PI240562BR": {
+   "values": "37faae89cf008780f028b18be96fcc542d72f83c0430e56daa23c9968936a19c",
+   "scores": "0fe78fa543cfb078b4cf7e034c270681d90efad43adf341d73a279cfc1b317a9",
+   "n_fields": 37
+  },
+  "PI2405AJ8I": {
+   "values": "299b1a16f7f18e0153a73a7b1f2ef024282c5c91e67f2b66bda0d9a65474993d",
+   "scores": "723756d2b44b3a9cf9de4f3743827376b5edf8acfd34ca7828cc1bc3f0363811",
+   "n_fields": 23
+  },
+  "PI2405FE1K": {
+   "values": "97e4b7e9f7f0f7a163f72f5cc4a2adddd2cd7cba16deacf3ab020b15a3dae94e",
+   "scores": "3db1a88c293926af51d887750454e9f1e0a37db81ca52aac36dd837aa4423f0f",
+   "n_fields": 16
+  },
+  "PI2406GQ2B": {
+   "values": "ad1463bbc46850c58caedc458f0a0af4675d219036b00f6b628e6bafa3b3d73c",
+   "scores": "ddde6db30191ee5b994faf93b84a3961f8f1957b06fe4dde511403ad97a47d83",
+   "n_fields": 23
+  },
+  "PI2406I5L2": {
+   "values": "0b89a7b5ceb7882ada0495dd8afe304e015075a308d4e15c88eeae0c123f65af",
+   "scores": "272f47b740411fa30c8aa27de86bcdc85cbfe33c748cb1218ce465e46c20ef04",
+   "n_fields": 16
+  },
+  "PI2406PTX6": {
+   "values": "7fd3710edac65d7b4132b01667447ddeb5cec951c2b0a0b413c6e4bb88e992d6",
+   "scores": "e50cc4441d4f6ba5b63dbdcb7521f5e8ef376da05a9649deb1933fa2e79316e6",
+   "n_fields": 16
+  },
+  "PI24072LI8": {
+   "values": "1fb9a2bdb5983eade63e9e0b48458d038fd08a93b55e324459ffaffcbfb4460b",
+   "scores": "9ca8f1bf77a4ee13fa09ac842851eb916476ed0c39d524d9158e87b3d91390e3",
+   "n_fields": 25
+  },
+  "PI2407AIL3": {
+   "values": "9095b61108c24c2908d6c9bcf0ca2c747b09a74ea41f39aa1b0891cea0230261",
+   "scores": "903ad995b23de331e0c9a76ae7dfe44b71f17c59cb5dc74be6da5a92047d91f4",
+   "n_fields": 23
+  },
+  "PI2407FQWD": {
+   "values": "408b222098ec2be6c1a23abce58cfbbc0446ca144835d1bcda60cf59cf65d581",
+   "scores": "3382446d718db2b387e7c2e54afaabd7de356ae3eab96f4401daafe04581d818",
+   "n_fields": 30
+  },
+  "PI2407T38Q": {
+   "values": "4eb5f3d8e196cb3c7cee316084d9217104716a6ce70f296bf799b205ec7ec826",
+   "scores": "cac1921428ed8fb6b11189b97cbc35b8e86f9d74cac0c932ffbf1e240da5a4f0",
+   "n_fields": 16
+  },
+  "PI24081NY5": {
+   "values": "d7a3c194da04f904db64689da90fd42b438110b9afe5454055a470b2a78a6191",
+   "scores": "8db77ee83364371f3dfcabf8ba685900702e36c518ce1f2fdb474d0ff83ee0d9",
+   "n_fields": 9
+  },
+  "PI2408BAWE": {
+   "values": "6ba85db55af0806113cc31abb73a41da9e44274b8e1e388579ddf123496bafa3",
+   "scores": "39f700c32f9e4486f99d999d083e28b4ac5ed57698678efb37f5be15bfad2934",
+   "n_fields": 9
+  },
+  "PI2408HY7C": {
+   "values": "e8a35482bc162ca03dbe44f07424942dea9b4db362eeb801a48d5482b827b193",
+   "scores": "23dabb2ace32648a539ce3d89dcd73b8a11cdd4e6aebcbf465148cf1011d3b5a",
+   "n_fields": 37
+  },
+  "PI2409AEWI": {
+   "values": "1fc3c90c57b4644a1662f405edddd1f2d4130d501848ae4054a08b48614458cc",
+   "scores": "26917e245ab622ad818e2ef4613835904bebc3fbb32ef28b13619c0fe209c0c5",
+   "n_fields": 37
+  },
+  "PI24104O2H": {
+   "values": "7347e27edb90fc4355eaca32d6e7ce881993a33d6e80db1d11b817e5d83cffae",
+   "scores": "19aee8b7c4fd44425b27d165850d854edc6692abaa255ab1a0f75494e3695eac",
+   "n_fields": 16
+  },
+  "PI2410CS9Y": {
+   "values": "b9b5eaa80ffb5f7737092de982306c09a8951b009253c6d4844871c61be328a6",
+   "scores": "04960de6b50c4624586c11286f941a222573e621d41b7bba26b085361230a06c",
+   "n_fields": 9
+  },
+  "PI2411VFJH": {
+   "values": "3d5969120c4cd47513ee4186566de23ed7373707b46598a87868e1f08ef5cd8f",
+   "scores": "8fc0c48aa2da583cb4a3f7518790010717d7a4dcea7d70bf568a283e396c294d",
+   "n_fields": 16
+  },
+  "PI2412JZQO": {
+   "values": "1b277210c1bffbc338b91c0cd69efdbaa3c9f2f8c5e9c806b7d591fd03aafa1d",
+   "scores": "c35ac97958c18fbfddaaaf741429fe25289306c86ba76edd5cbc7844fb96faf9",
+   "n_fields": 16
+  },
+  "PI2412W87S": {
+   "values": "5327aafdacd70523cc45699e2d892b79e9e4f031819b706d844ab66649853a24",
+   "scores": "cb476231047e5c3c6b6426c683dd93934a49c25bf18282b313ee3713d3988c7d",
+   "n_fields": 23
+  },
+  "PI2412X5NV": {
+   "values": "1584011b4f3c605a2ee43c3b0c8ab9f6a9aca49d7b6cd1785d359363554e8263",
+   "scores": "1d438de3cafa0bef28f2337cf1fd34392eecde0de84902cc7b44ec9e0c4e6d07",
+   "n_fields": 23
+  },
+  "PI25023XWI": {
+   "values": "a1104f6d37a53cd4f77c4fb447001d5c82816ef2da7fc33b2a42d2d47e0acf28",
+   "scores": "f2122ddbb49726722f685622745f4e4de748c404a207eb3fd75d7aac892c6744",
+   "n_fields": 37
+  },
+  "PI25028KVG": {
+   "values": "95b3ab94608aa6462427abd2dcaa2a6e10ddf691a127f92ccd79a4da99cfdef7",
+   "scores": "2bd69c2c2af72f59473b3bdfc6022541a04afb86371d112b429acb509cbb7054",
+   "n_fields": 23
+  },
+  "PI25028VTB": {
+   "values": "fa56220dddd946400730e623577f8386dabb438e27f1852e6f4442d56d19dc30",
+   "scores": "d36900da7018644a7f840ffe00f6e4257690615237cb0e90761678e7c10962b6",
+   "n_fields": 9
+  },
+  "PI2502FM2C": {
+   "values": "90721f71df1bae6215f62efdded43a9f86d94af231a0afab7aa0fb5849e5634c",
+   "scores": "101c0a0e25a36f9d693a1313e7adc5a3a2a240e93f00ba32f3a60f12ed0b7b4b",
+   "n_fields": 37
+  },
+  "PI2502GKI4": {
+   "values": "d7cb4f5d3efdb39465dba4b0fdee89f3a36b078128558dd477d8d8864b8bc3eb",
+   "scores": "b2d786e68425a4771f4786b8421657c37e014e7135c351df05e4dde8ae03822a",
+   "n_fields": 23
+  },
+  "PI2502Q6N5": {
+   "values": "f49ac50f71595cf684aa58d40f334b5f41971eeea4adb1c8f1304998516cf323",
+   "scores": "1fd668226e0953c5606f3ff6201fa9b8bfcd3d520b9b444af53abcb7b353237f",
+   "n_fields": 20
+  },
+  "PI2502QR4G": {
+   "values": "962183c60f9932c9c2c69b3cab8ce1a06511c06ccfe9135647411c2352a37c6a",
+   "scores": "4987b632fde9a48747b002bba91784225f8d72f4ddc1b1fa042359c9b281c32f",
+   "n_fields": 15
+  },
+  "PI2502RUO4": {
+   "values": "bd2b79899e07452f72377cc1bd96782d681b84b5dd60656a0f233011d6d34cd3",
+   "scores": "8f87f9660b4617332c53ed632e55f44bfcc97bee2887d901bc901e1b168d989d",
+   "n_fields": 29
+  },
+  "PI2502SJEL": {
+   "values": "097961bf7f69642caebd8c00d49569bb3fd346c4af92b6cb363cfe2159bb4869",
+   "scores": "5755c4ab733a8986cf95f00dff74d4a1848b9425df128ad9b8bf15de0b3ac574",
+   "n_fields": 30
+  },
+  "PI2502U6WX": {
+   "values": "f25d987cad99c5618e43d0595644740e929f9d183cfd3bdbe701b70c46563614",
+   "scores": "0978f558bde8f6443201d13b09c5f20767b68e447dd7f2b2c25e05e9eecf00b4",
+   "n_fields": 23
+  },
+  "PI2502VSTK": {
+   "values": "c17fb4712097518f34ca3fd3592a01a6ea9dbbdeda7112bea8ef891f329cce83",
+   "scores": "df5905784df07b2769465b996322204c21ab5dd16d6d9397b8b87da531384d1a",
+   "n_fields": 30
+  },
+  "PI2502X6LQ": {
+   "values": "b022eb7aea1146941b6726b9d23afe1a2cdf1ebfa12d60e7e5ad06a6ff5248ef",
+   "scores": "7a0e4b2208886f620d7d3d6f5b2cd036f355859a2b6634d18af83ec4ed9d1341",
+   "n_fields": 23
+  },
+  "PI250328VU": {
+   "values": "59d6eadee81ef82a5162043296733e6119e9ec463644b1302ba68dcbff6a8e5e",
+   "scores": "0f28c2680f7a011d11229de599178def598be5c6846b6ea86d43944e17d63288",
+   "n_fields": 16
+  },
+  "PI25032ZCS": {
+   "values": "96abace251e70124813112a017edb291d2cb5a546f2ea9e49b880d443dce25b4",
+   "scores": "1867f6a86906d982e77b45fdd1c5ecb9bf5ea8fba75b05f56b55a7dbe547ea0c",
+   "n_fields": 9
+  },
+  "PI250361MD": {
+   "values": "961fdffd5e477702e9cd44d28191a3b76bafdfd4066fda9eb1e20d03afd54d12",
+   "scores": "db960d6546299fc5245b45f52aa6c6675550ba7ca721359d4e405daef58d0f0c",
+   "n_fields": 23
+  },
+  "PI250378NX": {
+   "values": "51e0df5d62ac1634dba29550f62eb40316fceb9140294d69aeb5545203ed3691",
+   "scores": "9e1879062da379f67bc750b6941f56a664fea1afd22a75062959e292e8dd66f9",
+   "n_fields": 9
+  },
+  "PI25039GFJ": {
+   "values": "f1d87ef79d9623ebeff7e237abef3813845b99309dbefead64e4280366a350dd",
+   "scores": "c8a8b66ad250c439e1dc9b9564ff7845ee353c60df35d1208cb6a1951ea9cb5b",
+   "n_fields": 7
+  },
+  "PI2503AC5S": {
+   "values": "222d9f6b79364014bce7e34ce4710cc1113fbc5fa2cd65d23028ddcc7cbd67d6",
+   "scores": "26cdc2cc1baf5384c2c059ab0aac262cf95891f371b298e5e68c9c43eff441a3",
+   "n_fields": 23
+  },
+  "PI2503C6B2": {
+   "values": "06cfceb5ec4cd99fd374a7e3991ee9604c18b0353d1a48c63511b9ef90dcdc98",
+   "scores": "1fea1bbe891503fed08ed83ab015788c5c3c4ed7ef2868d458ccbd526b097d60",
+   "n_fields": 37
+  },
+  "PI2503ZBXK": {
+   "values": "5835b4ae0c5cdd91b5af8d6d8132840f58c518e89997a937dafd7febe36a2c90",
+   "scores": "3601907ac19064cd5fa2ec4bac9af0e86a13f56bbbd0ad005f18baf0228c8b00",
+   "n_fields": 8
+  },
+  "PI250435K2": {
+   "values": "3ac02d97ecc6b84c1312cde2edcd64480251fe9ceaf3354d37fdb9a6c8cf815e",
+   "scores": "080799e67ba242ffb2215ac4ba07c134ee3cc4b6504e9927d23760352783b8b9",
+   "n_fields": 23
+  },
+  "PI250471PM": {
+   "values": "ccd908830330e3f4c07d5afb4b4f36f879210548bd43a977b60957568e33bd71",
+   "scores": "cd3962549862f1ca8a7d20f8ae18cc338298efb52f2072f4d2e71c9099fabe65",
+   "n_fields": 37
+  },
+  "PI25047LT3": {
+   "values": "e1dc30cf9305e4e22f455deed7ddd073b8524ada239387dd0c3bdede73688f1c",
+   "scores": "273646e680166f81e3e89e1540143896b6487bef3e4fd26cdca8a9c3ef793f19",
+   "n_fields": 16
+  },
+  "PI2504EIW7": {
+   "values": "68157d6846302e8be1aaec481ae026580c4f5be76128ffee8d13e0e02ed958ca",
+   "scores": "1d3c7b839e648974b55f62a14ab2c89fa481d57bfce2cd69224ca303b20dd0b1",
+   "n_fields": 14
+  },
+  "PI2504NTMH": {
+   "values": "e6cdedd095b88967c6b107cfc556ec2fb4b0a398e283962edba221493fff8366",
+   "scores": "d052fb7025cd8ca6222ccbd653d25130dc5c7e11af1b279d9c0b5777abc98e5f",
+   "n_fields": 19
+  },
+  "PI2504UO62": {
+   "values": "c2349b7c503caa2aa18d82dd284097864c1d3b5e6a52b95a9147caf80a2272c3",
+   "scores": "049fa94f6e1ddf7f4c1be6975edd206f2421039fe0eee636172f70119f76bbef",
+   "n_fields": 16
+  },
+  "PI2504UTNQ": {
+   "values": "0a326fe3783938f8dabd6681450f9b8d7f3cea833194d4bb0dcf6bfff35e519c",
+   "scores": "5841a8c94dbd153015ed493e83b0961c361dced1f8abfc547dc022d4a60214b0",
+   "n_fields": 30
+  },
+  "PI2504YWTU": {
+   "values": "837fc64cc33f301b3c63b6ebcbc0d31b3d27b0468aefe58976c99ca37064df68",
+   "scores": "4fcdfb91c1f7f584ee5c06a4c93dbb20060f850405d7285a04c997a3e7aa2436",
+   "n_fields": 30
+  },
+  "PI25052U8P": {
+   "values": "be74eb2ed3e19133f2780b9a2ff0e9cdf447e51430db02448f52a25fbfe4b078",
+   "scores": "31b16c674f7e987c8e53f905d4d5fe3e010c85581abff1a3594133eb6b2baaca",
+   "n_fields": 30
+  },
+  "PI2505657M": {
+   "values": "3e5a6259c4cf6720e561aaa5f5280f4958f1790bcabb5b062a40bc9aeb3c3c5e",
+   "scores": "a0df81bf4d9fcdc3ea4e42f718e7ac31a396954eacdcde93c047a026c75e36fd",
+   "n_fields": 30
+  },
+  "PI25057AFU": {
+   "values": "54f73793b217506901e2e588d1e5ce86b692036217bbce2811c6df0da98d18bd",
+   "scores": "c34f69ab9e8b0dcd2e79c069dc6d1fafaca38fd036c604260992f0687b85a849",
+   "n_fields": 37
+  },
+  "PI2505C5J1": {
+   "values": "36abd8f54e1f4542a9e406a8eb4a58d9b0ffee7c4cf4d623bc661fe94278f781",
+   "scores": "88d688640e1d03dabb49cb0118a76715cbd51201b69c1d9a94a32d8d1ee6d60d",
+   "n_fields": 30
+  },
+  "PI2505VQHJ": {
+   "values": "350c0af9cce31d4cf1fa8187aaf2697e268ceed5c1119043e9f2f7b90854415d",
+   "scores": "aea6d5829a1d5ef69d960d467ebf94d5d5f5059f294e62d00ac18c34f6edcfc2",
+   "n_fields": 23
+  },
+  "PI2505YA2V": {
+   "values": "2fd4e683521f9a7b891fe438ee31210b1c9da964d57f06d4eb948897dec0a40c",
+   "scores": "5d52867924030be2a5892065ed5f0198c076f3adb96446722f3d932893e5e3cc",
+   "n_fields": 30
+  },
+  "PI25065DQV": {
+   "values": "ba0489eaa991196933cd46d40f1d8d2f3314b81278c7f99883dd06f6e3a7a5a1",
+   "scores": "43829a5ac15d9bfbb939005e153b7602d4196766a617c9c5e6fd5707f80bdf2f",
+   "n_fields": 30
+  },
+  "PI25066WGK": {
+   "values": "65a2b1903623e757b1b259ba7879e7fcd3247a28a347a123250ba777af1c402a",
+   "scores": "24cba77a60f7556aedfd164a06412f3f549c6aeff7f303c9c3d8e7f228470210",
+   "n_fields": 23
+  },
+  "PI2506BNX6": {
+   "values": "43b2e16d2227b46b14551012aafadd969134b30b58bd1cf88300e42267788b91",
+   "scores": "9d9f379df8806c8009c82850028016b5c43122eaa402ef24b733999cf4af1f97",
+   "n_fields": 30
+  },
+  "PI2506FS82": {
+   "values": "eabad9fcf204964947551f00209cfdfb64f96321685c9d665986f17e1e9b9144",
+   "scores": "1bac96693c45133860f1c98cf67ff745b837abb1dd1a780711d8a8f52209515e",
+   "n_fields": 22
+  },
+  "PI2506FZKB": {
+   "values": "a59d17a3e85be93423c7e55155723d9ffb440dc50916649106f0a932f1e1d71d",
+   "scores": "a41afb7e3b6c90d5139b654ff7c36a3893fda947aa7ac813142077be2c5b58af",
+   "n_fields": 30
+  },
+  "PI2506H4D9": {
+   "values": "b3c7050bf966206b62d82631b50d58b8acd6bda0f666c77385a483bb180f6b75",
+   "scores": "40d76fcdd5fedb65e55c9fb30217e360f4f529724930572b64c172938631a3c3",
+   "n_fields": 30
+  },
+  "PI2506H572": {
+   "values": "b222773a874611a8104d088f32cfa2a72e31bf7838e4f8f00671e066411e384f",
+   "scores": "46b94ee9f034e96fefe396ad6b3cb0404fa6f4371e03491fc287e2ca200f2611",
+   "n_fields": 16
+  },
+  "PI2506JDMX": {
+   "values": "81a6274d5be36ba1b828a6dc15e664e3f1f0d19973cae02e3a27645ae2cbad19",
+   "scores": "407cf8e4e46bed39493a19da4aeae966c2f3b5432290fb02e9b1e732ffb9dd0a",
+   "n_fields": 23
+  },
+  "PI2506VPHZ": {
+   "values": "6245ada2e2a2627d9142f046fb27b8c474bdc1eb81b7587df739ca2ce9a09ffc",
+   "scores": "fb2f5c4acc513a68aaa2b0b6722a065e7ae41df6bc07463a92c10cf6430b803f",
+   "n_fields": 9
+  },
+  "PI2506YXPB": {
+   "values": "2579e808ee66529db7d15d97403f28f2b37fce2da475df83c2a352de75394ab8",
+   "scores": "31a2d269ad57c08106139c5224c974273c1479ebad1b1520ef93b5f7d09a5aa2",
+   "n_fields": 23
+  },
+  "PI25075Z2V": {
+   "values": "61d2f3a1dac34eb8880058afb25a837793dcfa649e2d9aaacc74fcda029ce453",
+   "scores": "f1fb641986b9ed55f7c862a0fd1c94723e28d4b84d4ea9c9e1252d6c8e58952a",
+   "n_fields": 9
+  },
+  "PI2507IDUT": {
+   "values": "977ed862ef90d1c7dd51e1e8b0c775714942d2df508606bf0fea241437c2f35e",
+   "scores": "61a6bda993c9590d3abd72113fd3682a6bd2c50f5089cc07c9f1141538dbbb00",
+   "n_fields": 30
+  },
+  "PI2507QFE5": {
+   "values": "c3d23b8f7ceb602658c251f91d53426850e3a239987d461ee109ee541c3be067",
+   "scores": "247ecbe6e623d8c04f90088b9880c370ce08ca9f3bb0ef92ec5f02da61fc6107",
+   "n_fields": 29
+  },
+  "PI250972QS": {
+   "values": "89c89b7713d55614e4a9f1edfbca18971ae48d664af021a980a62e6214536d12",
+   "scores": "d76821717ecef26aae828862b858f0940e95e6532a30d6b6e0d78f41146075a8",
+   "n_fields": 30
+  },
+  "PI25098HI4": {
+   "values": "d625720df8c371ef3b33a755deb9620887b7949345294900cf9f36f5dd3516af",
+   "scores": "83a1cc7b54f3c8865b1581af6824666fb8660b70a430c5623e250f13b4311c83",
+   "n_fields": 16
+  },
+  "PI2509DO8P": {
+   "values": "b6b63f00249b6352db2f48f3b07031d7fe65d64902cc5ef968e3e771b1d9d5b4",
+   "scores": "d71f373a31855e13524aeccba5658d6def697e49b2a78f642db1754824d88944",
+   "n_fields": 30
+  },
+  "PI2509IA8Q": {
+   "values": "005603b54076f7fe246d34e066d35da56f6b0dc81e707b0f067a831828c625d0",
+   "scores": "d593854bbc83edd64307bba4bcbac06968f34359c72750a077e9b40438e249d3",
+   "n_fields": 37
+  },
+  "PI2509IAEJ": {
+   "values": "a126b0eee9dfd58a0635f580186bfabe4d65863559fd6c2e4e9818669fd6ac5a",
+   "scores": "2edd0ad2b6a5ed5c0dc01b4e30ff2a5bea8a9c01a369c866bc7215baea91eb17",
+   "n_fields": 23
+  },
+  "PI2509LAXK": {
+   "values": "11dd87d0da2666ce3d10ebfb7b383d37de414608dc413b5c5a16c07a1fc55209",
+   "scores": "a47e3e5dd6d6100c7822296908f2748304cc963ed0ea05fd80dcbe4dfeee3e89",
+   "n_fields": 30
+  },
+  "PI2509UNQ5": {
+   "values": "d6e8b34e2d90d7689e5b52497a22721ad475bfa4d70858531416437c6bfa1fda",
+   "scores": "82e4b0dbf79fe972e0b1d584e47812c9d4fa37354560742896313fa2704a943f",
+   "n_fields": 30
+  },
+  "PI2509V4XP": {
+   "values": "f94a688aef24a7e5fc3301a6d2ad69759b2d2cf4c888a06b11f4cd1bfcdffcc6",
+   "scores": "2e02fd0fae8f9d04cb38c5e4e7c1d06e862184f2302a0b39c3a175fcda0ce2bb",
+   "n_fields": 30
+  },
+  "PI25101WJF": {
+   "values": "e855c2236aa5d78b91c17296a737bf3932e771c4d59696c4fe5e2fade69205b5",
+   "scores": "e715c5f9b7101d2d9f43ef4fb89bb41f394189bc9ddaa3e4ddfc0d8c1e297fc7",
+   "n_fields": 23
+  },
+  "PI25102RO3": {
+   "values": "1a74a6801cba1edcce90f03c07c8acc6c7afc1833037ac6038a4db3d43b692c1",
+   "scores": "4f80164ba3417587c398b060b28692954417712ae6c9720c48608419fa6f917d",
+   "n_fields": 44
+  },
+  "PI25103LYN": {
+   "values": "91740da97cec87a4fd4e60d95ea612fefc788599c57d5f5829553e5d25926205",
+   "scores": "5d80e9241f9d631ec370476cd1bb57ab890b0c0e6ba845feec2867872f214dcf",
+   "n_fields": 58
+  },
+  "PI251063ZI": {
+   "values": "f5716257e93237f587c778e4c2f972348de160175b976b3a3d152f85204d0430",
+   "scores": "7656646f6fc6d4fbeb9504ad45e6516542b9ddc7f8592e70d574e28d5031036a",
+   "n_fields": 23
+  },
+  "PI25107W2S": {
+   "values": "45ac6aebcb711f69b2fec08ac8af4128d0fef2708900dd5196575071041f0493",
+   "scores": "06d728dea1e13abdd2d56e7334ec842c3d58c02ce566df1486631965c434a853",
+   "n_fields": 37
+  },
+  "PI25109AZF": {
+   "values": "fd32f615787a6932b4e943df0bd6d1a26414121ed95deadd80cc74032170e96e",
+   "scores": "2c099c1bb9e1412920dce44042f779cc4dd590e3e42554043727d4fc44e07212",
+   "n_fields": 51
+  },
+  "PI2510B2PL": {
+   "values": "17e076331d50cc337600a8df975fbcaa1665d2e82093f3958e4b89385b071a6f",
+   "scores": "873f899d178e1ca1012075633866e16b01c663eaa32d7a69eb15b8de822c3ff8",
+   "n_fields": 9
+  },
+  "PI2510FRZU": {
+   "values": "7578137f6575b64291d0bd6966104769eb625349b876087b4a8f3160d1d0b069",
+   "scores": "efb28b8a57aa8308e6dbedb1024b4bd2ecc8a4aca3308238c095d58fafa0b508",
+   "n_fields": 30
+  },
+  "PI2510HJ3D": {
+   "values": "23cf3ed14fd87b6adf770264adb7775fa9811361bb7e059cb95ef314af6a84c0",
+   "scores": "b159f0289666044dc57962f4e8bb237d1c9eb7fa0ec3570e2d769abda86d2cb2",
+   "n_fields": 9
+  },
+  "PI2510PVQF": {
+   "values": "41774ed3e3fa5af21a189f9b2041a8c75b0fb83b64a0192e2b7b6915bcd3396f",
+   "scores": "c9ad50beef1c66193201ab2a1998a958475fd82f86b5277e4a15cc9877c5af0d",
+   "n_fields": 37
+  },
+  "PI2510QD29": {
+   "values": "d42331da950de8a51aff97ffe7f3b7c500319e39d964b3a905206d3b65c2292b",
+   "scores": "08a1b080753bfba56ca8ea80dfd346821c30acb5c498ffda9df0ab9cb73b8ab3",
+   "n_fields": 30
+  },
+  "PI2510SM8G": {
+   "values": "58497015f919d518d7a26338015365531ca812c45f977f32c3b297533518db31",
+   "scores": "85d130f6431466a3001639d1173e91760deab4b4f07ddc6d1bb5ffdeb27d7ec7",
+   "n_fields": 23
+  },
+  "PI251151SI": {
+   "values": "3b6edae48ce8f3bc15c0682fd64fece31233cdfd48c4fb422e4d58e4196fcf5b",
+   "scores": "03432f24d6ca9dabecac90d12ea37f87ac0b5d8aaaba9dcea980f43a29f33516",
+   "n_fields": 30
+  },
+  "PI25119UID": {
+   "values": "c8c927e5d8b5376a9566c6ad833c08103b165208ff8ff887ede45ee17e39b551",
+   "scores": "9170fe158db8d2c92faa5f8d1af2a27dccb1bad8d7996b025c6d6cf7cc92f355",
+   "n_fields": 9
+  },
+  "PI25119ZVW": {
+   "values": "758040030afc52ea1164db85e0a3a40f2c7592c7ac7f88d6b0f1c9a112e3d21c",
+   "scores": "42214153907a017b742149a88bf8dfd74a369a0a4a71389153bc316aae0ff508",
+   "n_fields": 30
+  },
+  "PI2511B1VQ": {
+   "values": "cb5c481ae5c470addc31644d71d784ec30474ed6a406fdba645f6494e2434d7b",
+   "scores": "861a0d480dc8992d602afc1ce74d843c8ca1671c463613378bbfeeaa5a0ab104",
+   "n_fields": 30
+  },
+  "PI2511BZE3": {
+   "values": "c8265f966cf06a5250f68ae8f755b4b8b1db326d3919194328a1bffc74ffa611",
+   "scores": "4ee8086646de688c3260dbbbe417ebc19b32c4f97e9ebd43ad29d18c55c03594",
+   "n_fields": 30
+  },
+  "PI2511G1P6": {
+   "values": "80e72dda6b0b2b3a63222b78512b8385065bd2fcc9620f834464c771bc391504",
+   "scores": "90c768f5cea280f8bcb28e5ac25a182f6a5b9c45cefa6b566f5ad95ee6b6f222",
+   "n_fields": 23
+  },
+  "PI2511IEB1": {
+   "values": "d07902710b367d319c63cc522476625c49fa34f2ec737095c675a6bdaa55c758",
+   "scores": "d5e1504e36bea0c58631f391f20c3063a723421d57f02ccfc5fcda95e31b3e64",
+   "n_fields": 23
+  },
+  "PI2511LJP3": {
+   "values": "4985b8883c2d8b90f09511025afacb9d18d4ec10171ca0f9f2bd25e4deb717ac",
+   "scores": "946332d0f7aac37903210b24ce139e348ca11bfc22b46e5cef48d49d84ad2720",
+   "n_fields": 9
+  },
+  "PI2511MNTZ": {
+   "values": "3ccccd70723752e9d2a9128d76515756aef1c8ad82679fd3504ba7c00b168e17",
+   "scores": "344d51a2e3bf54ebd62651cea16a695e92ddfdb20150af23e0a138aca5fb1777",
+   "n_fields": 23
+  },
+  "PI2511TAN4": {
+   "values": "f3b6541ab3387078a275a06c477393aa6b65453fdd72b56dce16daeb8f170d11",
+   "scores": "12ec59a98242a028079851ea04b381599e6269301165aa9bd677324dbd3b7c1f",
+   "n_fields": 16
+  },
+  "PI2511TUHC": {
+   "values": "000ebaa67bc7e2c07187e781c82c286de001114af00f69a90e71e3756f24af3d",
+   "scores": "95fd070cdd9636edee638f98480f7554b5607768eb91d010f2f5abb8d756a23b",
+   "n_fields": 16
+  },
+  "PI2511V173": {
+   "values": "86a848dbbeadc69ab959453428a2461a31e06baf9a83a90cbc54d84a40c8b2e2",
+   "scores": "89fe99d21d34b7e81459a23ac2a50094b5769579efa4cbebdc194686965797f2",
+   "n_fields": 37
+  },
+  "PI2511W4HZ": {
+   "values": "b9f5d84aee3de65a25349f85750f1dbc4a05967d37592fdc6ed855280465907d",
+   "scores": "130f404d7c501b9d27c95608961dc13acb8484f06e1320c38a4e6fcd277b4266",
+   "n_fields": 37
+  },
+  "PI2511Y5AV": {
+   "values": "902a7232c185d3dc9abf16f87abfceffdcf80f6074a1ce9f94b36bc9370f396e",
+   "scores": "2e1acd0edd8a53d88cf80be4a7100e7cb9d9fe9d5938f5be46f2711b20ed9bee",
+   "n_fields": 23
+  },
+  "PI25123WS8": {
+   "values": "70e60846ddd9da29539b32c5f49c25ea04412db6783771582eeb65dba6665fba",
+   "scores": "0c091b9d1496af65713d90fcb8c5c780100214156c29cf6e7eedaa3efb7fa9be",
+   "n_fields": 30
+  },
+  "PI25129C3F": {
+   "values": "2e80e3b128ddc8cabb1354652ac4446deb2dbfb1e44861ad7a617f0be038a3a4",
+   "scores": "8a1b0353e97991415b7f74a40fc0ef55a0e57a73461fdf041e78e79ae2be9ddb",
+   "n_fields": 16
+  },
+  "PI2512A4FN": {
+   "values": "d585331957285be91708e04c0b9f9140d110c8a15758538998454c246b4e4646",
+   "scores": "941a67ab608a1f0aab0a43ba9d015da793a932dfda942d3bc47bd53d53014f6a",
+   "n_fields": 37
+  },
+  "PI2512G8MX": {
+   "values": "828cd161c300dd2707c13dc41f135d2aa2670f953e41cc7cb361bfb7305e3364",
+   "scores": "6d7f042b959fb4ba68177cbfba07ed14046bc4e56cc7d9dd5ec0c2f629996baf",
+   "n_fields": 23
+  },
+  "PI2512HSNQ": {
+   "values": "7deba5a80b273e1e863f20123656f23486086879ac75cd8e339ae8316de637f3",
+   "scores": "3f42d7a7fef39ac883f972af604f8befe495ba441f5d5c6e598525f9e7011472",
+   "n_fields": 37
+  },
+  "PI2512MFZH": {
+   "values": "f6b4a6eae5cad4a77d35b90faf335c40a0ac2e0a40acd2388fcd191dcea80c28",
+   "scores": "075ae8e7801d0af3eb9e2968437fb5a38c8593ff59fcfea82a6164f87f7934e2",
+   "n_fields": 9
+  },
+  "PI2512N7BR": {
+   "values": "a7c5dd0335d00c52a5efdcdb22c5925a6885cabe81f355577bb51fa9040df63b",
+   "scores": "bf7cdafd041698347bea2b430ea534de0a9826e5b4d078173bff5635f4072b27",
+   "n_fields": 23
+  },
+  "PI2512YX36": {
+   "values": "a446a4f24f82e914e385173aa73da56a4e2e50b62982e815c2682a6121f3b7a9",
+   "scores": "9a6773952861c69e64434eb7eff5a5b15171be890bd2f425998bf574256bb3d6",
+   "n_fields": 30
+  },
+  "PJ2403P7BO": {
+   "values": "d4ae8c9ba85f237165cb11ca4c94f996440317d1c47cb2211fd665e3ae4b4e1e",
+   "scores": "9f76453c67da07388fc57dee5fa304b5d3e7af23fbc981bd0dbd6d40c8463ed9",
+   "n_fields": 29
+  },
+  "PJ2404TDKW": {
+   "values": "c889e3403ad590b5f9cc2234fc5a8fd94450388bc7d13331dbc82112c1c138e2",
+   "scores": "76432df91e4145babedb1b0c6d36d35327916cd3977708b92fa8afedf07c7f11",
+   "n_fields": 9
+  },
+  "PJ2406SV5R": {
+   "values": "be2c3d60f7ca5cc8db77f19a4d720e531bb48d321934c795905e1200ff80a410",
+   "scores": "1c0d39dce67e642e444258f364f71ce8eb4a9a7a8912fc8c23ca8f1c7ddffebe",
+   "n_fields": 9
+  },
+  "PJ2407YQBH": {
+   "values": "d71fa71a0b2549333549eaed5526e2643118224ec93947d57f4f7bd0ce4cbc7b",
+   "scores": "53e31d8d474ae285aaf33e985fa2ccdb12d262f3ba84d4e62c9335cd642947d7",
+   "n_fields": 16
+  },
+  "PJ24092OBD": {
+   "values": "cac12cb22f01452d18017ca3ebd4669f38593884ed5473f6df10c162492e0998",
+   "scores": "5ad5a3b1950e59968f0cf8d36c76383bd5d881c2ccc05ddfd1ec7363ec067909",
+   "n_fields": 9
+  },
+  "PJ24093CE1": {
+   "values": "b3a4129c1c5514436720ffee72e75be1d443866c4168d691c979a35cbea7d639",
+   "scores": "3d0dd9506539f9a5e189b12c6db9c73698e3d6ca11cb0f76fa2f40a46ec2c9e7",
+   "n_fields": 23
+  },
+  "PJ240941RQ": {
+   "values": "1dabd900c5825655081588ab721a39f8ac2f1a4730d451375b457f147918a047",
+   "scores": "10a76797a38e33c12422eb458528e2bf9dddcd22d6125e2ae624b8e9c7263b68",
+   "n_fields": 23
+  },
+  "PJ2409O2WR": {
+   "values": "a71f4afe0c556f258144ef651564a24bd976828e67554a8b09baf5a6f6475e7a",
+   "scores": "940e5f5b82eaa3f2fbd1461760bba2c6c715a7099ecd66a4f99a908b62d59ac3",
+   "n_fields": 9
+  },
+  "PJ2409WLRZ": {
+   "values": "134422d55fa51e821be57fefb184f95b2c829d9c555d1d9d2099c976ac2d43d6",
+   "scores": "ad3e58ec0f4f64bb6c728eef466a608d7439c999b6b58cb0187824a9dafc4170",
+   "n_fields": 23
+  },
+  "PJ2410PKYN": {
+   "values": "7939454aeefc5160942e241a8945a5cbacda92f8394a9a144986240578f8536b",
+   "scores": "30aeca8d1205672a02c7748782958d623da534b4a464c3f9af00307799d3174b",
+   "n_fields": 23
+  },
+  "PJ2410TAMC": {
+   "values": "da6b91bdc6779f878f6fcdc859289108b2c3993adf419f2c9dd68b2c5b3ebf7f",
+   "scores": "367c8f7d04be8b15dee2b178f8b9819501e5094ae50fba89dfe4689661ad9f96",
+   "n_fields": 16
+  },
+  "PJ2410VS56": {
+   "values": "986362cfc04cae376ceecdc89581555b89f9d08ec5c36d5360248f4543e483fc",
+   "scores": "c1823f29f473db1c51d82eb7a0be66e482c4827c41d40e2716e8b2cd9a4ec6fc",
+   "n_fields": 23
+  },
+  "PJ250224H8": {
+   "values": "0ea7ec1060b16b4bf45157d0eb1c3ddf1b487d4b37e2a7ceef38f3c48787dbc7",
+   "scores": "065b8183684f4a9b3731879210477808d15fcc7ec8ef3da283e476cf720e5023",
+   "n_fields": 23
+  },
+  "PJ2502CKYD": {
+   "values": "1fc6846d4071987132ab92c395b9e12c0aff98c5b528a4ec49d7ae2eac14da34",
+   "scores": "2d8b5a7520ea78f7216c54bec5e2fe015ea17bda63137e76e223e6179ec5f7f7",
+   "n_fields": 8
+  },
+  "PJ2502L67S": {
+   "values": "c487796976ae16fe90e1286f7bd5ba3f938f7f088dc4e453042ed77db30eeaea",
+   "scores": "94261e823c90d6f61661fbc40bbeb41be36d530d5e0b802534d742909e3ad602",
+   "n_fields": 23
+  },
+  "PJ2502QOWX": {
+   "values": "795b0645314e8c347ab41cf5b15c5f8f779a5a7ba724e9811491f77bd0fd7624",
+   "scores": "df986b05743dee87a3c65ae43de09a50602e37b326ac2d6e6e1ed01964dec670",
+   "n_fields": 44
+  },
+  "PJ2502UNVM": {
+   "values": "faf38b3c7183ae91f73eddf51d57a9fad83776d7f02fd46e40bf4bac80968df4",
+   "scores": "eb223cebff371e323710d60a96ff2fa4555c7b4654195ca0d8400f276014bb14",
+   "n_fields": 37
+  },
+  "PJ25037UVH": {
+   "values": "a8841e7dd5f8566e27367256905fe60a75f2b4bf2178a545a5d8b1dc29f10348",
+   "scores": "1de58ccc5b3e71a324bf1cfe63a6efb328c49a9e23b6c9cc40083089925c4033",
+   "n_fields": 37
+  },
+  "PJ2503FGDW": {
+   "values": "d370906f4865c8ff0054f51d359bb91a94b35d7a098baad6a0e284edc88a17f0",
+   "scores": "96facc5227121619c2b3ccef2bbf09aa984c475f71b8e1f8f88fe752d86681a5",
+   "n_fields": 27
+  },
+  "PJ2503NCF8": {
+   "values": "8cd19dfafc5a4acdf08b7db136caabda69ed5c9ed19e3d3a1427f6a51c9bda99",
+   "scores": "d010f3369eef7fa7e1673dc9eb0b15f7655167a6bc1073cf8fb64acdb45202ac",
+   "n_fields": 23
+  },
+  "PJ2503SYRO": {
+   "values": "898d407532b658303b029f1f897c1ead4a6f647b3fc3c5d3bdeb566f8686cc70",
+   "scores": "0632b0c602b314a4bf2bfb6525c86e9ba863ba30c2a2ab6ff4191906e1a986d2",
+   "n_fields": 16
+  },
+  "PJ25048167": {
+   "values": "202b3712c25316363b35717b56e2e35e271a420132e1c5c10f0c2ed580582b0a",
+   "scores": "240ee98bdab9c1f9efde33ea9d178f7fcb13c863025f18a661a36fa18f1009b9",
+   "n_fields": 37
+  },
+  "PJ2504G8TR": {
+   "values": "5314e0a041f3a3553321507d3e4496e7a073e68e4926b1de53549c0558745b38",
+   "scores": "af7ef13a7e974bc463cb51aa1407866454c491df042e934badd9498e4d30028e",
+   "n_fields": 23
+  },
+  "PJ25052F5G": {
+   "values": "92ebc44fe7d4c1f30e3c1ee155b9e0635469213593eb3a6e264525b7d7c3bc76",
+   "scores": "37bf058f972e48634da69246c83fa19ccaf4f2ccfbd9481906bb1e9676a65757",
+   "n_fields": 30
+  },
+  "PJ250579E3": {
+   "values": "7291ec195fdad4e3d44630a4c987059c21f827ddad3e737767ba53e27cdf0d59",
+   "scores": "bc94dd1c5577d6dd2b21d75f78b26098a4c42156f3ad52fc3035c348e8853119",
+   "n_fields": 30
+  },
+  "PJ2505X4HO": {
+   "values": "1f3e47d29ebc6f89314f679c9d82d8cb9896b4c551afa77586f7937e760fd6c4",
+   "scores": "a7ab737c2875b2efca65dabf51a5286610672e47cc38213599e4c73ffba4600b",
+   "n_fields": 16
+  },
+  "PJ25066W1A": {
+   "values": "8c376773489dcea5727701c33bab0eb7d62777603dac44875a47eb2ffa2061dd",
+   "scores": "dafe6f10a91084c059cbe1fc2d461bc17fcadde5e69d0c8bcb7eada61f462983",
+   "n_fields": 35
+  },
+  "PJ2506O7DY": {
+   "values": "d3aa61d518faa3295d50804d795f435dfb4d837e7f95b4b900509ea3d11bdc8c",
+   "scores": "8cb0b2a97e01ff07110a1c85ba2ed9792b3cfb4974075e1fc28104a80de077da",
+   "n_fields": 36
+  },
+  "PJ2509AY36": {
+   "values": "997824908f26926c509f2c5a10c083c3fb66ef08662ff83af3be7665aca01e1f",
+   "scores": "c9748785f1036cb8c7732723b33c0f6bcc430275efd7863ca7a97684aa802f87",
+   "n_fields": 58
+  },
+  "PJ2509EQV6": {
+   "values": "ef707b7df688cfd1b1c2c74cda46a7c1ff37939621b7041934e91e7e914b2457",
+   "scores": "473635039a20257ea977e612e9c1d3843214b094a4d648d14c6cbae606a9c2f5",
+   "n_fields": 16
+  },
+  "PJ2510BDRL": {
+   "values": "04a4355ce260d418da147a8437630c4d57cf3d822f82c508cff88eeb99aa0a3c",
+   "scores": "cf9a82b1f2b632ad9827c84c5442a4ed2a7e7bb989341a2477c101bb6a4433b4",
+   "n_fields": 29
+  },
+  "PJ25117VPO": {
+   "values": "e174656cfa4682c763dfe446e282fd2a707b81e4c8e24ff05d69281ffd201c0c",
+   "scores": "f034ee4e0e22b04fce2e39a5414313c1da0d5fb1e52169a2b3ece23e6a682428",
+   "n_fields": 9
+  },
+  "PJ2511GXL1": {
+   "values": "9a50b54557ec8b40a47e1f2eca0d1523b1a837e5c4b84c179e219a0da5f1b4f5",
+   "scores": "19205fbcd9735ffc57c9ed394e79eed8cd9e2e065a0e3ea366b069972791c46e",
+   "n_fields": 30
+  },
+  "PJ2512ZIT6": {
+   "values": "e3609046c362a439d8d801fb58a801be9823ec8d36dd073a5969d23ceed28c72",
+   "scores": "5c3b10beefb5b16937c40f9bbcb259bb6c385894820e596fda4e4aee93b940f6",
+   "n_fields": 30
+  },
+  "PK2407FKLJ": {
+   "values": "1180827f08a0f9c0b31d070f7d2f57c3a2b6a6dfbf18189a110207b6a05d305d",
+   "scores": "90f26456f8a9be2723c5e3699d1436ec394c796988a7aea872960e23bb3948cb",
+   "n_fields": 16
+  },
+  "PK2410RAT7": {
+   "values": "4f4d48aa78bfed0141136964f244e11824f9698f46e32ac6eab3d1a23bd3b8c8",
+   "scores": "f1ee0dc43f5870578cc466bda6b6f8d137dd011899abffb24ba49892886d01cf",
+   "n_fields": 9
+  },
+  "PK250231A5": {
+   "values": "83904cab704ce61a0be6b3c36230b6e8b675a3498fdcb1b4db60643bd3e0ac1a",
+   "scores": "1f3c7d3eca50a8cdd9e7eaddbc3881bf57d45663936ee7392679532e44f8a8d1",
+   "n_fields": 30
+  },
+  "PK2502UFC2": {
+   "values": "7800a25d8544f840b1a2e0cbef67e01e435a6a3a27040e75b3ca2dc85079905d",
+   "scores": "530d3830fd191eb5550ee7ba5155ada1dc3be102e647983f3d752d81d406489a",
+   "n_fields": 36
+  },
+  "PK25038V5B": {
+   "values": "20792dcbfa7b7aa6f43f974d0c88c039680686c363ed41d21856021f1bfe7659",
+   "scores": "81accaa86791a99f6c46b55b4b987897e262b7800bd81f2020643bf89250e2ca",
+   "n_fields": 37
+  },
+  "PK2503MHUV": {
+   "values": "0525d4e552013d81411f55f2ff8362babb1a3d6e3ef77c75a80b71cbc46b2113",
+   "scores": "ccc9d0b08039f4d3d67812248c45f711408f0088984d39bd8233495bd0b75ccf",
+   "n_fields": 37
+  },
+  "PK25052HCZ": {
+   "values": "ec5aefe83b3f06010b2b92400f8e71748e506799f7ab21ee8984d1f5c350254f",
+   "scores": "aa4652349c307359ec3e256ed37c00838317ac26dc0395283aea1a1544064d13",
+   "n_fields": 14
+  },
+  "PK2510EWXV": {
+   "values": "33e519d06b871b7164a857854509d37001e3d958667105b544ad64fd6641eb07",
+   "scores": "dcdd6e1f0b0b24d540d9aef7a463351207a36d31141a45559797a1edf26c6070",
+   "n_fields": 23
+  },
+  "PK2511HFGL": {
+   "values": "93d18ffcf14517d1046dbc2ad1fb6b55ffc94b44908623603f91ddd81b568a81",
+   "scores": "cea1ff4d5e4f8eba10df75bc3fb279938016b1248940a41d470839b86361c5a6",
+   "n_fields": 23
+  },
+  "PK2511K5YR": {
+   "values": "916c5070ba7f717ca87e2484722fccfa23262be625254268ed3d4d6cbb3af569",
+   "scores": "5828cebc720dd93e9c8c6c7f45f9882e348b5e4a432607cd38b7cf2990375167",
+   "n_fields": 30
+  },
+  "PK2512WZAL": {
+   "values": "2c6fba20a9f5d61384fc7fc5cb89602fd5ddce54c35cf94fa6b1087a173b10b7",
+   "scores": "be642c297b34f3304ece7e7dfae6261f891aa0e8eee06476265192326e75d81e",
+   "n_fields": 30
+  },
+  "PK2512Z4CM": {
+   "values": "28f814b10102491c490ef25ac6c3122ceb14f4ee982a124b1cd41317b82ab4d7",
+   "scores": "823403396da0b27cc16415180588e0166c6f99ad36bfe5465c11d4c025667963",
+   "n_fields": 30
+  },
+  "PL2406J5KQ": {
+   "values": "8f1b107ffd6774098fe010672d66331edaaacede89586ec241a7ee14bfc104b3",
+   "scores": "0a825f6e41c7fac4abede54ccfff963c9b40b4a5a693d5d3f19842e8e984064a",
+   "n_fields": 9
+  },
+  "PL2509381E": {
+   "values": "7ea1bb7373261b659e2e62d5705d024739c1d5eb34278e9450a86e7b37f423d4",
+   "scores": "3b99b81323aeb32f45071704f838d84f8ca17474890680d2a9e8458d6f688f21",
+   "n_fields": 36
+  },
+  "PL25094U1F": {
+   "values": "b327163963d5b758fdfb095e92d034f10e6338ed8c2c86b526ea976ec6b23abd",
+   "scores": "307ba1b1b12862ddd8cacd79ab5c5d64f2e6945873f089d26c48dc5b3327873e",
+   "n_fields": 9
+  },
+  "PL2509ST4D": {
+   "values": "f900b836221a1bb6c0f19f924e8f5726c4b03e7c10046aa2d564c61eb30a3368",
+   "scores": "a2cca5397916840e240cebd642204947969a45f57cf19e99b7ae52fed4ba3b8a",
+   "n_fields": 9
+  },
+  "PL2512HJE1": {
+   "values": "95c05e095694b76dbc352ff3e81efb0c5770a1115b697aa58a3b0808a804515f",
+   "scores": "ddb6ab7cf97259fdab1a272316bc4b129cf13a5257a7fa36461b44f916f7783a",
+   "n_fields": 9
+  },
+  "PL2512N4DZ": {
+   "values": "71582147ae4508f33cb540bfb104411df5317a2675c6fa7234b2e6bb94ae1257",
+   "scores": "a6a8605eac7efa374d45d69f1e1708a4e9dd4c5e978f6aefe09ef3aca251e0c9",
+   "n_fields": 16
+  },
+  "PM2406ENOQ": {
+   "values": "8d1ee3486b73d55f4af492e1f9d6a1c3689603f8ecf642788d0bc31debaadaef",
+   "scores": "fd03c2f933d4ca9f149796d2ab61ff8cbea3c6450fa7d07ded58851f79788fde",
+   "n_fields": 16
+  },
+  "PM24077WY3": {
+   "values": "b40a414feee12251086391322f856c4cf7b60e0d6ae1b8ecc927b593abcdcd7e",
+   "scores": "774498e53dafbe3549fe5343adaa532584fc735bed9d85d7b4bd0d527a63cb58",
+   "n_fields": 30
+  },
+  "PM2410U2DR": {
+   "values": "465051c0748e782c787242024fb29987ae55ff49c1b9595091e557fb0e797928",
+   "scores": "0d1d0dc782b3e6e7a64a4e59dbf88f1ea3f04f5c1c3f216edd7b16f9905dcb0b",
+   "n_fields": 37
+  },
+  "PM2502YMKB": {
+   "values": "b7aa47f9449cef85a045bbfc3a167c861a38c13474633e40d9237149c571c1ae",
+   "scores": "80ab0670c217d3035f157c24d3cbbfca96ee313f898fb1d785d0e1fe0a9fae3d",
+   "n_fields": 30
+  },
+  "PM2502ZFP2": {
+   "values": "2028e99260188e1bab6471fdb8e5a247a2a6d1db68338336aaeac93c2e2cc0f3",
+   "scores": "2807f27d03469c3a4cd87289f98badf6d81aff099e99c4512a9273e3a1d81088",
+   "n_fields": 35
+  },
+  "PM2504MUT9": {
+   "values": "68db24851dddea5a7e39e622fe56592787f73dc6d2f7d6ef116cb74f5df40454",
+   "scores": "bcdbea951aae42f8c1040f5b3ee1970e0fd66aa50fe59bdeffcb3587572db26a",
+   "n_fields": 30
+  },
+  "PM250584TE": {
+   "values": "8d65eeaf58614cc6d062885ea91ddc3b0efb2a8b1f5c9a0960a32936e2aebdc2",
+   "scores": "4954b3274d08dd3d48b6cf9ad0e57ac0c100008ceb005451173182c16351bab0",
+   "n_fields": 16
+  },
+  "PM2505X759": {
+   "values": "48138435b99678cfb259c392aa86c7f936f8c2142f3b587915f4f58d5e82cbb0",
+   "scores": "ed76e2cb8b4443b81237f487da932977de2fbe0739a5eeb3286f408e6672c056",
+   "n_fields": 29
+  },
+  "PM25066XKD": {
+   "values": "dcf048c98951f5c7e3d38911226038c00f5820b6a2bc37231944273e3cc6758c",
+   "scores": "4901b63060937f2ff8376dfceba0cd9a5079b7f04569a58ef9acd653fd001a92",
+   "n_fields": 58
+  },
+  "PM2509GSZR": {
+   "values": "e9fc09d112b9493bda70ef2fc55260681d0977ad8cdf94db05b7e225253cd18a",
+   "scores": "b13a382c1c73f4570369f60038142ba6635b27f855125ec0c72af829153d5450",
+   "n_fields": 30
+  },
+  "PM2509JNBC": {
+   "values": "c7d563a11160e345ceddbe706592dbdc6ba698bc620db9f36514384bcf3b4aac",
+   "scores": "95c8be5c7a6082716f9a86364eb41b14ccfd2bcd2f2c8a31299382b5ec9489b8",
+   "n_fields": 9
+  },
+  "PM2509ROFE": {
+   "values": "a263287501dd1210e3e91d5384666327428af437000a11d8094f00b2dc5d7a30",
+   "scores": "c0f4dec8258055fe5da5a86bc84fac0bf128140c1c3e8e5fe30370a6fec87b18",
+   "n_fields": 37
+  },
+  "PM2509TJAZ": {
+   "values": "4b3b0cb3c3f71baa2453eabae00692327c05c6a1790d440811a38247b799c2a4",
+   "scores": "17d098337775dd42a362e6b9916012a47fa1b3c90bcad20efb5f072c625e23c6",
+   "n_fields": 9
+  },
+  "PM25107BLN": {
+   "values": "4fbeb1c8edbcee57f8989a9adf29609035e8eaa9fd59573549b74481800ef12e",
+   "scores": "91dea125fbf37a5edf4397b23a3970e315b6e98f1cf0a01dea4d3ee54fe8da11",
+   "n_fields": 23
+  },
+  "PM25108A3N": {
+   "values": "f8cbdfb7a14bd7fa6700dacf854f477fd8bbec094168cbb9f6fe264f7a58da06",
+   "scores": "46caf8a286fa3129dc0b693e78d470479098a6df5c8f33bf8322b6131fb4c508",
+   "n_fields": 9
+  },
+  "PM2510E5MF": {
+   "values": "381fcbee72ce1750520fcae703a969ab03b434ef404d5887605cc357bba4ea8d",
+   "scores": "a6ecce23e1858042dd8e21682c3be9304de47374a38693c38cf148a026e5814a",
+   "n_fields": 9
+  },
+  "PM2510HJ1Z": {
+   "values": "dc1452a2fa18feb1845ec92855a37ad403f3d7db251e14fca562d9f896c08274",
+   "scores": "e28e2859017064a01948e95a29e45bff6ee6139794a33e6c1365a4bcd4d32ee1",
+   "n_fields": 16
+  },
+  "PM2510HYSA": {
+   "values": "b50d9122f3edc41f708835218c5be317254bbbdd83638bfee802d27c78dfda00",
+   "scores": "bf4ac2609fcc7f0ea9551cabd3495b8cfce7934fa401fc19cce723ebbb8269e6",
+   "n_fields": 30
+  },
+  "PM2510LPSV": {
+   "values": "65002584ffe8918b0137a4c2d02fb243313e538f5a7c27a20c36c793bc9035c6",
+   "scores": "603f135a5857bf708f90cc942d56965c4e1318324fecf33c3f565ec6cd33d700",
+   "n_fields": 30
+  },
+  "PM2510P1TZ": {
+   "values": "e3de12b2f53f747d287fddfd9f99d2bd13d719b3f743d41a9a47189957ffa277",
+   "scores": "59a8b321569580acaffbfc4a74d7ed8463bafc0ddb90ef98d831fdd83c8b32f4",
+   "n_fields": 9
+  },
+  "PM2510VG9X": {
+   "values": "d8b71227af2443172d49733b2e058b9d9915e856ad0c4758792693e2443ce086",
+   "scores": "b355f83218a811633c1090c31ea09e4f50b26967a89781fe98a6703a45b6c41c",
+   "n_fields": 9
+  },
+  "PM2510ZITS": {
+   "values": "2095084085f2e3e3aeb0cce04054dcaf4ee4b9bf3294e37696d02638ab6b782b",
+   "scores": "cedd2e17b786cc1ef615ad4b046d418b1c785d3a7bdab3affbd5319d12abc6ee",
+   "n_fields": 16
+  },
+  "PM25111JZH": {
+   "values": "f3d8c30e9afc71dcdabd7a0208527726fd22ae6583b18f230ff9a208f37db739",
+   "scores": "3d2b7117a2644157d13428f09a205f6aea4e6e143685f437dccb2014239264ae",
+   "n_fields": 23
+  },
+  "PM251136QG": {
+   "values": "1519ad0a2382fc3b9435b647a0a6a950878b4b589d4498a00a8ad3db9f2faefa",
+   "scores": "0704c1bae5353691e47dcfb829d11de2a3960ddcf0466f49cfc9bcdd9b561a7c",
+   "n_fields": 30
+  },
+  "PM251138HU": {
+   "values": "76065da6bcd3f5ab5448f6bb6e98b288d96246dff90ff6e5d8711b130844f34b",
+   "scores": "b37eaf5af02100deb013b236adb1a2588641075a3a70d40075d41085ca9a4f95",
+   "n_fields": 16
+  },
+  "PM2511419T": {
+   "values": "a1ea24313eaedea6ddd00db298e52a8ac39f1a42d3d0707c099da86e3a2e7ab5",
+   "scores": "a8213610966c9d580231e4a4ccb3e5b87abed104f6792b98bcdd559d5dac108a",
+   "n_fields": 23
+  },
+  "PM2511769P": {
+   "values": "d5bea44ff93a7053228c9c1f06e86910d159ba210f8ec95cccd645cd4d2b9de9",
+   "scores": "2cb0d609489ef5fb3299037676dbca4d346db0df0e70d776a325714ba188c52c",
+   "n_fields": 23
+  },
+  "PM2511EX68": {
+   "values": "32894d50030490da64854d3088765e17c5f5d8ce3c489e3ff4e2ef353b975c97",
+   "scores": "a32354a7ffe7f50405feec2d0d6f55befe9350546e49f939f1145a0caa3e4149",
+   "n_fields": 30
+  },
+  "PM2511Q9S3": {
+   "values": "09a9eb108f64742dba39121b395d69342a4c0fad9b81ca137d630ff187838b20",
+   "scores": "0df8b03867f4bf8d102945fc836e9b9ea0deefbb1efda55828cc4ff66836bbf4",
+   "n_fields": 16
+  },
+  "PM2511VQ9H": {
+   "values": "a2cd974241b7e431f13ace9c58c1e8a8b3583f7e678a93260b783f6d616d8ccf",
+   "scores": "f2c7039c1969232c8bd153bd65e54e15dd79f8e2824f964bdeeacc443660d8a9",
+   "n_fields": 30
+  },
+  "PM2511X1DE": {
+   "values": "f5ea7c1e35ba2a223cc0577d2e79ce497416e56d800631862c2b4c83175d9d8d",
+   "scores": "c4b0bc905a71a95ac92ce0495890ad605317cc460b0038d80b59972f0fd1cd11",
+   "n_fields": 23
+  },
+  "PM2511XUFD": {
+   "values": "725d45dcd1f36de235d74baf040e28d4526474e250667a3bdbdfc7e074f47a3e",
+   "scores": "0057e403d1a160e3df68a27b1b5fea73ec59fc3a8d211b10e8a386d175ebf6f9",
+   "n_fields": 23
+  },
+  "PM2512715I": {
+   "values": "06a7bcc5d1b75028980d91959619255150cb18475ffef6b03c589d3b8e575e2c",
+   "scores": "16821a1813f645e3808184b0445fc185fb559d474b7ad1943b469fa52e986d4c",
+   "n_fields": 23
+  },
+  "PM25127QLN": {
+   "values": "f5dc54c5ca163bbe2f5f43d6b9c88a987882eb070074a8c8136b09431d732fcf",
+   "scores": "f3ea521fdb97a97a7ec18a273f2de1f54c7958f121300042ca0435fd4a383bca",
+   "n_fields": 23
+  },
+  "PM2512ES9Q": {
+   "values": "c5c16fd0aa1067902f6d54b5949e0cf46c2d6b6645c94daedc0acd65ea07c043",
+   "scores": "2f21ede36f9dc442e6e9bac833fbdf6494e6c5e673916dd69f8d05b6bc9558c7",
+   "n_fields": 16
+  },
+  "PM2512HJFM": {
+   "values": "173f8a7d793b152f3cf27a87f16f96412a12866785d4617aca52468abcbe8177",
+   "scores": "84e49147c3d0033fc54ef02d0e85f528e08f77dad474b06ab275bc11d983ec22",
+   "n_fields": 30
+  },
+  "PM2512HMYZ": {
+   "values": "0c5e8c21f2dd30bfbd74084f7aaf529c9366cedcf4329d82f2c1b639ab2d5069",
+   "scores": "27494b88512192b3b8e3d2c0d772bb99d03fbdc3809ce5e5f05c501a66448f18",
+   "n_fields": 16
+  },
+  "PM2512N13J": {
+   "values": "78f8509413697e8c396ae01e43054ed24ede5b8f902e943e067fedf9ddb1589d",
+   "scores": "32bb169c8d213d51cfc0098692fb116677dcb6347094bca6125d178f43256d26",
+   "n_fields": 30
+  },
+  "PM2512V9J8": {
+   "values": "4d15594e18ebfd8581bd74421e4f03b710f949f861be066eea5eb6100bb7e437",
+   "scores": "f9c30db73a5eb483fe93096cba0287e89a316aff5496fe244de655fc52b0391f",
+   "n_fields": 30
+  },
+  "PM2512W41R": {
+   "values": "a1e75b76ce7a0d3d8343114815f82d70546e67cd907ef07f4ad265142e7114f3",
+   "scores": "221154887f07e104b1365dd9c8ec63628c05fdb3c3d0135fb2f70981f995dc0c",
+   "n_fields": 23
+  },
+  "PM2512W859": {
+   "values": "7bfa25edba54a6a9fb3a502ae802dcdfd2f0b0b92fdfa0bceba893a9d0a5c4cc",
+   "scores": "3ba3eeb83c4d7725f75b1e8ae1276c9008b91eed0c47a03d5373ae6877706223",
+   "n_fields": 37
+  },
+  "PM2512WS91": {
+   "values": "0a2b7e31f36b0f6f3eac2b14f3adb946d1c1f6227e7527d64cf4f545e3137ef7",
+   "scores": "ead8094fe4c518d87bbe2dffa2fb0e09a187abd2d344c128580498c6adc58302",
+   "n_fields": 37
+  },
+  "PN24043UFE": {
+   "values": "1aea2146a420744c0c70783eb7379bfe9dd922906b2f1e48357232f5b83149ff",
+   "scores": "dea52661828bf65bc7d4d992ba538ee7803b675c73af10af22339cf90232bdeb",
+   "n_fields": 30
+  },
+  "PN2405C7SV": {
+   "values": "676958868efabd35d6fc011b1cce6d2e7754fc3de77fa073fcd9c8e626019ba8",
+   "scores": "6294a7f43f7ada6a5af9877d90d743af4e8db04a4c65e39b80e541470dcdc5b8",
+   "n_fields": 23
+  },
+  "PN2406G9X7": {
+   "values": "042234167bf63ccafb2490fe9f9d01feb37f192e9ad33e017329530af7d607fe",
+   "scores": "d9748f51649e72bfefd773994ccc5163bd480cada34e0abfe697e2c030dc34e7",
+   "n_fields": 9
+  },
+  "PN2406LXBP": {
+   "values": "38c2cf37f5a22e14b952c3534b793cefcbf9cd28f18e09c166c368514aa48171",
+   "scores": "2926faf72cf618d0b826267b52f841223b482906ca2622efa9b7ca75607ace39",
+   "n_fields": 23
+  },
+  "PN2406WSXL": {
+   "values": "b8f50b5b7c6032f34b0781789279f16d2ef99a5542bd3ec96617564d0f45acdd",
+   "scores": "9a11ed9f7a3f15127fff59606bbc37da282ba57ce93a4664f53014168938d1c0",
+   "n_fields": 37
+  },
+  "PN2407WR2V": {
+   "values": "92a968938be5ee403d5a2e0dae799b28673f0a3d5c4e2f293e7038361d021997",
+   "scores": "80cbf2536a7027c7b2ea94f0ca02b18fe24d72a5b0322939e1a110c7999d4c94",
+   "n_fields": 9
+  },
+  "PN2407YXT6": {
+   "values": "8a11664ad59c3cf5ef45c1af01d06f87ff74d55bc74c6137def60d50aa7dc9c2",
+   "scores": "4a6fb4824e4056d2128db119f076fbca1fa2658b5d3f1059697b875a840848ff",
+   "n_fields": 30
+  },
+  "PN2408YQZ6": {
+   "values": "0342def35e809cb209776f212af80b046d61da7e53a32fe58dd7d29ef0fdc3bf",
+   "scores": "9ecef946cc344606d22c5f96df4b5f56074c8f87faf7bd1a5fad4143eb18166f",
+   "n_fields": 29
+  },
+  "PN24107S9P": {
+   "values": "f6ee5dd8e16afee04e9c1e7121c1bdc411c1b8fd92128cd671c38bbb691c1b0c",
+   "scores": "b2a9b89a80a68e0fc96e71d4b452db05adfac5ee3b6e823677425a532a2b38a8",
+   "n_fields": 9
+  },
+  "PN2410OE6M": {
+   "values": "c816b34d967f22c044092c877a75c324188c12c8d6f3c4774e4952da0b38fd8a",
+   "scores": "ae673c94dc24cfb456cdb22a3d6176d39b3b18bed4ac364d8df28f91b7538c4a",
+   "n_fields": 29
+  },
+  "PN2412TPLQ": {
+   "values": "6728df8b12a3d651bacd4fd322f1f260d1c083f7a34b1624e1970e1123750e30",
+   "scores": "de4f1acddd00727a05a607ef98f289220412fc74467cebd7b85f7cd7b0acdf1b",
+   "n_fields": 20
+  },
+  "PN2501ZFSB": {
+   "values": "b56e8ebb07341e97965734cbe1f1805eb3458665848c1bec6b114960f5f03db1",
+   "scores": "fd63e93ded432508fedeb8012396c448e0a8776467267f7eacd739d63f7ada78",
+   "n_fields": 8
+  },
+  "PN2502I6TV": {
+   "values": "a9d42469cacb47875b63f7e383af4fcc9c8bca17b1fb658fa797e1843b037f49",
+   "scores": "c702a0c793262d05e63b7cacf5cb4b2071ecce33ba662dfbfe876ebdf17b2b0f",
+   "n_fields": 37
+  },
+  "PN2503A9Z8": {
+   "values": "d05760ef89ff5eb8711dd4d720ec4185f5610367bcb29df3a271b0987cbe2053",
+   "scores": "931cdcf21d77414e845a5327eceec7d2b4957a77551b03bda4467e49f29f95ed",
+   "n_fields": 44
+  },
+  "PN2503J3SR": {
+   "values": "1e04a7a599c734882127088b86353b24a074b4758980d72a2b806c91e8886d8f",
+   "scores": "ca8526b662fab099682418e57b2f6b6233f151a38b65ce1855584a3d7dd37ee0",
+   "n_fields": 30
+  },
+  "PN25046SYA": {
+   "values": "6565866259124c5a8bc42bbf6db01c26eafcc48b635da09526194626093c1994",
+   "scores": "4d3da672d103e35b5e07045a577a27f3fefce2cd5d0bb5e8482b2f42019b663d",
+   "n_fields": 44
+  },
+  "PN2504NALB": {
+   "values": "acc87bac802fb9a3451157e26f73c6fc2f1d5eed45c6887b3e04f6070036f677",
+   "scores": "631ca7f595acac84e683b46cff9d772ba766d29a1248662bc0dc2365782ca6fa",
+   "n_fields": 16
+  },
+  "PN2504WZ98": {
+   "values": "bf5b6c145842bdc4b75463c4b257fe4c63c08cd55beee72fc78e76cbd5b378f2",
+   "scores": "673c7c8cec20fa2923ec533bc124275fa0de633ccc86eea7674dbebd7edf05e3",
+   "n_fields": 44
+  },
+  "PN25051XZA": {
+   "values": "a96621a45dfa9fa62889e427bccf7073a833bafac07b3654f21652d7dc0da1f9",
+   "scores": "4251cc9aa9a3b8c15e04e67f9fbfaa2914c7dba39c7f5ab17d634b58b318fa38",
+   "n_fields": 37
+  },
+  "PN250572JH": {
+   "values": "aacff67fddf6161c8f3022b1cde947862122b101bbe6a72dd38fc9fd7072b41d",
+   "scores": "0e751c1a06918a718958527df1cd2fae23e0fd8d966300bbfff0e39d5391977f",
+   "n_fields": 16
+  },
+  "PN250575DB": {
+   "values": "3c0abbc0414613f9eca78a2f9019151c324c8c4c587f8238ed3a210cd6623bc2",
+   "scores": "01de8c4c01a465f0361deda8228bce1d52de56e0c29e0f50e61067b845afd1e6",
+   "n_fields": 9
+  },
+  "PN2505A9TP": {
+   "values": "c745484bb0b883b5c6cc95d631020a9bd424a6ad20fea34c51b23dcba5be1b6a",
+   "scores": "fe56ab4ce50b60a69cdc4d267a2ca7370334839e546388da27474adab94e0de3",
+   "n_fields": 23
+  },
+  "PN2505OZ89": {
+   "values": "38a28d95d0e52b6d2ab57cb5cd943a6934e97e46285f253a7cc7e6cbc9b2f902",
+   "scores": "69ea3ba5a35abb53fd2562e49ef734c466d2cf8fe0e1ef220d8f3ec416ab0d34",
+   "n_fields": 9
+  },
+  "PN2505WM9G": {
+   "values": "02e663eb11fb4db5f2de021f5c12a93a5f2db1ff3d064be1de157c3c3d66d1ec",
+   "scores": "3a333f064662b5c4962d04702c24769752b29e4efeb41509c31747545f3df308",
+   "n_fields": 30
+  },
+  "PN2505XLZO": {
+   "values": "41cb038fa9fec55018d4fec22928f2699621625edea2ee8202169bdcf9f7d31b",
+   "scores": "68ee0d320efdf3e886288135accdcafeab19de59d2bdf4a7eec991990f64d4c1",
+   "n_fields": 23
+  },
+  "PN25062WCF": {
+   "values": "237f8e77c03d387c5eb648c8ca735c9fc5417f46195178fc74f0437f24a3dedb",
+   "scores": "35e4354f71f5ddd46c4477ad3badd179e933579e0e9b3d6b566e8bac4fd4864a",
+   "n_fields": 16
+  },
+  "PN2506N8LH": {
+   "values": "94d12e3284711cbdf9cfb788245500f9f192e59bd2cc89c131b63549aa65f357",
+   "scores": "1aa74e586802ecbf34df7f0470399fb1d09a2899b4f06cd7e7b0fe36f8ef14da",
+   "n_fields": 9
+  },
+  "PN2507DK1X": {
+   "values": "6ef44ee7033fd2243acbce7c4f28155c468e3c0f8d6d4701aa240bebeff789c2",
+   "scores": "6aeac3241d1587f68ce5592f17aa8ec725e35e6a3ba930619f7452a667380ee2",
+   "n_fields": 23
+  },
+  "PN25091MEL": {
+   "values": "952acf5b5ad70d8acfb5cd67b24a1973bc7db06f0f65cd8fe11eeae81216b1ff",
+   "scores": "ed155e2f17deb718abf18112b0d4e2e516b600f052b04ea3ad9709cfef20cc01",
+   "n_fields": 37
+  },
+  "PN25096E93": {
+   "values": "2600803098ee6b288ccf5d646c574fe4b1790bec20f23a1dca0cc2383fb24f95",
+   "scores": "0b3bbeb06231ea77d9d1a9eb4280fe24f49c7ed795bc030868e5f13c323f5fff",
+   "n_fields": 37
+  },
+  "PN2509QX5Y": {
+   "values": "fb2ca69ad0154214a7be69f642e0c40e20e2f6c01b2c7b2d7b4c25debc5c1b4f",
+   "scores": "52bc0fdbfe54d89709551ee2387f9301aeeaf49500ed97bbd3a4c79b32dccb8e",
+   "n_fields": 37
+  },
+  "PN25102PV4": {
+   "values": "541de9d5f0062e3f8dbfc05ea44169a663549fba9edb98e3326ab3020d87f7e9",
+   "scores": "a105f75e8c86fda9825b3763bb651106b7a58c7d01e451a7eac864a622cd4e40",
+   "n_fields": 37
+  },
+  "PN25103OLQ": {
+   "values": "e7d689f58dd646de7d980f161efd7d81a2b1d0c4a17c7d2ff0b652c6aed073c9",
+   "scores": "50f6df33b236a5b34a155a05121fc03c12d871a27a31b177566d65a9896bbf30",
+   "n_fields": 30
+  },
+  "PN251046OD": {
+   "values": "4edb65f94fadf1499ae87aaaa800b1c95c6d65d8303948e17b4f8fe684230ded",
+   "scores": "e610c8aeee78672dc12a07df643b45e1809a348b04e79d89e34057afb46f857c",
+   "n_fields": 37
+  },
+  "PN2510512R": {
+   "values": "4fa7d3e2452dfb73147c977820823f8fd26234fe8ea5fc1d0104de593561674d",
+   "scores": "16170606ea11dde816bddfa57651ce8bc003054820030a4fd93508b43e61f252",
+   "n_fields": 30
+  },
+  "PN25105QA2": {
+   "values": "b6be264808152cc3fb2278e3208a380c3b38caf4803a86f576ca855d18be764f",
+   "scores": "67b480bfba77fee5b345856976f76c2e1940f49ec1745290baf77f7d1591b040",
+   "n_fields": 37
+  },
+  "PN2510CS6N": {
+   "values": "dcce5c2e52cd18f90a1d06b0768618723f7a5fe0a3ee90e0dbf79ed84e2702d4",
+   "scores": "594ea1414b3691e21e09036df035908e47ef6a0bcbb6cff323cf5e6d0585c27f",
+   "n_fields": 23
+  },
+  "PN2510D42L": {
+   "values": "8eb7d4e161ebb7b17ca8b267ae4f72c2dc6a1ccd0b200375e0e8a3016792314a",
+   "scores": "749fd47d7968bd9bae144ad150a624a3f4292ffaf5e8071736b476ef906fe01d",
+   "n_fields": 23
+  },
+  "PN2510EKWQ": {
+   "values": "cb1c8c96f291621aebf39434b93f8f8d7af63d721dafeca88796b43c34971fc1",
+   "scores": "76f9069b31406b6c036b687b5c73022e9846961051b8ef7c28b3f8216a55ad93",
+   "n_fields": 30
+  },
+  "PN2510H4SM": {
+   "values": "d1f48b4f981275070274afab132c3537830b5cdd98c512f5971118f63be54f88",
+   "scores": "0eb304a68757c51dcf8129aca00c3bc36a1accce7c623275e49407bb917ef582",
+   "n_fields": 37
+  },
+  "PN2510K5X9": {
+   "values": "a848aada74b6ba971bdbb8bdfad5ffdd4268952804d40b50c00ce1ab0994a63b",
+   "scores": "aa474268dc5f48e40269cfc840f8944c6d44cba73daec673482357b9a317ae62",
+   "n_fields": 37
+  },
+  "PN2510R14G": {
+   "values": "eafe4877db3a89961c19e43760fdea476b478944e8313f71b874cc7388485d8e",
+   "scores": "3dece86dd230b4cd0a06de67a2ef1ce2c1e25feb06a82fec5e50c4f180f0458b",
+   "n_fields": 9
+  },
+  "PN2510TL5P": {
+   "values": "31fd16bb4da337452d4ac895f73cb6578130f8e73a9cbea6c095cf482284b4b3",
+   "scores": "284a0a43a76185ce2b6a70d8f93f0be9dbb141c89c69e6d172400a4cbd6aaaef",
+   "n_fields": 30
+  },
+  "PN2510TRI6": {
+   "values": "093624f54f7b398e9ce45e30cb86ecc168ade47e0ca64de3fdafddea0686eefd",
+   "scores": "4082c685a0aa453d66987173557fb4faaa408e32ce5fd50817c86b0e45cc9fc8",
+   "n_fields": 16
+  },
+  "PN2510UHAL": {
+   "values": "13eb88f73b6f5c7925f298f582e2e2127d5a6305aa75715b7a6e4816d7c1385d",
+   "scores": "62c11ee02b1e673098aa689c9ace6c3d337a3647d762fa065b2b12964d6599bc",
+   "n_fields": 37
+  },
+  "PN2510Z64G": {
+   "values": "81b325dfc10cbcf4112e9d2a97353373ebdc9e117e64395a58131a1b8b37043d",
+   "scores": "e77cf40e36b3549d7ac824e81707288feb80f8681e23c59e121cb2e2d2920304",
+   "n_fields": 23
+  },
+  "PN25115R4U": {
+   "values": "d563af48f7b3455a33942cd6ccc6278ba1fb6f8be737b275feb73ad58da83025",
+   "scores": "5813f042a8932c0172a47eba49f659da7ae460052b0521aebd91f7f7bb698951",
+   "n_fields": 37
+  },
+  "PN25115ZA7": {
+   "values": "ae526bba2804abef2fef533f4031cf0b5ef5a82d5e386af21fe764712988884a",
+   "scores": "cbe40995d3ec1401a1e02694616a7131be6221f1a1c4bde643f5752276ab73a3",
+   "n_fields": 37
+  },
+  "PN2511BN2W": {
+   "values": "e3e75bec26a2dca7acf0722b12d34035444e872573a1c9249c16da27dbd06498",
+   "scores": "94491f888b8cbd1dd3aff62a1816c455264dcedfa83907a7e3ce23a92862baf7",
+   "n_fields": 16
+  },
+  "PN2511DIOP": {
+   "values": "b74e8cd988399ddcf13bc7bd8a2fbe8bf49d0692bc12052f02732ff13b938a29",
+   "scores": "ffb012d6498719c109b0344007f5347493abd7cef5bd60d51158497f297bf7d7",
+   "n_fields": 9
+  },
+  "PN2511IL51": {
+   "values": "4f82231673f972916af4e5dc71e95809f812c617bf7ae95097f877f58a5daccf",
+   "scores": "dca78eaf694a6fdbca8c4f1459ab12a9fe0bc48943a6474702ca72ec965065ac",
+   "n_fields": 23
+  },
+  "PN2511LON2": {
+   "values": "ea8f86c5c865c77238268c21020b7cd269d406121828da95d5224a66b2ac13b5",
+   "scores": "10e257d0d9dcb6861bc0ed8dcfc7cb066b5b1a9046bda25ce8d7ed611c7da326",
+   "n_fields": 23
+  },
+  "PN2511QJFW": {
+   "values": "cd2c0199221cbd822ec2a337e0aa9186711fdd70f0e105da201b03a3ef1a5a85",
+   "scores": "35f866a1153a8cec016713066930d1fbe8144c033e94afe5f6339d8fe666c76a",
+   "n_fields": 23
+  },
+  "PN2511Y1DE": {
+   "values": "bde112261c81e0ecd38ef067d92377f0bd0f8e195da4deeb4d9b1fccf7e6d158",
+   "scores": "3df10b3945fc39fc2ee1b93f000de064340d829a64c8af1787fbcdc64c6af22a",
+   "n_fields": 37
+  },
+  "PN2511ZLS1": {
+   "values": "516e902d72640c42c767f35c2892cf17a2f4fdd5ee092558b06d9b65ce258f3d",
+   "scores": "2405ee84a7b6f1836bc0e549b2dc8087445195763db846d0dccc80011c62bf54",
+   "n_fields": 30
+  },
+  "PN2511ZVKM": {
+   "values": "2636fc6e3146ebd8c5f2f0d16a7e51a5c3076cbc481d3a7a176b23b9bcaa3645",
+   "scores": "85b5af10517f8b42ddcafa9d6bd794b3c692facefb70954d0d29687d737c0d34",
+   "n_fields": 35
+  },
+  "PN25124MJB": {
+   "values": "b433781a2819040db63cc8a044cf830d9b8d6c8e026961c90909718dde6600e9",
+   "scores": "fc8665c2c2fc18c99f25a3642feffdd8ed3bc17d8fa4fa55a770cca1c86b6c97",
+   "n_fields": 44
+  },
+  "PN251269EA": {
+   "values": "2d28114243e165cbae215dc56ecd50b52efc6bff6de280894b6461103a39b6cd",
+   "scores": "338d2c90f25c2b575357f34af4beb1ab8ff062bccc59f2f288e1ae8d40fc2c48",
+   "n_fields": 30
+  },
+  "PN25126LUJ": {
+   "values": "30e8aa27cd6dad511389bf9fa8928950894e1260492161920f5614c064957967",
+   "scores": "a7664fc5c11c02c71d6f0be9bb6cd47ab22ca8059a649b3c09236afe88164867",
+   "n_fields": 9
+  },
+  "PN2512AHZ5": {
+   "values": "c7981662296bfbed8ba7ec20b721367f2ba02afbc111feab683c43a293ba1d5a",
+   "scores": "6e5b8e3c003e0ee7ed077434cd42631cae1e1e060fc87375466a58deb10eee8f",
+   "n_fields": 30
+  },
+  "PN2512GYNS": {
+   "values": "8620a922d626b65d43ef9e739fc5f50d0376eb4f70b538e2bfefceb4e377275a",
+   "scores": "d7c3018adc50c0b5fdb30c21a00793553e0857de154da35c3c087b3daca5aeb4",
+   "n_fields": 16
+  },
+  "PN2512IAX3": {
+   "values": "ff4f8e9efd904883a9039d64968efe0469f62a3af72b43e81ce54d862c63e44a",
+   "scores": "ecf5504a3530df1de18c78638327c9f9cb65645f133947aeefded2bc60096375",
+   "n_fields": 37
+  },
+  "PN2512TCB5": {
+   "values": "266c654d62ada18c72bf1e40b6b2e188fcbcbfd9cabfe8ec2dbd92984b7bc737",
+   "scores": "7ec544328afc73d2fb7d18d4f82d3ef922830988c47e651f6f164a30b45f7979",
+   "n_fields": 23
+  },
+  "PN2512XWQI": {
+   "values": "815fe4d29b3ef9820c24874fa8d4763dd80a10addac3e5e3a98bc2187235e4e7",
+   "scores": "3e788c29615f70938796bef1ed9a5a7cba0e0452ae9508c5fc74d510984cc123",
+   "n_fields": 23
+  }
+ }
+}

@@ -27,7 +27,7 @@ def test_the_keys_are_the_nine_contract_names():
 
 
 @pytest.mark.parametrize("raw", [None, "", "   ", "{}"])
-def test_nothing_given_means_the_default_for_every_field(raw):
+def test_nothing_given_means_no_threshold_for_any_field(raw):
     assert column_thresholds_from_json(raw) is None
 
 

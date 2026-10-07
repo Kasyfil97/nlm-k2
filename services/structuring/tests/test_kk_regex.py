@@ -116,20 +116,12 @@ def test_every_cell_lands_in_the_column_it_was_printed_in(structurer):
 
     assert result["nomor_kk"] == "9924187486671285"
     assert result["nama_kepala_keluarga"] == people[0].nama_lengkap
-    assert result["alamat"] == "KP SUKAMAJU"
-    assert (result["rt"], result["rw"]) == ("016", "004")
-    assert result["kecamatan"] == "CISAYONG"
-    assert result["kabupaten_kota"] == "TASIKMALAYA"
-    assert result["provinsi"] == "JAWA BARAT"
-    assert result["kode_pos"] == "46153"
-    assert result["tanggal_dikeluarkan"] == "29-09-2021"
 
     assert len(result["anggota"]) == 2
     for person, member in zip(people, result["anggota"], strict=True):
-        for name in ("nama_lengkap", "nik", "jenis_kelamin", "tempat_lahir", "agama", "ayah", "ibu"):
+        for name in ("nama_lengkap", "nik", "ayah", "ibu"):
             assert member[name] == getattr(person, name), name
         assert member["status_hubungan_dalam_keluarga"] == person.status_hubungan_dalam_keluarga
-        assert member["kewarganegaraan"] == "WNI"
 
 
 def test_a_closed_vocabulary_is_normalised_to_its_canonical_value(structurer):

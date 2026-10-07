@@ -162,7 +162,7 @@ pemantau database hidup, simulasi yang aktif, dan backend tiap service.
 | `GET` / `PUT /api/simulation` | `{"callback": "ok" \| "down" \| "reject" \| "unauthorized" \| "slow" \| "flaky"}` |
 | `POST /v1/ocr-callback` | callback format result (dev); diperiksa `X-Callback-Key` kalau `TRACKER_CALLBACK_KEY` diisi |
 | `GET /api/files/{token}/{nama}` | dokumen yang dikirim sebagai `file_url` |
-| `GET /v1/thresholds/guardrails` | dummy endpoint ambang Orkestrasi pusat untuk guardrails (`GUARDRAILS_THRESHOLD_URL=http://host.docker.internal:8090`): `{"reject_threshold": 0.5}`, ditolak kalau `probability_bad >= ambang`; ubah dengan `PUT /api/simulation {"guardrails_threshold": 0.6}` |
+| `GET /v1/thresholds/guardrails` | dummy endpoint ambang Orkestrasi pusat untuk guardrails. **Tidak dibaca lagi**: service guardrails tidak punya `GUARDRAILS_THRESHOLD_URL` sejak 7 Okt 2026; ambang hanya dari `guardrails_confidence_threshold` per request |
 | `GET` / `POST /api/chaos`, `POST /api/chaos/{service}/start` | keadaan container; `{"service", "action": "stop" \| "kill", "seconds"}` (lokal saja) |
 | `GET /api/scenarios`, `POST /api/scenarios/run`, `POST /api/scenarios/stop` | daftar + hasil terakhir; `{"scenarios": [...] \| null, "image"}`; hentikan |
 | `GET /api/scenarios/runs[/{id}]`, `DELETE /api/scenarios/runs` | laporan run (langkah, cek, request_id); hapus riwayat |
