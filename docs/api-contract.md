@@ -159,7 +159,6 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 
 | HTTP | `errors` | Arti | Aman diulang? |
 |---|---|---|---|
-| 400 | `UNSUPPORTED_DOCUMENT_TYPE` | `document_type` bukan `kk` | tidak |
 | 400 | `DOWNSTREAM_VALIDATION_ERROR` | dokumen ditolak model guardrails atau aturan structuring | tidak |
 | 400 | `EMPTY_FILE` | file kosong | tidak |
 | 400 | `UNSUPPORTED_FILE_TYPE` | bukan JPEG, PNG, atau PDF | tidak |
@@ -283,7 +282,6 @@ request tetap dijawab.
 | Field | Tipe | Wajib | Keterangan |
 |---|---|---|---|
 | `request_id` | string | ya | dibuat pemanggil, maks. 100 karakter |
-| `document_type` | string | tidak | default `kk`; selain itu 400 `UNSUPPORTED_DOCUMENT_TYPE` |
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
@@ -311,7 +309,6 @@ antara nama yang sah juga dibuang. Ini hanya berlaku untuk field form: `""` **di
 curl -X POST http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr \
   -H "X-API-Key: $API_KEY" \
   -F "request_id=REQ_001" \
-  -F "document_type=kk" \
   -F "file=@kk.jpg"
 ```
 

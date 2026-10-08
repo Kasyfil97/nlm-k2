@@ -175,19 +175,6 @@ def test_params_sent_by_an_old_caller_are_ignored(client, auth):
     assert response.status_code == 200
     assert "params" not in response.json()
 
-
-def test_unsupported_document_type_is_400_before_anything_runs(client, auth, stub_guardrails, stub_extraction):
-    response = _submit(client, auth, document_type="ktp")
-    assert response.status_code == 400
-    body = response.json()
-    assert (body["errors"], body["message"]) == (
-        "UNSUPPORTED_DOCUMENT_TYPE",
-        "Unsupported document_type: ktp. Supported: kk",
-    )
-    assert "document_type" not in body
-    assert stub_guardrails.checked == [] and stub_extraction.submitted == []
-
-
 def test_the_projection_of_the_fixture_household_in_full():
     """Nilai literal, tidak diturunkan dari fixture. Semua uji di atas membandingkan data hasil
     generate dengan data hasil generate, yang tidak bisa menangkap generator yang berubah di

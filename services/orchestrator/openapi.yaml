@@ -212,7 +212,7 @@ paths:
         from: a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`,
         `scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this
         service refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`,
-        thresholds, `document_type`, an unknown request_id).
+        thresholds, an unknown request_id).
 
 
         `data` holds NINE fields: `no_kk`, `nama_kepala_keluarga`, and `anggota_keluarga[]` with seven
@@ -352,9 +352,9 @@ paths:
                     request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
         '400':
           description: 'Rejected by the guardrails model or by the KK validity gate (`DOWNSTREAM_VALIDATION_ERROR`,
-            `guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above `MAX_DOCUMENT_PAGES`
-            pages (`Jumlah halaman melebihi batas, pastikan hanya mengunggah foto Kartu Keluarga`), or
-            a bad file / intake (empty, unsupported type, unreadable, `file_url` refused)'
+            `guardrails: 1`), a PDF above `MAX_DOCUMENT_PAGES` pages (`Jumlah halaman melebihi batas,
+            pastikan hanya mengunggah foto Kartu Keluarga`), or a bad file / intake (empty, unsupported
+            type, unreadable, `file_url` refused)'
           content:
             application/json:
               schema:
@@ -501,7 +501,7 @@ paths:
         from: a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`,
         `scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this
         service refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`,
-        thresholds, `document_type`, an unknown request_id).
+        thresholds, an unknown request_id).
 
 
         Use it for a request that was answered `202`, e.g. when a callback did not arrive.
@@ -725,13 +725,6 @@ components:
           description: request_id minted by the central orchestrator
           examples:
           - OCR_9cb01af2-493d-446d-b191-af120333f6d0
-        document_type:
-          type: string
-          title: Document Type
-          description: Document type chosen by the client. Only `kk` is supported
-          default: kk
-          examples:
-          - kk
         file:
           anyOf:
           - type: string

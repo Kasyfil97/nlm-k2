@@ -33,15 +33,10 @@ def test_the_answer_of_the_post_is_kept(client, auth, final_results):
     assert final_results.saved[RID] == response.json()
 
 
-def test_a_rejection_and_a_refusal_are_kept_too(client, auth, final_results):
+def test_a_rejection_is_kept_too(client, auth, final_results):
     rejected = _submit(client, auth, filename="notkk.jpg")
     assert final_results.saved[RID] == rejected.json()
     assert (rejected.status_code, rejected.json()["guardrails"]) == (400, 1)
-
-    refused = _submit(client, auth, document_type="ktp")
-    assert final_results.saved[RID] == refused.json()
-    assert refused.status_code == 400
-
 
 def test_the_get_overwrites_a_202_with_the_finished_answer(client, auth, stub_waiter, final_results):
     stub_waiter.outcome = WaitOutcome("STRUCTURING", "PROCESSING")
