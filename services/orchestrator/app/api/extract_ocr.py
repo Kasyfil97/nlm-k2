@@ -109,7 +109,7 @@ _CONTRACT_TABLE = (
     "a pipeline service as `pipeline_name_sequence` names it (`guardrails`, `extraction`, `structuring`, "
     "`scoring`), also on a 400 / 500 / 503 / 504 from calling one of them, or `orchestrator` when this service "
     "refused the request itself before calling any (API key, file checks, `pipeline_name_sequence`, thresholds, "
-    "`document_type`, an unknown request_id).\n\n"
+    "an unknown request_id).\n\n"
 )
 
 
@@ -280,7 +280,7 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
             "model": ExtractOcrResponse,
             "description": (
                 f"Rejected by the guardrails model or by the KK validity gate (`{REJECTED_CODE}`, "
-                "`guardrails: 1`), unsupported `document_type` (`UNSUPPORTED_DOCUMENT_TYPE`), a PDF above "
+                "`guardrails: 1`), a PDF above "
                 f"`MAX_DOCUMENT_PAGES` pages (`{TOO_MANY_PAGES_MESSAGE}`), or a bad "
                 "file / intake (empty, unsupported type, unreadable, `file_url` refused)"
             ),
@@ -330,9 +330,6 @@ async def extract_ocr(
     request: Request,
     response: Response,
     request_id: str = Form(..., description="request_id minted by the central orchestrator", examples=[RID]),
-    document_type: str = Form(
-        DOCUMENT_TYPE, description="Document type chosen by the client. Only `kk` is supported", examples=["kk"]
-    ),
     file: UploadFile | str | None = FileField,
     file_url: str | None = FileUrlField,
     pipeline_name_sequence: list[str] | None = Form(
@@ -363,18 +360,6 @@ async def extract_ocr(
     service: ExtractOcrService = Depends(get_extract_service),
 ):
     received_at = time.monotonic()
-    if document_type != DOCUMENT_TYPE:
-        return await _answer(
-            service,
-            response,
-            extract_body(
-                400,
-                f"Unsupported document_type: {document_type}. Supported: {DOCUMENT_TYPE}",
-                errors="UNSUPPORTED_DOCUMENT_TYPE",
-                request_id=request_id,
-                pipeline_last_stage=ENTRY,
-            ),
-        )
     try:
         sequence = _parse_sequence(pipeline_name_sequence)
     except InvalidSequence as exc:
@@ -416,7 +401,7 @@ async def extract_ocr(
         content, filename, content_type = await read_image(request, file, file_url)
         outcome = await service.submit(
             request_id,
-            document_type,
+            DOCUMENT_TYPE,
             filename,
             content_type,
             content,

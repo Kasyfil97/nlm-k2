@@ -324,7 +324,7 @@ Dua nama berganti di sini: `nomor_kk` menjadi `no_kk`, dan `status_hubungan_dala
 
 Setiap envelope yang dijawab orchestrator (202, lalu 200/400/422) juga di-upsert ke
 **`nilam_ocr_kk.nilam_ocr_results`**: satu baris per `request_id` dengan `status_code`, `status_desc`,
-`message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at`.
+`message`, `data`, `errors`, `guardrails`, `created_at`.
 
 ---
 

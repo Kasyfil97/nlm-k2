@@ -33,14 +33,10 @@ def test_the_answer_of_the_post_is_kept(client, auth, final_results):
     assert final_results.saved[RID] == response.json()
 
 
-def test_a_rejection_and_a_refusal_are_kept_too(client, auth, final_results):
+def test_a_rejection_is_kept_too(client, auth, final_results):
     rejected = _submit(client, auth, filename="notkk.jpg")
     assert final_results.saved[RID] == rejected.json()
     assert (rejected.status_code, rejected.json()["guardrails"]) == (400, 1)
-
-    refused = _submit(client, auth, document_type="ktp")
-    assert final_results.saved[RID] == refused.json()
-    assert refused.status_code == 400
 
 
 def test_the_get_overwrites_a_202_with_the_finished_answer(client, auth, stub_waiter, final_results):
@@ -104,7 +100,6 @@ async def test_one_row_per_request_the_latest_answer_winning(database):
     assert (row["request_id"], row["status_code"], row["status_desc"], row["message"]) == (RID, 200, "OK", "Completed")
     assert (row["data"], row["errors"], row["guardrails"]) == (COMPLETED["data"], None, 0)
     assert row["created_at"] == first["created_at"]
-    assert row["updated_at"] >= first["updated_at"]
     assert first["guardrails"] is None
     assert len(row["ds"]) == 8
 

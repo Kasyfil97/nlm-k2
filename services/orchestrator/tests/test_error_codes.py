@@ -25,7 +25,6 @@ def _submit(client, auth, files=None, **form):
         ({"file": ("kk.pdf", b"not a pdf", "application/pdf")}, {}, 400, "UNREADABLE_FILE"),
         ({}, {}, 400, "INVALID_FILE_SOURCE"),
         (None, {"file_url": "https://minio.example/a.jpg"}, 400, "INVALID_FILE_SOURCE"),
-        (None, {"document_type": "ktp"}, 400, "UNSUPPORTED_DOCUMENT_TYPE"),
     ],
 )
 def test_refusals_before_the_pipeline_carry_their_code(client, auth, files, form, status, code):
@@ -100,7 +99,6 @@ def test_an_unknown_request_id_is_404_request_id_not_found(client, auth, stub_wa
     ("files", "form", "headers_ok"),
     [
         ({"file": ("kk.jpg", b"", "image/jpeg")}, {}, True),  # a file check (plain envelope)
-        (None, {"document_type": "ktp"}, True),  # a refusal in the extract-ocr shape
         (None, {}, False),  # no API key
     ],
 )

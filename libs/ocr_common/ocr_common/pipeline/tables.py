@@ -140,7 +140,7 @@ def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
     """`nilam_ocr_results`: the final answer of the orchestrator for one request, the envelope of
     `/v1/extract-ocr` as it was last given (`nilam_testing_ocr_results` with the testing prefix). One row per
     request_id, upserted by every POST and GET that answers it: `status_code` moves from 202 to 200/400/422,
-    `created_at` stays the first answer's and `updated_at` is the last one's. `guardrails` is the envelope's
+    `created_at` stays the first answer's. `guardrails` is the envelope's
     0/1 flag (1: rejected by guardrails or the KK gate)."""
     name = f"{TABLE_PREFIX}{table_prefix}ocr_results"
     return Table(
@@ -154,7 +154,6 @@ def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
         Column("errors", JSON_TYPE, nullable=True),
         Column("guardrails", Integer, nullable=True),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
         Column("ds", Text, nullable=False),
         Index(f"idx_{name}_ds", "ds"),
         schema=PIPELINE_SCHEMA,

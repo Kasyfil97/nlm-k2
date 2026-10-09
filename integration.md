@@ -78,7 +78,6 @@ Hasil sampai ke kalian lewat tiga jalur (boleh lebih dari satu): jawaban sinkron
     curl -X POST http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr \
       -H "X-API-Key: $API_KEY" \
       -F "request_id=REQ_001" \
-      -F "document_type=kk" \
       -F "file=@kk.jpg"
 
 Bentuk jawaban: envelope standar ditambah `pipeline_last_stage` dan `guardrails`. Keadaan request dibaca
@@ -93,7 +92,6 @@ Sejak 5 Oktober 2026 (seperti nilam sejak 1 Oktober) jawaban tidak lagi membawa 
 | Field | Wajib | Keterangan |
 |---|---|---|
 | `request_id` | ya | dibuat oleh kalian, maks. 100 karakter |
-| `document_type` | tidak | default `kk`; selain `kk` dijawab 400 `UNSUPPORTED_DOCUMENT_TYPE` |
 | `file` / `file_url` | salah satu | JPEG, PNG, PDF, maks. **5 MB** (413) dan maks. **2 halaman** (400). **(KK)** Dari PDF hanya halaman 1 yang dinilai dan dibaca. Tipe yang dideklarasikan tapi tidak didukung (`application/octet-stream`, kosong, `jpg`, `text/plain`, ...) dibaca dari tanda tangan berkasnya |
 | `pipeline_name_sequence` | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Field berulang, string dipisah koma, atau satu string JSON array. Default (atau field kosong): keempatnya |
 | `guardrails_confidence_threshold` | tidak | `{"acc_rej": 0.8}`, nilai di antara 0 dan 1. **(KK)** Berlaku pada sisi reject: dokumen ditolak bila `probability_bad` model kualitas ≥ nilainya. **Tidak dikirim: dokumen dianggap lolos** guardrails (tidak ada ambang bawaan), dan `probability_bad`-nya (float) tetap diteruskan ke scoring dan tercatat di `nilam_guardrails_results` |
@@ -249,7 +247,7 @@ dan namanya berawalan **`nilam_`**; sebelumnya di `public` tanpa awalan.
 | Tabel | Isi |
 |---|---|
 | `nilam_ocr_kk.nilam_ocr_extraction_jobs`, `nilam_ocr_kk.nilam_ocr_extraction_results` | status dan hasil tahap OCR (sebelum migrasi `0004`, 7 Okt 2026: `nilam_ocr_jobs`/`nilam_ocr_results`) |
-| `nilam_ocr_kk.nilam_ocr_results` | **hasil final OCR KK** dari orchestrator, satu baris per `request_id`: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at`; diperbarui setiap kali POST/GET `extract-ocr` menjawab (migrasi `0004`) |
+| `nilam_ocr_kk.nilam_ocr_results` | **hasil final OCR KK** dari orchestrator, satu baris per `request_id`: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`; diperbarui setiap kali POST/GET `extract-ocr` menjawab (migrasi `0004`) |
 | `nilam_ocr_kk.nilam_structuring_jobs`, `nilam_ocr_kk.nilam_structuring_results` | field hasil structuring (2 dokumen + 7 per anggota; baris sebelum 7 Okt 2026: 11 + 15) |
 | `nilam_ocr_kk.nilam_scoring_jobs`, `nilam_ocr_kk.nilam_scoring_results` | probabilitas trust model dan keputusan per field (0/1 bila ada ambang, selain itu probabilitasnya) |
 | `nilam_ocr_kk.nilam_pipeline_outbox` | callback dan handoff yang belum terkirim |
