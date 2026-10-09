@@ -45,18 +45,18 @@ class SqlFinalResults:
             logger.exception("final result of %s not recorded", request_id)
 
     async def _upsert(self, request_id: str, body: dict[str, Any]) -> None:
-        now = datetime.now(UTC)
         answer = {
             "status_code": body["status_code"],
             "status_desc": body.get("status_desc"),
             "message": body.get("message"),
             "data": body.get("data"),
             "errors": body.get("errors"),
+            "pipeline_last_stage": body.get("pipeline_last_stage"),
             "guardrails": body.get("guardrails"),
         }
         async with get_engine(self._url).begin() as conn:
             insert = postgresql_insert if conn.dialect.name == "postgresql" else sqlite_insert
             statement = insert(self._table).values(
-                request_id=request_id, created_at=now, ds=now.strftime("%Y%m%d"), **answer
+                request_id=request_id, created_at=datetime.now(UTC), **answer
             )
             await conn.execute(statement.on_conflict_do_update(index_elements=[self._table.c.request_id], set_=answer))

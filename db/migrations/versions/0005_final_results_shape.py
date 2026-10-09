@@ -1,0 +1,56 @@
+"""`nilam_ocr_results` takes the envelope's shape: an `id` key, `request_id` unique, `pipeline_last_stage`; `updated_at`
+and `ds` go
+
+Revision ID: 0005_final_results_shape
+Revises: 0004_ocr_extraction_naming
+Create Date: 2026-10-09
+
+0004 created `nilam_ocr_results` (and `nilam_testing_ocr_results`) keyed by `request_id`, with `updated_at` and `ds`.
+The table now holds the envelope as the orchestrator answers it: a surrogate `id` is the primary key, `request_id` is
+unique, `pipeline_last_stage` names the service the answer comes from, and `updated_at` / `ds` are dropped. The rows
+stay; the new `id` is a BIGSERIAL, as in the outbox and the guardrails verdicts, and numbers them as it is added.
+
+The downgrade puts `ds` back from `created_at` (UTC, as the service wrote it) and `updated_at` from `created_at`, so
+the last answer's time is not recoverable after a downgrade.
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0005_final_results_shape"
+down_revision: str | None = "0004_ocr_extraction_naming"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+SCHEMA = "nilam_ocr_kk"
+TABLES = ("nilam_ocr_results", "nilam_testing_ocr_results")
+
+
+def upgrade() -> None:
+    for name in TABLES:
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP CONSTRAINT "{name}_pkey"')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD COLUMN id BIGSERIAL NOT NULL')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD PRIMARY KEY (id)')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD CONSTRAINT "uq_{name}_request_id" UNIQUE (request_id)')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD COLUMN pipeline_last_stage TEXT')
+        op.execute(f'DROP INDEX "{SCHEMA}"."idx_{name}_ds"')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP COLUMN updated_at, DROP COLUMN ds')
+
+
+def downgrade() -> None:
+    for name in TABLES:
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD COLUMN ds TEXT')
+        op.execute(
+            f'ALTER TABLE "{SCHEMA}"."{name}" ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT now()'
+        )
+        op.execute(f'UPDATE "{SCHEMA}"."{name}" SET ds = to_char(created_at AT TIME ZONE \'UTC\', \'YYYYMMDD\')')
+        op.execute(f'UPDATE "{SCHEMA}"."{name}" SET updated_at = created_at')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ALTER COLUMN ds SET NOT NULL')
+        op.execute(f'CREATE INDEX "idx_{name}_ds" ON "{SCHEMA}"."{name}" (ds)')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP COLUMN pipeline_last_stage')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP CONSTRAINT "uq_{name}_request_id"')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP CONSTRAINT "{name}_pkey"')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" DROP COLUMN id')
+        op.execute(f'ALTER TABLE "{SCHEMA}"."{name}" ADD PRIMARY KEY (request_id)')

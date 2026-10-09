@@ -259,7 +259,7 @@ seperti `nilam_ocr_npwp` di nilam); sebelumnya di `public` tanpa awalan.
 | `nilam_scoring_jobs` / `nilam_scoring_results` | **nlm-k2** | scoring | idem |
 | `nilam_pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
 | `nilam_guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
-| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at` (draf 16, migrasi `0004`) |
+| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `id`, `request_id` (unik), `status_code`, `status_desc`, `message`, `data`, `errors`, `pipeline_last_stage`, `guardrails`, `created_at` (draf 16, migrasi `0004`; bentuk envelope sejak `0005`) |
 | tabel outcome (`ORCHESTRATION_OUTCOME_TABLE`) | **Orkestrasi pusat** | ketiga tahap, dalam transaksi job | Orkestrasi pusat |
 
 Tabel outcome **milik mereka**, jadi kolomnya mereka yang menambahkan dan migrasi nlm-k2 tidak pernah

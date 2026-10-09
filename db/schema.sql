@@ -1,6 +1,6 @@
 -- nlm-k2: skema dan semua tabel milik repo ini, dalam satu berkas.
 --
--- Isinya sama dengan hasil `alembic upgrade head` (revisi 0005_drop_ocr_results_updated_at): schema `nilam_ocr_kk`,
+-- Isinya sama dengan hasil `alembic upgrade head` (revisi 0005_final_results_shape): schema `nilam_ocr_kk`,
 -- 18 tabel berawalan `nilam_` (tahap OCR `nilam_ocr_extraction_*` / structuring / scoring, outbox, putusan
 -- guardrails, hasil final orchestrator `nilam_ocr_results`, masing-masing juga versi `testing_` untuk
 -- endpoint -test), indeks, foreign key, dan tabel versi Alembic yang sudah
@@ -52,18 +52,19 @@ CREATE INDEX IF NOT EXISTS idx_nilam_ocr_extraction_jobs_ds ON nilam_ocr_kk.nila
 CREATE INDEX IF NOT EXISTS idx_nilam_ocr_extraction_jobs_status ON nilam_ocr_kk.nilam_ocr_extraction_jobs (status);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_results (
+    id BIGSERIAL NOT NULL,
     request_id TEXT NOT NULL,
     status_code INTEGER NOT NULL,
     status_desc TEXT,
     message TEXT,
     data JSONB,
     errors JSONB,
+    pipeline_last_stage TEXT,
     guardrails INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    ds TEXT NOT NULL,
-    PRIMARY KEY (request_id)
+    PRIMARY KEY (id),
+    CONSTRAINT uq_nilam_ocr_results_request_id UNIQUE (request_id)
 );
-CREATE INDEX IF NOT EXISTS idx_nilam_ocr_results_ds ON nilam_ocr_kk.nilam_ocr_results (ds);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_pipeline_outbox (
     id BIGSERIAL NOT NULL,
@@ -147,18 +148,19 @@ CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_extraction_jobs_ds ON nilam_ocr
 CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_extraction_jobs_status ON nilam_ocr_kk.nilam_testing_ocr_extraction_jobs (status);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_ocr_results (
+    id BIGSERIAL NOT NULL,
     request_id TEXT NOT NULL,
     status_code INTEGER NOT NULL,
     status_desc TEXT,
     message TEXT,
     data JSONB,
     errors JSONB,
+    pipeline_last_stage TEXT,
     guardrails INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    ds TEXT NOT NULL,
-    PRIMARY KEY (request_id)
+    PRIMARY KEY (id),
+    CONSTRAINT uq_nilam_testing_ocr_results_request_id UNIQUE (request_id)
 );
-CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_results_ds ON nilam_ocr_kk.nilam_testing_ocr_results (ds);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_pipeline_outbox (
     id BIGSERIAL NOT NULL,
@@ -279,7 +281,7 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_kk_alembic_version (
     CONSTRAINT nilam_ocr_kk_alembic_version_pkc PRIMARY KEY (version_num)
 );
 INSERT INTO nilam_ocr_kk.nilam_ocr_kk_alembic_version (version_num)
-SELECT '0005_drop_ocr_results_updated_at'
+SELECT '0005_final_results_shape'
 WHERE NOT EXISTS (SELECT 1 FROM nilam_ocr_kk.nilam_ocr_kk_alembic_version);
 
 COMMIT;

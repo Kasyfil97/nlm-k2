@@ -247,7 +247,7 @@ dan namanya berawalan **`nilam_`**; sebelumnya di `public` tanpa awalan.
 | Tabel | Isi |
 |---|---|
 | `nilam_ocr_kk.nilam_ocr_extraction_jobs`, `nilam_ocr_kk.nilam_ocr_extraction_results` | status dan hasil tahap OCR (sebelum migrasi `0004`, 7 Okt 2026: `nilam_ocr_jobs`/`nilam_ocr_results`) |
-| `nilam_ocr_kk.nilam_ocr_results` | **hasil final OCR KK** dari orchestrator, satu baris per `request_id`: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`; diperbarui setiap kali POST/GET `extract-ocr` menjawab (migrasi `0004`) |
+| `nilam_ocr_kk.nilam_ocr_results` | **hasil final OCR KK** dari orchestrator, satu baris per `request_id`: `id`, `request_id`, `status_code`, `status_desc`, `message`, `data`, `errors`, `pipeline_last_stage`, `guardrails`, `created_at`; diperbarui setiap kali POST/GET `extract-ocr` menjawab (migrasi `0004`, bentuk envelope sejak `0005`) |
 | `nilam_ocr_kk.nilam_structuring_jobs`, `nilam_ocr_kk.nilam_structuring_results` | field hasil structuring (2 dokumen + 7 per anggota; baris sebelum 7 Okt 2026: 11 + 15) |
 | `nilam_ocr_kk.nilam_scoring_jobs`, `nilam_ocr_kk.nilam_scoring_results` | probabilitas trust model dan keputusan per field (0/1 bila ada ambang, selain itu probabilitasnya) |
 | `nilam_ocr_kk.nilam_pipeline_outbox` | callback dan handoff yang belum terkirim |

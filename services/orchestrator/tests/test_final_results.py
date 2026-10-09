@@ -84,6 +84,7 @@ COMPLETED = {
     "data": {"no_kk": {"value": "9901012609260001", "confidence": 0.97}},
     "errors": None,
     "request_id": RID,
+    "pipeline_last_stage": "scoring",
     "guardrails": 0,
 }
 
@@ -98,10 +99,16 @@ async def test_one_row_per_request_the_latest_answer_winning(database):
     [row] = await _rows(url, table)
 
     assert (row["request_id"], row["status_code"], row["status_desc"], row["message"]) == (RID, 200, "OK", "Completed")
-    assert (row["data"], row["errors"], row["guardrails"]) == (COMPLETED["data"], None, 0)
+    assert (row["data"], row["errors"], row["pipeline_last_stage"], row["guardrails"]) == (
+        COMPLETED["data"],
+        None,
+        "scoring",
+        0,
+    )
+    assert row["id"] == first["id"]
     assert row["created_at"] == first["created_at"]
     assert first["guardrails"] is None
-    assert len(row["ds"]) == 8
+    assert first["pipeline_last_stage"] is None
 
 
 async def test_a_write_that_fails_is_logged_and_does_not_raise(tmp_path, caplog):
