@@ -139,24 +139,23 @@ def guardrails_results_table(metadata: MetaData, table_prefix: str = "") -> Tabl
 def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
     """`nilam_ocr_results`: the final answer of the orchestrator for one request, the envelope of
     `/v1/extract-ocr` as it was last given (`nilam_testing_ocr_results` with the testing prefix). One row per
-    request_id, upserted by every POST and GET that answers it: `status_code` moves from 202 to 200/400/422,
-    `created_at` stays the first answer's and `updated_at` is the last one's. `guardrails` is the envelope's
-    0/1 flag (1: rejected by guardrails or the KK gate)."""
+    request_id (unique), upserted by every POST and GET that answers it: `status_code` moves from 202 to 200/400/422
+    and `created_at` stays the first answer's. `guardrails` is the envelope's 0/1 flag (1: rejected by guardrails or
+    the KK gate); `pipeline_last_stage` names the service the envelope comes from."""
     name = f"{TABLE_PREFIX}{table_prefix}ocr_results"
     return Table(
         name,
         metadata,
-        Column("request_id", Text, primary_key=True),
+        Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
+        Column("request_id", Text, nullable=False, unique=True),
         Column("status_code", Integer, nullable=False),
         Column("status_desc", Text, nullable=True),
         Column("message", Text, nullable=True),
         Column("data", JSON_TYPE, nullable=True),
         Column("errors", JSON_TYPE, nullable=True),
+        Column("pipeline_last_stage", Text, nullable=True),
         Column("guardrails", Integer, nullable=True),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        Column("ds", Text, nullable=False),
-        Index(f"idx_{name}_ds", "ds"),
         schema=PIPELINE_SCHEMA,
     )
 
