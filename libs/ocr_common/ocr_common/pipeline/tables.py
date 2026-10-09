@@ -17,6 +17,7 @@ from sqlalchemy import (
     MetaData,
     Table,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -147,7 +148,7 @@ def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
         name,
         metadata,
         Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
-        Column("request_id", Text, nullable=False, unique=True),
+        Column("request_id", Text, nullable=False),
         Column("status_code", Integer, nullable=False),
         Column("status_desc", Text, nullable=True),
         Column("message", Text, nullable=True),
@@ -156,6 +157,7 @@ def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
         Column("pipeline_last_stage", Text, nullable=True),
         Column("guardrails", Integer, nullable=True),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+        UniqueConstraint("request_id", name=f"uq_{name}_request_id"),
         schema=PIPELINE_SCHEMA,
     )
 
