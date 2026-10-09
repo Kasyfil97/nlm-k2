@@ -46,6 +46,14 @@ class BaseServiceSettings(BaseSettings):
     elasticsearch_username: str | None = None
     elasticsearch_password: str | None = None
 
+    # Elastic APM (ocr_common.web.apm): on when the server URL is set. The service name defaults to
+    # `nilam-ocr-kk-<service>` and the environment to `ENVIRONMENT`; the field names are comma-separated.
+    elastic_apm_server_url: str | None = None
+    elastic_apm_secret_token: str | None = None
+    elastic_apm_service_name: str | None = None
+    elastic_apm_environment: str | None = None
+    elastic_apm_sanitize_field_names: str = ""
+
     environment: Environment = "production"
     service_base_url: str | None = None
     port: int = 8000

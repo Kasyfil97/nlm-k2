@@ -9,3 +9,5 @@ asyncpg==0.31.0
 # A PDF is read by its page 1, rendered before detection (`kk_ocr`; `paddle`/`remote` leave it to the server).
 PyMuPDF==1.28.2
 elasticsearch==8.19.3
+# Elastic APM (ocr_common.web.apm), aktif bila ELASTIC_APM_SERVER_URL di-set.
+elastic-apm==6.26.2
