@@ -1,6 +1,6 @@
 -- nlm-k2: skema dan semua tabel milik repo ini, dalam satu berkas.
 --
--- Isinya sama dengan hasil `alembic upgrade head` (revisi 0004_ocr_extraction_naming): schema `nilam_ocr_kk`,
+-- Isinya sama dengan hasil `alembic upgrade head` (revisi 0005_drop_ocr_results_updated_at): schema `nilam_ocr_kk`,
 -- 18 tabel berawalan `nilam_` (tahap OCR `nilam_ocr_extraction_*` / structuring / scoring, outbox, putusan
 -- guardrails, hasil final orchestrator `nilam_ocr_results`, masing-masing juga versi `testing_` untuk
 -- endpoint -test), indeks, foreign key, dan tabel versi Alembic yang sudah
@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_results (
     errors JSONB,
     guardrails INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     ds TEXT NOT NULL,
     PRIMARY KEY (request_id)
 );
@@ -156,7 +155,6 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_ocr_results (
     errors JSONB,
     guardrails INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
     ds TEXT NOT NULL,
     PRIMARY KEY (request_id)
 );
@@ -281,7 +279,7 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_kk_alembic_version (
     CONSTRAINT nilam_ocr_kk_alembic_version_pkc PRIMARY KEY (version_num)
 );
 INSERT INTO nilam_ocr_kk.nilam_ocr_kk_alembic_version (version_num)
-SELECT '0004_ocr_extraction_naming'
+SELECT '0005_drop_ocr_results_updated_at'
 WHERE NOT EXISTS (SELECT 1 FROM nilam_ocr_kk.nilam_ocr_kk_alembic_version);
 
 COMMIT;

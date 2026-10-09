@@ -38,6 +38,7 @@ def test_a_rejection_is_kept_too(client, auth, final_results):
     assert final_results.saved[RID] == rejected.json()
     assert (rejected.status_code, rejected.json()["guardrails"]) == (400, 1)
 
+
 def test_the_get_overwrites_a_202_with_the_finished_answer(client, auth, stub_waiter, final_results):
     stub_waiter.outcome = WaitOutcome("STRUCTURING", "PROCESSING")
     assert _submit(client, auth).status_code == 202
@@ -99,7 +100,6 @@ async def test_one_row_per_request_the_latest_answer_winning(database):
     assert (row["request_id"], row["status_code"], row["status_desc"], row["message"]) == (RID, 200, "OK", "Completed")
     assert (row["data"], row["errors"], row["guardrails"]) == (COMPLETED["data"], None, 0)
     assert row["created_at"] == first["created_at"]
-    assert row["updated_at"] >= first["updated_at"]
     assert first["guardrails"] is None
     assert len(row["ds"]) == 8
 

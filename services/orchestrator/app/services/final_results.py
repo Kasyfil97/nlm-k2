@@ -1,7 +1,6 @@
 """Keeps the final answer of every request in `nilam_ocr_results`: the `/v1/extract-ocr` envelope as it was last
 given, one row per request_id. Every POST and GET that answers a request upserts its row, so a request answered
-`202` and later polled ends with its `200`/`400`/`422`; `created_at` stays the first answer's, `updated_at` is the
-last one's.
+`202` and later polled ends with its `200`/`400`/`422`; `created_at` stays the first answer's.
 
 Best-effort, as `guardrails_log`: a write that fails or takes longer than `timeout` is logged, and the request is
 answered all the same, because the entry point must not go down with its record.
@@ -54,7 +53,6 @@ class SqlFinalResults:
             "data": body.get("data"),
             "errors": body.get("errors"),
             "guardrails": body.get("guardrails"),
-            "updated_at": now,
         }
         async with get_engine(self._url).begin() as conn:
             insert = postgresql_insert if conn.dialect.name == "postgresql" else sqlite_insert

@@ -259,7 +259,7 @@ seperti `nilam_ocr_npwp` di nilam); sebelumnya di `public` tanpa awalan.
 | `nilam_scoring_jobs` / `nilam_scoring_results` | **nlm-k2** | scoring | idem |
 | `nilam_pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
 | `nilam_guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
-| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at`, `updated_at` (draf 16, migrasi `0004`) |
+| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `status_code`, `status_desc`, `message`, `data`, `errors`, `guardrails`, `created_at` (draf 16, migrasi `0004`) |
 | tabel outcome (`ORCHESTRATION_OUTCOME_TABLE`) | **Orkestrasi pusat** | ketiga tahap, dalam transaksi job | Orkestrasi pusat |
 
 Tabel outcome **milik mereka**, jadi kolomnya mereka yang menambahkan dan migrasi nlm-k2 tidak pernah
@@ -1511,7 +1511,7 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
    menjadi `nilam_ocr_extraction_jobs`/`nilam_ocr_extraction_results` (juga versi `nilam_testing_`).
 4. **Tabel baru `nilam_ocr_results`: hasil final OCR KK** (§2.6): orchestrator meng-upsert envelope
    `/v1/extract-ocr` per `request_id` (`status_code`, `status_desc`, `message`, `data`, `errors`,
-   `guardrails`, `created_at`, `updated_at`) setiap kali `POST`/`GET` menjawab. Best-effort.
+   `guardrails`, `created_at`) setiap kali `POST`/`GET` menjawab. Best-effort.
 5. **Guardrails tanpa ambang = lolos** (§3.1, §5.1, §5.2, §10, §13.3): tanpa `guardrails_confidence_threshold`
    (atau `threshold` di §5.1) dokumen lolos dengan `threshold_used: null`, dan `probability_bad` dikembalikan
    apa adanya. `GUARDRAILS_THRESHOLD`, `GUARDRAILS_THRESHOLD_URL` dan kawan-kawannya, serta ambang bawaan 0.5
