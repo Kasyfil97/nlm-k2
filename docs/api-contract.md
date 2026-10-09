@@ -1411,7 +1411,8 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/extraction/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
 | `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results` dan `nilam_ocr_results` (hasil final). Kosong = putusan dan hasil final tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
 | `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `nilam_guardrails_results` atau `nilam_ocr_results`; lewat = dicatat di log, request tetap dijawab |
-| `RATE_LIMIT_*`, `CORS_*`, `ELASTIC_APM_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
+| `RATE_LIMIT_*`, `CORS_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
+| `ELASTIC_APM_SERVER_URL` / `_SECRET_TOKEN` / `_ENVIRONMENT` / `_SERVICE_NAME` / `_SANITIZE_FIELD_NAMES` | tidak | kosong = APM mati | berlaku di kelima service (`ocr_common/web/apm.py`); nama service bawaan `nilam-ocr-kk-<service>`. Body, header, dan variabel lokal tidak pernah dikirim; `ELASTIC_APM_*` yang menyalakannya membuat service menolak start |
 
 Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat API, bukan lewat database.
 

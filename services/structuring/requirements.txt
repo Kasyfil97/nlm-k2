@@ -13,3 +13,5 @@ xgboost==3.0.5
 openpyxl==3.1.5
 rapidfuzz==3.14.3
 elasticsearch==8.19.3
+# Elastic APM (ocr_common.web.apm), aktif bila ELASTIC_APM_SERVER_URL di-set.
+elastic-apm==6.26.2
