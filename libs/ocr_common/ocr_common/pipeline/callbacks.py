@@ -57,8 +57,9 @@ class StageCallback(Protocol):
         """Direct mode: build and send the callback with retries; returns False when it was skipped or gave up."""
         ...
 
-    async def send(self, body: dict[str, Any]) -> None:
-        """Outbox mode: send an already-built callback body once; raises `ServiceError` on failure."""
+    async def send(self, body: dict[str, Any]) -> bool | None:
+        """Outbox mode: send an already-built callback body once; raises `ServiceError` on failure. True when
+        it was sent, False (or None) when there was nothing to send."""
         ...
 
     async def aclose(self) -> None:
@@ -158,12 +159,13 @@ class OrchestrationCallback:
             return False
         return True
 
-    async def send(self, body: dict[str, Any]) -> None:
-        """Send one callback body without retries (the outbox relay retries)."""
+    async def send(self, body: dict[str, Any]) -> bool:
+        """Send one callback body without retries (the outbox relay retries); False without ORCHESTRATION_URL."""
         if self._client is None:
             logger.info("callback skipped (ORCHESTRATION_URL not set): %s", body.get("request_id"))
-            return
+            return False
         await self._client.post_json(self._path, _without_answer(body))
+        return True
 
     async def aclose(self) -> None:
         """Close the HTTP client, if any."""
@@ -307,21 +309,85 @@ class ResultCallback:
             return False
         return True
 
-    async def send(self, body: dict[str, Any]) -> None:
-        """Outbox mode: turn a stored per-stage body into the result callback and send it once; nothing for
-        an event that does not end the request."""
+    async def send(self, body: dict[str, Any]) -> bool:
+        """Outbox mode: turn a stored per-stage body into the result callback and send it once; nothing (False)
+        for an event that does not end the request, or without ORCHESTRATION_URL."""
         result_body = result_callback_body(body)
         if result_body is None:
-            return
+            return False
         if self._client is None:
             logger.info("result callback skipped (ORCHESTRATION_URL not set): %s", body.get("request_id"))
-            return
+            return False
         await self._client.post_json(self._path, result_body)
+        return True
 
     async def aclose(self) -> None:
         """Close the HTTP client, if any."""
         if self._client is not None:
             await self._client.aclose()
+
+
+Delivered = Callable[[dict[str, Any]], Awaitable[None]]
+"""Called with the per-stage body of a callback that ended the request, once it reached the orchestrator."""
+
+
+class LoggedCallback:
+    """Wraps the callback to the orchestrator: every callback that ends a request (`result_callback_body` is not
+    None: completed, rejected or failed) and was actually sent (the orchestrator answered 2xx) is passed to
+    `delivered`, once, after the send; a skipped one (no ORCHESTRATION_URL) or a failed try is not. The same for
+    the direct mode (`notify`) and the outbox relay (`send`). Ported from the sibling pipeline."""
+
+    def __init__(self, inner: OrchestrationCallback | ResultCallback, delivered: Delivered):
+        self.inner = inner
+        self._delivered = delivered
+
+    async def notify(
+        self,
+        request_id: str,
+        stage: str,
+        status: str,
+        *,
+        result: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        error_code: str | None = None,
+        final: bool = False,
+        answer: dict[str, Any] | None = None,
+    ) -> bool:
+        """`inner.notify`, then `delivered` when it sent a callback that ends the request."""
+        sent = await self.inner.notify(
+            request_id,
+            stage,
+            status,
+            result=result,
+            error_message=error_message,
+            error_code=error_code,
+            final=final,
+            answer=answer,
+        )
+        body = stage_callback_body(
+            request_id,
+            stage,
+            status,
+            result=result,
+            error_message=error_message,
+            error_code=error_code,
+            final=final,
+            answer=answer,
+        )
+        if sent and result_callback_body(body) is not None:
+            await self._delivered(body)
+        return sent
+
+    async def send(self, body: dict[str, Any]) -> bool:
+        """`inner.send` (raises on failure, so the relay retries), then `delivered` when it sent a callback that
+        ends the request."""
+        sent = await self.inner.send(body)
+        if sent and result_callback_body(body) is not None:
+            await self._delivered(body)
+        return sent
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
 
 
 class NextStageClient:

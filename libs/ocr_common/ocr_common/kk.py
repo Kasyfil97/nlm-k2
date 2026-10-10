@@ -29,6 +29,9 @@ DOCUMENT_TYPE = "kk"
 # rule of the KK validity gate at structuring.
 REJECTED_CODE = "DOWNSTREAM_VALIDATION_ERROR"
 
+# `message` of the extract-ocr 200, also kept in `nilam_ocr_results` (the answer and the result callback's row).
+COMPLETED_MESSAGE = "OCR extraction completed successfully"
+
 # --- list A: internal names, used by structuring and scoring -------------------------------
 #
 # The nine fields structuring emits, scoring scores and the contract carries -- no more. The card has

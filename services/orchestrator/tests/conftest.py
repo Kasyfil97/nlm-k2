@@ -197,13 +197,13 @@ class RecordingGuardrailsLog:
 
 
 class RecordingFinalResults:
-    """Keeps the answers the service asks to save, instead of upserting ocr_results: the latest per request_id."""
+    """Keeps the answers the service asks to save, instead of inserting them in ocr_results, in order."""
 
     def __init__(self) -> None:
-        self.saved: dict[str, dict] = {}
+        self.saved: dict[str, list[dict]] = {}
 
     async def save(self, request_id, body) -> None:
-        self.saved[request_id] = body
+        self.saved.setdefault(request_id, []).append(body)
 
 
 class StubWaiter:

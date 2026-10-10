@@ -154,12 +154,16 @@ def _stage_error_response(code: int, description: str, service: str, message: st
     }
 
 
-async def _answer(service: ExtractOcrService, response: Response, body: dict[str, Any]) -> dict[str, Any]:
-    """Gives `body` as the answer, with its `status_code` as the HTTP status, and keeps it as the request's final
-    result (`nilam_ocr_results`). Errors raised out of the routes (a bad or too large file, 404) are answered by
-    the exception handlers and not kept: no envelope of this service exists for them."""
+async def _answer(
+    service: ExtractOcrService, response: Response, body: dict[str, Any], *, log: bool = True
+) -> dict[str, Any]:
+    """Gives `body` as the answer, with its `status_code` as the HTTP status, and logs it in `nilam_ocr_results`
+    when `log` (the answers to the POST; the GET that polls is not logged). Errors raised out of the routes (a bad
+    or too large file, 404) are answered by the exception handlers and not logged: no envelope of this service
+    exists for them."""
     response.status_code = body["status_code"]
-    await service.answered(body["request_id"], body)
+    if log:
+        await service.answered(body["request_id"], body)
     return body
 
 
@@ -508,7 +512,7 @@ async def get_extract_ocr(
     try:
         outcome = await service.status(request_id)
     except StageError as exc:
-        return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
+        return await _answer(service, response, _stage_error_body(exc, request_id=request_id), log=False)
     finally:
         reset_request_id(token)
     _, body = extract_response(
@@ -516,4 +520,4 @@ async def get_extract_ocr(
         request_id=request_id,
         column_thresholds=outcome.get("column_thresholds"),
     )
-    return await _answer(service, response, body)
+    return await _answer(service, response, body, log=False)
