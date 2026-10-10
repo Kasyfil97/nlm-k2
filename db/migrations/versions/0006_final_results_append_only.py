@@ -1,11 +1,11 @@
-"""`nilam_ocr_results` as in nilam-ocr-npwp: an append-only log of the answers, one row per answer
+"""`nilam_ocr_results` as in the sibling pipeline: an append-only log of the answers, one row per answer
 
 Revision ID: 0006_final_results_append_only
 Revises: 0005_final_results_shape
 Create Date: 2026-10-10
 
 Until now `nilam_ocr_results` (and `nilam_testing_ocr_results`) held one row per request_id, upserted by every POST
-and GET that answered it. It now has the shape of nilam-ocr-npwp's table: every answer to `POST /v1/extract-ocr` is
+and GET that answered it. It now has the sibling pipeline's shape: every answer to `POST /v1/extract-ocr` is
 another row, so is every result callback a stage delivered, and a trigger refuses UPDATE and DELETE (TRUNCATE stays
 possible). The rows already there are kept, each
 as the one answer it was. Changes of the columns:
