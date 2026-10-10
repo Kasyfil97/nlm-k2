@@ -921,9 +921,10 @@ components:
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
             threshold for every field; a key for a single field overrides it. A field without a threshold
-            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
-            a float from 0 to 1 (0 when there is no value). A JSON object string; kept with the job and
-            handed on'
+            (left out or null, the whole map omitted, or `all_field` null) gets the trust model''s probability
+            itself as `confidence`, a float from 0 to 1 (0 when there is no value); a field''s own null
+            wins over `all_field`. A number under an unknown key is refused. A JSON object string; kept
+            with the job and handed on'
           examples:
           - '{"no_kk": 0.9, "nik": 0.8}'
         file:

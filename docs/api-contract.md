@@ -285,8 +285,8 @@ request tetap dijawab.
 | `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
-| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. **Tidak dikirim = dokumen dianggap lolos** guardrails; `probability_bad` (float) tetap dihitung, diteruskan, dan dicatat (draf 16; tidak ada lagi ambang bawaan di service guardrails). |
-| `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. **Field yang tidak diberi ambang (atau parameter tidak dikirim): `confidence`-nya probabilitas trust model apa adanya (float), bukan 0/1** (draf 16). Tidak sah → 422 `INVALID_THRESHOLD` |
+| `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. **Tidak dikirim = dokumen dianggap lolos** guardrails; `probability_bad` (float) tetap dihitung, diteruskan, dan dicatat (draf 16; tidak ada lagi ambang bawaan di service guardrails), dan `guardrails` di jawaban berisi probabilitas diterima `1 - probability_bad` (draf 17). `{}`, string kosong, atau hanya nilai `null` (`{"acc_rej": null}`, `{"guardrails": null}`) sama dengan tidak dikirim. Angka di key selain `acc_rej` (mis. `{"guardrails": 0.8}`) → 422 `INVALID_THRESHOLD`. |
+| `column_confidence_threshold` | string (JSON object) | tidak | ambang per field, kunci = 9 nama kontrak (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), nilai 0–1; kunci `all_field` mengatur satu ambang untuk semua field, dan kunci field tertentu menimpanya (contoh `{"all_field": 0.8}`); ambang field anggota berlaku untuk semua anggota. **Field yang tidak diberi ambang (atau parameter tidak dikirim): `confidence`-nya probabilitas trust model apa adanya (float), bukan 0/1** (draf 16). Nilai `null` = field itu tanpa ambang (probabilitas); `null` milik field sendiri mengalahkan `all_field` (`{"all_field": 0.8, "nik": null}`: `nik` tetap probabilitas); `{"all_field": null}` tidak mengatur apa pun. Angka di key yang tidak dikenal tetap 422, supaya ambang tidak hilang diam-diam. Tidak sah → 422 `INVALID_THRESHOLD` |
 
 `file` dan `file_url` **tepat satu**, tidak boleh dua-duanya dan tidak boleh kosong keduanya.
 
@@ -333,11 +333,11 @@ kode HTTP (juga di `status_code`) dan `errors`, bukan pada `message`.
 
 | Keadaan | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |
 |---|---|---|---|---|---|
-| Selesai | 200 | 9 field | `0` | null | null |
+| Selesai | 200 | 9 field | `0`, atau probabilitas diterima tanpa ambang guardrails | null | null |
 | Masih berjalan | 202 | null | null | null | null |
 | Ditolak model guardrails | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
 | Ditolak aturan structuring | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
-| Satu tahap gagal | 422 | null | `0` | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | tahap yang gagal |
+| Satu tahap gagal | 422 | null | seperti pada 200 | `OCR_FAILED` / `STRUCTURING_FAILED` / `SCORING_FAILED` | tahap yang gagal |
 | Ditolak sebelum dinilai | 400 / 413 / 422 | null | null | kode masing-masing (2.4) | `orchestrator` |
 | Service di belakang tak terjangkau | 503 / 504 | null | null | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | service itu |
 
@@ -345,10 +345,14 @@ kode HTTP (juga di `status_code`) dan `errors`, bukan pada `message`.
 ditolak. `job_status`, `document_type`, dan `params` tidak lagi ada di jawaban (draf 15, seperti nilam
 1 Okt 2026).
 
-**`guardrails`** — bukan skor, melainkan penanda tiga nilai:
+**`guardrails`** — dengan ambang guardrails, penanda tiga nilai; tanpa ambang, skor:
 
-- `0` — dokumen lolos penyaringan dan pipeline berjalan.
-- `1` — dokumen **ditolak**, oleh model guardrails atau oleh aturan structuring.
+- `0` — dokumen lolos penyaringan (dengan `guardrails_confidence_threshold`) dan pipeline berjalan.
+- float 0–1 — request **tanpa** ambang guardrails (tidak dikirim, `{}`, atau hanya `null`): dokumen lolos apa
+  pun kata modelnya, dan nilainya probabilitas diterima `1 - probability_bad` (4 desimal). Callback hasil dan
+  `GET` membawa nilai yang sama (disimpan bersama job tahap pertama). Draf 17.
+- `1` — dokumen **ditolak**, oleh model guardrails (dengan ambang, atau gambar yang tidak bisa dinilai) atau
+  oleh aturan structuring, juga tanpa ambang guardrails.
 - `null` — belum diketahui (202), atau request ditolak sebelum penyaringan sempat jalan.
 
 Dengan `pipeline_name_sequence` tanpa `guardrails` nilainya tetap `0` saat berhasil, walau model tidak
@@ -529,11 +533,11 @@ curl http://nlm-k2.nlm-k2.svc.cluster.local:8040/v1/extract-ocr/REQ_001 \
 
 | Keadaan | HTTP | isi | `guardrails` | `errors` | `pipeline_last_stage` |
 |---|---|---|---|---|---|
-| selesai | 200 | `data` | `0` | null | null |
+| selesai | 200 | `data` | `0`, atau probabilitas diterima tanpa ambang guardrails | null | null |
 | masih berjalan | 202 | – | null | null | null |
 | ditolak model guardrails (dari `nilam_guardrails_results`) | 400 | – | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `guardrails` |
 | ditolak aturan structuring | 400 | – | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring` |
-| satu tahap gagal | 422 | – | `0` | `<TAHAP>_FAILED` | tahap yang gagal |
+| satu tahap gagal | 422 | – | seperti pada 200 | `<TAHAP>_FAILED` | tahap yang gagal |
 | tidak dikenal | 404 | – | – | `REQUEST_ID_NOT_FOUND` | `orchestrator` |
 | sebuah tahap tak terbaca | 503 / 504 | – | – | `DOWNSTREAM_UNAVAILABLE` / `DOWNSTREAM_TIMEOUT` | tahap itu |
 
@@ -1510,6 +1514,14 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
    terakhir. Trigger menolak UPDATE dan DELETE.
 2. **Kolom `nilam_ocr_results`**: `request_id` tidak lagi unik (berindeks), `status_desc` NOT NULL, `errors`
    TEXT (dulu JSONB), `guardrails` DOUBLE PRECISION (dulu INTEGER).
+3. **`null` berarti tanpa ambang** (§3.1, aturan Orkestrasi pusat 9 Okt 2026). `guardrails_confidence_threshold`:
+   `{}`, `{"acc_rej": null}`, dan `{"guardrails": null}` sama dengan tidak dikirim (dulu 422); angka di key selain
+   `acc_rej` tetap 422. `column_confidence_threshold`: `{"all_field": null}` dan `{"<field>": null}` berarti field
+   itu tanpa ambang (dulu 422); `null` milik field sendiri mengalahkan `all_field`; angka di key tak dikenal tetap
+   422.
+4. **`guardrails` tanpa ambang = probabilitas diterima** (§3.2): request tanpa ambang guardrails dijawab dengan
+   `guardrails` = `1 - probability_bad` (float, 4 desimal), bukan `0`. Sama di 200, 422, callback hasil, `GET`,
+   dan `nilam_ocr_results`. Penolakan tetap `1`.
 
 ### draf 16 — 7 Oktober 2026
 

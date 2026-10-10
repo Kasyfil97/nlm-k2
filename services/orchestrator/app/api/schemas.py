@@ -88,12 +88,14 @@ class ExtractOcrResponse(BaseModel):
         ),
         examples=["structuring"],
     )
-    guardrails: Literal[0, 1] | None = Field(
+    guardrails: int | float | None = Field(
         None,
         description=(
-            "0: the document passed the guardrails model (and the pipeline ran); 1: it was rejected by the "
-            "guardrails model or by the KK validity gate. Null on 202, and when the request was refused before "
-            "the check"
+            "With `guardrails_confidence_threshold`: 0 the document passed the guardrails model (and the pipeline "
+            "ran). Without it (left out, `{}`, or only null values) the document is accepted whatever the model "
+            "says, and this is the model's accepted probability, `1 - probability_bad`, a float from 0 to 1 "
+            "(4 decimals). 1: rejected, by the guardrails model (with a threshold, or an image it could not "
+            "assess) or by the KK validity gate. Null on 202, and when the request was refused before the check"
         ),
-        examples=[0],
+        examples=[0, 0.9713],
     )

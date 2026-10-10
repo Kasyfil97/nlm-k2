@@ -191,6 +191,25 @@ async def test_the_stage_callback_never_sends_the_answer():
     assert "answer" not in json.loads(request.content)
 
 
+def test_without_a_guardrails_threshold_the_callback_carries_the_accepted_probability():
+    stage_body = stage_callback_body(
+        RID, "SCORING", "DONE", result=_final(), final=True, answer=ANSWER, guardrails=0.9713
+    )
+
+    assert (result_callback_body(stage_body) or {})["guardrails"] == 0.9713
+
+
+async def test_the_stage_callback_never_sends_the_guardrails_kept_for_the_result_callback():
+    seen: list[httpx.Request] = []
+    callback = OrchestrationCallback(_recording_client(seen), "/v1/callbacks/stage")
+
+    body = stage_callback_body(RID, "SCORING", "DONE", result={"x": 1}, final=True, answer=ANSWER, guardrails=0.97)
+    await callback.send(body)
+
+    [request] = seen
+    assert "guardrails" not in json.loads(request.content)
+
+
 def _recording_client(seen: list[httpx.Request], statuses: list[tuple[int, dict]] | None = None) -> RemoteModelClient:
     answers = list(statuses or [])
 

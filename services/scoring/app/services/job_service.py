@@ -4,7 +4,7 @@ from typing import Any, cast
 from starlette.concurrency import run_in_threadpool
 
 from ocr_common.errors import UnprocessableEntity
-from ocr_common.kk import DOCUMENT_TYPE, contract_data, contract_fields, final_result
+from ocr_common.kk import DOCUMENT_TYPE, contract_data, contract_fields, final_result, guardrails_value
 from ocr_common.pipeline import StagePipeline, Work, stored
 from ocr_common.pipeline.results import StageResults, load_upstream
 from ocr_common.pipeline.tables import OCR_STAGE_TABLE_PREFIX
@@ -54,6 +54,7 @@ class ScoringJobService:
             work,
             callback_result=final,
             outcome_data=self._outcome_data(chain_structuring, column_thresholds),
+            guardrails=guardrails_value(guardrails),
             input={
                 "document_type": document_type,
                 "guardrails": guardrails,
@@ -75,6 +76,7 @@ class ScoringJobService:
             work,
             callback_result=final,
             outcome_data=self._outcome_data(chain_structuring, columns),
+            guardrails=guardrails_value(input.get("guardrails")),
         )
 
     async def get(self, request_id: str) -> dict[str, Any]:

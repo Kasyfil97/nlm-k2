@@ -145,6 +145,7 @@ class ExtractOcrService:
             "reason": None,
             **_pipeline(DOCUMENT_TYPE, None, outcome),
             "column_thresholds": outcome.column_thresholds,
+            "guardrails": outcome.guardrails,
         }
 
     async def _judged_only(self, request_id: str) -> dict[str, Any] | None:
