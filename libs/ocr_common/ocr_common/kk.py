@@ -32,6 +32,35 @@ REJECTED_CODE = "DOWNSTREAM_VALIDATION_ERROR"
 # `message` of the extract-ocr 200, also kept in `nilam_ocr_results` (the answer and the result callback's row).
 COMPLETED_MESSAGE = "OCR extraction completed successfully"
 
+# `guardrails` of an answer: 0 the document passed the guardrails model under the central orchestrator's threshold,
+# 1 it was rejected (by that model, or by the KK validity gate). Without a threshold it is a float instead, see
+# `guardrails_value`.
+GUARDRAILS_PASSED = 0
+GUARDRAILS_REJECTED = 1
+# Decimals of the accepted probability in an answer, like the guardrails report's own numbers.
+SCORE_DECIMALS = 4
+
+
+def guardrails_value(report: Mapping[str, Any] | None) -> int | float | None:
+    """`guardrails` of an answer for this guardrails report (central orchestrator rule of 9 Oct 2026): a request
+    sent without a guardrails threshold is accepted whatever the model says, and its `guardrails` is the model's
+    accepted probability, `1 - probability_bad` (a float, 4 decimals). With a threshold: 0 passed, 1 rejected.
+    None without a report (guardrails did not run).
+
+    "Without a threshold" is read from the report itself: the guardrails service echoes `threshold_used: null`
+    when nothing was compared. A document it could not assess has no probability and stays 1 (rejected)."""
+    if not report:
+        return None
+    if not report.get("passed", True):
+        return GUARDRAILS_REJECTED
+    document = report.get("document") or {}
+    probability_bad = document.get("probability_bad")
+    numeric = isinstance(probability_bad, int | float) and not isinstance(probability_bad, bool)
+    if document.get("threshold_used") is None and numeric:
+        return round(1.0 - float(probability_bad), SCORE_DECIMALS)
+    return GUARDRAILS_PASSED
+
+
 # --- list A: internal names, used by structuring and scoring -------------------------------
 #
 # The nine fields structuring emits, scoring scores and the contract carries -- no more. The card has
@@ -277,20 +306,29 @@ COLUMN_THRESHOLD_DESCRIPTION = (
     "`nama_kepala_keluarga`, and the seven member fields (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, "
     "`status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`), a member field's threshold applying to every member. "
     "`all_field` sets one threshold for every field; a key for a single field overrides it. "
-    "A field without a threshold (left out, or the whole map omitted) gets the trust model's probability itself "
-    "as `confidence`, a float from 0 to 1 (0 when there is no value)"
+    "A field without a threshold (left out or null, the whole map omitted, or `all_field` null) gets the trust "
+    "model's probability itself as `confidence`, a float from 0 to 1 (0 when there is no value); a field's own "
+    "null wins over `all_field`. A number under an unknown key is refused"
 )
 
 
 def parse_column_thresholds(value: Any) -> dict[str, float] | None:
     """`column_confidence_threshold` checked: None, or an object whose keys are `CONTRACT_FIELDS` and whose
-    values are numbers from 0 to 1. Raises ValueError with the reason otherwise. Ported from nilam."""
+    values are numbers from 0 to 1. Raises ValueError with the reason otherwise. Ported from nilam.
+
+    A null value is no threshold (central orchestrator rule of 9 Oct 2026): the field keeps the trust model's
+    probability as its `confidence`, as if it were left out. A field's own null wins over `all_field`
+    (`{"all_field": 0.8, "nik": null}`: `nik` keeps its probability); a null `all_field` sets nothing; a null
+    under an unknown key is ignored. A number under an unknown key is still refused, so a threshold the central
+    orchestrator thinks it applied is never dropped silently."""
     if value is None:
         return None
     if not isinstance(value, dict):
         raise ValueError(
             'column_confidence_threshold must be a JSON object, e.g. {"all_field": 0.8} or {"no_kk": 0.9, "nik": 0.8}'
         )
+    without = {name for name, threshold in value.items() if threshold is None and name in CONTRACT_FIELDS}
+    value = {name: threshold for name, threshold in value.items() if threshold is not None}
     unknown = sorted(set(value) - set(CONTRACT_FIELDS) - {ALL_FIELD})
     if unknown:
         raise ValueError(
@@ -307,6 +345,8 @@ def parse_column_thresholds(value: Any) -> dict[str, float] | None:
     if ALL_FIELD in thresholds:
         every = thresholds.pop(ALL_FIELD)
         thresholds = {**dict.fromkeys(CONTRACT_FIELDS, every), **thresholds}
+    for name in without:
+        thresholds.pop(name, None)
     return thresholds or None
 
 

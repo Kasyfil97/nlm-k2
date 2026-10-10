@@ -97,11 +97,12 @@ _FAILED = extract_body(
 _CONTRACT_TABLE = (
     "| Outcome | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |\n"
     "|---|---|---|---|---|---|\n"
-    "| Finished | 200 | the fields | `0` | null | null |\n"
+    "| Finished | 200 | the fields | `0`, or the accepted probability without a guardrails threshold "
+    "| null | null |\n"
     "| Still running | 202 | null | null | null | null |\n"
     f"| Rejected by the guardrails model | 400 | null | `1` | `{REJECTED_CODE}` | `guardrails` |\n"
     f"| Rejected by the KK validity gate | 400 | null | `1` | `{REJECTED_CODE}` | `structuring` |\n"
-    "| A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or "
+    "| A stage failed | 422 | null | as on 200 | `OCR_FAILED`, `STRUCTURING_FAILED` or "
     "`SCORING_FAILED` | the service that failed |\n\n"
     "The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running, "
     "4xx / 5xx failed or refused.\n\n"
@@ -173,8 +174,12 @@ class _InvalidThreshold(Exception):
 
 def _parse_guardrails_threshold(value: str | None) -> GuardrailsThreshold | None:
     """`guardrails_confidence_threshold`, a JSON object `{"acc_rej": 0.8}` with the value between 0 and 1.
-    Always applies to the `rejected` side. None (nothing sent) leaves the guardrails service's own threshold in
-    force. Raises `_InvalidThreshold`."""
+    Always applies to the `rejected` side. None (nothing sent, `{}`, or only null values): no threshold, so the
+    document is accepted whatever the model says. Raises `_InvalidThreshold`.
+
+    A null value is no threshold, whatever its key (central orchestrator rule of 9 Oct 2026): it sends
+    `{"guardrails": null}` when its client gave none. A number under any key but `acc_rej` is still refused, so a
+    threshold the central orchestrator thinks it applied is never dropped silently."""
     value = (value or "").strip()
     if not value:
         return None
@@ -184,7 +189,12 @@ def _parse_guardrails_threshold(value: str | None) -> GuardrailsThreshold | None
         parsed = json.loads(value)
     except ValueError:
         parsed = None
-    if not isinstance(parsed, dict) or set(parsed) != {"acc_rej"}:
+    if not isinstance(parsed, dict):
+        raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
+    parsed = {name: threshold for name, threshold in parsed.items() if threshold is not None}
+    if not parsed:
+        return None
+    if set(parsed) != {"acc_rej"}:
         raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
     raw: Any = parsed["acc_rej"]
     try:
@@ -236,9 +246,8 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
         "stay readable through `GET /v1/structuring/jobs/{request_id}`. Each is "
         "`{value, confidence}`, as in nilam: `value` is empty when not found -- never null -- and `confidence` "
         "is `1` when the trust model's probability that the value is exactly correct reaches the field's "
-        "threshold, else `0`. The threshold is `column_confidence_threshold` for that field when sent, else the "
-        "trust model's own (the point above which every held-out sample of the field was correct); `no_kk` has "
-        f"none, so it is `0` unless the request gives it one. An unreadable threshold is `422` "
+        "threshold in `column_confidence_threshold` (its own key, or `all_field`), else `0`; a field without one "
+        f"(left out or null) gets that probability itself, a float. An unreadable threshold is `422` "
         f"`{INVALID_THRESHOLD_CODE}` and nothing runs.\n\n"
         "**Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring. "
         "Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member with "
@@ -351,8 +360,10 @@ async def extract_ocr(
         description=(
             'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}` with the value '
             "between 0 and 1 (exclusive). Applies to the rejected side. "
-            "Omitted: no threshold applies -- the document passes guardrails and its `probability_bad` travels "
-            "on to scoring"
+            'Omitted, empty, `{}`, or only null values (`{"acc_rej": null}`, `{"guardrails": null}`): no '
+            "threshold applies -- the document passes guardrails, the answer's `guardrails` is the accepted "
+            "probability (`1 - probability_bad`), and `probability_bad` travels on to scoring. A number under any "
+            "key but `acc_rej` answers 422"
         ),
         examples=['{"acc_rej": 0.8}'],
     ),

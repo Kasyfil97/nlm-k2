@@ -68,6 +68,7 @@ def callback_message(
     error_code: str | None = None,
     final: bool = False,
     answer: dict[str, Any] | None = None,
+    guardrails: int | float | None = None,
 ) -> OutboxMessage:
     """The callback body for `(stage, status)` of `request_id`, as a message."""
     return OutboxMessage(
@@ -81,6 +82,7 @@ def callback_message(
             error_code=error_code,
             final=final,
             answer=answer,
+            guardrails=guardrails,
         ),
     )
 

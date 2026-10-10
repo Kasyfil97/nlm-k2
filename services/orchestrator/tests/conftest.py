@@ -34,6 +34,12 @@ ACCEPTED_REPORT: dict[str, Any] = {
     "reason": None,
     "document": {"verdict": "accepted", "confidence": 0.9821, "probability_bad": 0.0179, "threshold_used": 0.5},
 }
+# What guardrails answers when the request sent no threshold: nothing compared, the document accepted.
+AUTO_ACCEPTED_REPORT: dict[str, Any] = {
+    "passed": True,
+    "reason": None,
+    "document": {"verdict": "accepted", "confidence": 0.9713, "probability_bad": 0.0287, "threshold_used": None},
+}
 REJECTED_REPORT: dict[str, Any] = {
     "passed": False,
     # Kalimat ini persis yang dikembalikan guardrails (`REASON_REJECT`, §3.5). Sebelumnya di sini
@@ -125,6 +131,7 @@ class StubGuardrails:
         self.checked: list[dict] = []
         self.error: Exception | None = None
         self.thresholds: list = []
+        self.accepted: dict[str, Any] = ACCEPTED_REPORT  # the report of a document it accepts
 
     async def check(self, request_id, filename, content_type, content, threshold=None) -> dict:
         self.checked.append({"request_id": request_id, "filename": filename, "content_type": content_type})
@@ -132,7 +139,7 @@ class StubGuardrails:
         if self.error is not None:
             raise self.error
         rejected = any(word in filename for word in ("blur", "invalid", "notkk"))
-        return REJECTED_REPORT if rejected else ACCEPTED_REPORT
+        return REJECTED_REPORT if rejected else self.accepted
 
     async def aclose(self) -> None:
         pass

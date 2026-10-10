@@ -1,7 +1,14 @@
 from collections.abc import Mapping
 from typing import Any
 
-from ocr_common.kk import COMPLETED_MESSAGE, REJECTED_CODE, contract_data, contract_fields
+from ocr_common.kk import (
+    COMPLETED_MESSAGE,
+    GUARDRAILS_REJECTED,
+    REJECTED_CODE,
+    contract_data,
+    contract_fields,
+    guardrails_value,
+)
 from ocr_common.pipeline import EXTRACTION, GUARDRAILS, SERVICE_OF_STAGE, STAGE_SCORING, STATUS_DONE, STATUS_FAILED
 from ocr_common.web.envelope import envelope
 
@@ -17,7 +24,7 @@ def extract_body(
     request_id: str | None,
     data: Mapping[str, Any] | None = None,
     errors: str | None = None,
-    guardrails: int | None = None,
+    guardrails: int | float | None = None,
     pipeline_last_stage: str | None = None,
 ) -> dict[str, Any]:
     """The extract-ocr answer: the standard envelope plus `pipeline_last_stage` and `guardrails`. The HTTP status
@@ -40,6 +47,16 @@ def last_stage(outcome: dict[str, Any]) -> str | None:
     return EXTRACTION if outcome.get("job") else None
 
 
+def answer_guardrails(outcome: dict[str, Any]) -> int | float:
+    """`guardrails` of a request that passed: the one kept with its first stage's job (a GET), else the one of the
+    guardrails report the outcome carries (a POST); 0 when guardrails did not run."""
+    kept = outcome.get("guardrails")
+    if isinstance(kept, int | float) and not isinstance(kept, bool):
+        return kept
+    value = guardrails_value(outcome)
+    return 0 if value is None else value
+
+
 def extract_response(
     outcome: dict[str, Any],
     *,
@@ -47,14 +64,15 @@ def extract_response(
     column_thresholds: Mapping[str, float] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """`column_thresholds` are the central orchestrator's per-field ones; they only matter for a scoring result
-    stored without `decisions` (see `_contract_data`)."""
+    stored without `decisions` (see `_contract_data`). A request without a guardrails threshold passed whatever the
+    model said, and its `guardrails` is the accepted probability (`answer_guardrails`)."""
     stage_name = last_stage(outcome)
     if not outcome["passed"]:
         body = extract_body(
             400,
             outcome["reason"],
             errors=REJECTED_CODE,
-            guardrails=1,
+            guardrails=GUARDRAILS_REJECTED,
             request_id=request_id,
             pipeline_last_stage=stage_name,
         )
@@ -67,7 +85,7 @@ def extract_response(
             400,
             pipeline["error_message"],
             errors=REJECTED_CODE,
-            guardrails=1,
+            guardrails=GUARDRAILS_REJECTED,
             request_id=request_id,
             pipeline_last_stage=stage_name,
         )
@@ -80,7 +98,9 @@ def extract_response(
             data = _contract_data(final, column_thresholds)
         else:
             data = final
-        return 200, extract_body(200, COMPLETED_MESSAGE, data=data, guardrails=0, request_id=request_id)
+        return 200, extract_body(
+            200, COMPLETED_MESSAGE, data=data, guardrails=answer_guardrails(outcome), request_id=request_id
+        )
     if pipeline.get("status") == STATUS_FAILED:
         stage = pipeline["stage"]
         message = pipeline.get("error_message") or f"{stage} stage failed"
@@ -88,7 +108,7 @@ def extract_response(
             422,
             message,
             errors=f"{stage}_FAILED",
-            guardrails=0,
+            guardrails=answer_guardrails(outcome),
             request_id=request_id,
             pipeline_last_stage=stage_name,
         )

@@ -37,8 +37,9 @@ curl -X POST http://nlm-k2:8040/v1/extract-ocr \
   -F 'column_confidence_threshold={"all_field": 0.9592}'   # opsional
 ```
 
-Kedua ambang opsional. Tanpa `guardrails_confidence_threshold`, guardrails **meloloskan** dokumen dan hanya
-mengembalikan `probability_bad`-nya. Tanpa `column_confidence_threshold` (atau untuk field yang tidak
+Kedua ambang opsional. Tanpa `guardrails_confidence_threshold` (atau `{}`, atau hanya `null`), guardrails
+**meloloskan** dokumen dan hanya mengembalikan `probability_bad`-nya; `guardrails` di jawaban lalu berisi
+probabilitas diterima `1 - probability_bad`. Tanpa `column_confidence_threshold` (atau untuk field yang tidak
 disebutnya), `confidence` setiap field adalah **probabilitas trust model apa adanya** (float), bukan 0/1.
 
 Di orchestrator: tipe dan ukuran file dicek (JPEG/PNG/PDF, maks. 5 MB, PDF maks. 2 halaman), lalu
