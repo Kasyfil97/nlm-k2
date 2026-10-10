@@ -126,8 +126,8 @@ class ExtractOcrService:
         return {**verdict, "job": job, **_pipeline(document_type, report, outcome)}
 
     async def answered(self, request_id: str, body: dict[str, Any]) -> None:
-        """Keeps `body`, the extract-ocr envelope just given for `request_id`, as its final result
-        (`nilam_ocr_results`, upserted: the latest answer wins). Best-effort."""
+        """Appends `body`, the extract-ocr envelope just given for `request_id`, to `nilam_ocr_results`
+        (append-only: one row per answer). Best-effort."""
         await self._results.save(request_id, body)
 
     async def status(self, request_id: str) -> dict[str, Any]:

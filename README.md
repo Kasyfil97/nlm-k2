@@ -63,7 +63,7 @@ ditulis sebelum pasangan itu ada, saat structuring masih stub.
   `ORCHESTRATION_CALLBACK_MAX_AGE_SECONDS` (600), saklar `ORCHESTRATION_CALLBACK_ENABLED`.
 - Endpoint QC satu tahap: `POST /v1/structuring-direct` dan `POST /v1/scoring-direct`.
 - Semua tabel di schema `nilam_ocr_kk` dengan awalan `nilam_` (migrasi `0003`, lihat [`db/README.md`](db/README.md)).
-- Tahap OCR menyimpan di `nilam_ocr_extraction_jobs`/`_results`; `nilam_ocr_results` menyimpan hasil final
+- Tahap OCR menyimpan di `nilam_ocr_extraction_jobs`/`_results`; `nilam_ocr_results` menyimpan log jawaban (append-only)
   `extract-ocr` per `request_id` dari orchestrator (migrasi `0004`).
 - Ambang hanya dari request: tanpa `guardrails_confidence_threshold` dokumen lolos guardrails (dengan
   `probability_bad`-nya); field tanpa `column_confidence_threshold` mendapat `confidence` berupa probabilitas

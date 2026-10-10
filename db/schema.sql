@@ -1,8 +1,8 @@
 -- nlm-k2: skema dan semua tabel milik repo ini, dalam satu berkas.
 --
--- Isinya sama dengan hasil `alembic upgrade head` (revisi 0005_final_results_shape): schema `nilam_ocr_kk`,
+-- Isinya sama dengan hasil `alembic upgrade head` (revisi 0006_final_results_append_only): schema `nilam_ocr_kk`,
 -- 18 tabel berawalan `nilam_` (tahap OCR `nilam_ocr_extraction_*` / structuring / scoring, outbox, putusan
--- guardrails, hasil final orchestrator `nilam_ocr_results`, masing-masing juga versi `testing_` untuk
+-- guardrails, log jawaban append-only `nilam_ocr_results`, masing-masing juga versi `testing_` untuk
 -- endpoint -test), indeks, foreign key, dan tabel versi Alembic yang sudah
 -- dicap di head, supaya `alembic upgrade head` berikutnya hanya menjalankan migrasi yang lebih baru.
 --
@@ -55,16 +55,16 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_results (
     id BIGSERIAL NOT NULL,
     request_id TEXT NOT NULL,
     status_code INTEGER NOT NULL,
-    status_desc TEXT,
+    status_desc TEXT NOT NULL,
     message TEXT,
     data JSONB,
-    errors JSONB,
+    errors TEXT,
     pipeline_last_stage TEXT,
-    guardrails INTEGER,
+    guardrails DOUBLE PRECISION,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT uq_nilam_ocr_results_request_id UNIQUE (request_id)
+    PRIMARY KEY (id)
 );
+CREATE INDEX IF NOT EXISTS idx_nilam_ocr_results_request_id ON nilam_ocr_kk.nilam_ocr_results (request_id);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_pipeline_outbox (
     id BIGSERIAL NOT NULL,
@@ -151,16 +151,16 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_ocr_results (
     id BIGSERIAL NOT NULL,
     request_id TEXT NOT NULL,
     status_code INTEGER NOT NULL,
-    status_desc TEXT,
+    status_desc TEXT NOT NULL,
     message TEXT,
     data JSONB,
-    errors JSONB,
+    errors TEXT,
     pipeline_last_stage TEXT,
-    guardrails INTEGER,
+    guardrails DOUBLE PRECISION,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT uq_nilam_testing_ocr_results_request_id UNIQUE (request_id)
+    PRIMARY KEY (id)
 );
+CREATE INDEX IF NOT EXISTS idx_nilam_testing_ocr_results_request_id ON nilam_ocr_kk.nilam_testing_ocr_results (request_id);
 
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_pipeline_outbox (
     id BIGSERIAL NOT NULL,
@@ -275,13 +275,23 @@ CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_testing_structuring_results (
 );
 CREATE INDEX IF NOT EXISTS idx_nilam_testing_structuring_results_ds ON nilam_ocr_kk.nilam_testing_structuring_results (ds);
 
+-- Log jawaban `nilam_ocr_results` append-only: UPDATE dan DELETE ditolak (TRUNCATE tetap bisa).
+CREATE OR REPLACE FUNCTION nilam_ocr_kk.nilam_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION '% is append-only: % is not allowed', TG_TABLE_NAME, TG_OP; END $$;
+DROP TRIGGER IF EXISTS nilam_ocr_results_append_only ON nilam_ocr_kk.nilam_ocr_results;
+CREATE TRIGGER nilam_ocr_results_append_only BEFORE UPDATE OR DELETE ON nilam_ocr_kk.nilam_ocr_results
+    FOR EACH ROW EXECUTE FUNCTION nilam_ocr_kk.nilam_append_only();
+DROP TRIGGER IF EXISTS nilam_testing_ocr_results_append_only ON nilam_ocr_kk.nilam_testing_ocr_results;
+CREATE TRIGGER nilam_testing_ocr_results_append_only BEFORE UPDATE OR DELETE ON nilam_ocr_kk.nilam_testing_ocr_results
+    FOR EACH ROW EXECUTE FUNCTION nilam_ocr_kk.nilam_append_only();
+
 -- Tabel versi Alembic (env.py: version_table_schema = nilam_ocr_kk), dicap di head.
 CREATE TABLE IF NOT EXISTS nilam_ocr_kk.nilam_ocr_kk_alembic_version (
     version_num VARCHAR(32) NOT NULL,
     CONSTRAINT nilam_ocr_kk_alembic_version_pkc PRIMARY KEY (version_num)
 );
 INSERT INTO nilam_ocr_kk.nilam_ocr_kk_alembic_version (version_num)
-SELECT '0005_final_results_shape'
+SELECT '0006_final_results_append_only'
 WHERE NOT EXISTS (SELECT 1 FROM nilam_ocr_kk.nilam_ocr_kk_alembic_version);
 
 COMMIT;

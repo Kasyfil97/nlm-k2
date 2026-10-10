@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 16, 7 Oktober 2026.
+Status: draf 17, 10 Oktober 2026.
 
 ---
 
@@ -259,7 +259,7 @@ seperti `nilam_ocr_npwp` di nilam); sebelumnya di `public` tanpa awalan.
 | `nilam_scoring_jobs` / `nilam_scoring_results` | **nlm-k2** | scoring | idem |
 | `nilam_pipeline_outbox` | **nlm-k2** | ketiga tahap (dalam transaksi job) dan relay | relay tiap service, `GET /v1/<tahap>/outbox` |
 | `nilam_guardrails_results` | **nlm-k2** | orchestrator, satu baris per putusan guardrails (best-effort) | orchestrator, untuk `GET` request yang tidak pernah sampai tahap (4) |
-| `nilam_ocr_results` | **nlm-k2** | orchestrator, upsert per `request_id` setiap kali `POST`/`GET /v1/extract-ocr` menjawab (best-effort) | siapa pun yang butuh jawaban final: `id`, `request_id` (unik), `status_code`, `status_desc`, `message`, `data`, `errors`, `pipeline_last_stage`, `guardrails`, `created_at` (draf 16, migrasi `0004`; bentuk envelope sejak `0005`) |
+| `nilam_ocr_results` | **nlm-k2** | orchestrator, satu baris baru setiap kali `POST /v1/extract-ocr` menjawab; tahap yang mengakhiri request, satu baris saat callback hasilnya terkirim ke Orkestrasi pusat. Append-only, trigger menolak UPDATE/DELETE (best-effort) | siapa pun yang butuh jawaban: `id`, `request_id` (berindeks, tidak unik; `id` tertinggi = jawaban terakhir), `status_code`, `status_desc`, `message`, `data`, `errors` (teks), `pipeline_last_stage`, `guardrails` (float), `created_at` (draf 16, migrasi `0004`; bentuk envelope `0005`; log append-only sejak draf 17, migrasi `0006`) |
 | tabel outcome (`ORCHESTRATION_OUTCOME_TABLE`) | **Orkestrasi pusat** | ketiga tahap, dalam transaksi job | Orkestrasi pusat |
 
 Tabel outcome **milik mereka**, jadi kolomnya mereka yang menambahkan dan migrasi nlm-k2 tidak pernah
@@ -1409,7 +1409,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `PIPELINE_WAIT_SECONDS` | tidak | `30` | anggaran total sejak request diterima; `0` = selalu 202 |
 | `PIPELINE_POLL_INTERVAL_SECONDS` | tidak | `0.5` | jeda antar polling |
 | `PIPELINE_RETRY_ATTEMPTS` / `PIPELINE_RETRY_DELAY_SECONDS` | tidak | `3` / `0.5` | retry `POST /v1/extraction/jobs`, hanya 5xx / tidak terjangkau, backoff ×2 |
-| `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results` dan `nilam_ocr_results` (hasil final). Kosong = putusan dan hasil final tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
+| `DATABASE_URL` | tidak | kosong | hanya untuk `nilam_guardrails_results` dan `nilam_ocr_results` (log jawaban). Kosong = putusan dan jawaban tidak dicatat, dan `GET` request yang tidak pernah sampai tahap menjadi 404 |
 | `GUARDRAILS_LOG_TIMEOUT_SECONDS` | tidak | `2` | batas satu tulis/baca `nilam_guardrails_results` atau `nilam_ocr_results`; lewat = dicatat di log, request tetap dijawab |
 | `RATE_LIMIT_*`, `CORS_*` | tidak | – | dipertahankan dari `K2Orchestrator` |
 | `ELASTIC_APM_SERVER_URL` / `_SECRET_TOKEN` / `_ENVIRONMENT` / `_SERVICE_NAME` / `_SANITIZE_FIELD_NAMES` | tidak | kosong = APM mati | berlaku di kelima service (`ocr_common/web/apm.py`); nama service bawaan `nilam-ocr-kk-<service>`. Body, header, dan variabel lokal tidak pernah dikirim; `ELASTIC_APM_*` yang menyalakannya membuat service menolak start |
@@ -1499,6 +1499,17 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 17 — 10 Oktober 2026
+
+1. **`nilam_ocr_results` menjadi log jawaban append-only** (§2.6, migrasi `0006`), sama dengan tabel di
+   pipeline saudara: satu baris per jawaban, tidak lagi satu baris per `request_id`. Penulisnya dua: orchestrator untuk
+   setiap jawaban `POST /v1/extract-ocr`, dan tahap yang mengakhiri request untuk callback hasilnya, setelah
+   callback itu terkirim (200 dengan `data`, 400 `DOWNSTREAM_VALIDATION_ERROR`, atau 422 `<STAGE>_FAILED`).
+   `GET` yang memantau tidak dicatat lagi. Baris dengan `id` tertinggi per `request_id` adalah jawaban
+   terakhir. Trigger menolak UPDATE dan DELETE.
+2. **Kolom `nilam_ocr_results`**: `request_id` tidak lagi unik (berindeks), `status_desc` NOT NULL, `errors`
+   TEXT (dulu JSONB), `guardrails` DOUBLE PRECISION (dulu INTEGER).
 
 ### draf 16 — 7 Oktober 2026
 

@@ -6,6 +6,7 @@ orchestrator owns.
 """
 
 from sqlalchemy import (
+    DDL,
     BigInteger,
     Boolean,
     Column,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     MetaData,
     Table,
     Text,
-    UniqueConstraint,
+    event,
     func,
     text,
 )
@@ -138,27 +139,54 @@ def guardrails_results_table(metadata: MetaData, table_prefix: str = "") -> Tabl
 
 
 def final_results_table(metadata: MetaData, table_prefix: str = "") -> Table:
-    """`nilam_ocr_results`: the final answer of the orchestrator for one request, the envelope of
-    `/v1/extract-ocr` as it was last given (`nilam_testing_ocr_results` with the testing prefix). One row per
-    request_id (unique), upserted by every POST and GET that answers it: `status_code` moves from 202 to 200/400/422
-    and `created_at` stays the first answer's. `guardrails` is the envelope's 0/1 flag (1: rejected by guardrails or
-    the KK gate); `pipeline_last_stage` names the service the envelope comes from."""
+    """`nilam_ocr_results`: the log of every answer the orchestrator gives to `POST /v1/extract-ocr`
+    (`nilam_testing_ocr_results` with the testing prefix), one row per answer, in the shape of its envelope.
+    `guardrails` is 0 passed, 1 rejected, a float when the request sent no threshold, null when it left
+    guardrails out. A request_id's newest row (highest `id`) is the last answer it got.
+
+    **Append-only** (0006), as in the sibling pipeline: rows are never changed. On PostgreSQL a trigger refuses UPDATE
+    and DELETE (`APPEND_ONLY_FUNCTION`); TRUNCATE stays possible. `implicit_returning=False`: the INSERT does not
+    ask for the new id back."""
     name = f"{TABLE_PREFIX}{table_prefix}ocr_results"
-    return Table(
+    table = Table(
         name,
         metadata,
         Column("id", BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True),
         Column("request_id", Text, nullable=False),
         Column("status_code", Integer, nullable=False),
-        Column("status_desc", Text, nullable=True),
+        Column("status_desc", Text, nullable=False),
         Column("message", Text, nullable=True),
         Column("data", JSON_TYPE, nullable=True),
-        Column("errors", JSON_TYPE, nullable=True),
+        Column("errors", Text, nullable=True),
         Column("pipeline_last_stage", Text, nullable=True),
-        Column("guardrails", Integer, nullable=True),
+        Column("guardrails", Float, nullable=True),
         Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-        UniqueConstraint("request_id", name=f"uq_{name}_request_id"),
+        Index(f"idx_{name}_request_id", "request_id"),
         schema=PIPELINE_SCHEMA,
+        implicit_returning=False,
+    )
+    for ddl in append_only_ddl(name):
+        event.listen(table, "after_create", ddl.execute_if(dialect="postgresql"))
+    return table
+
+
+# The function behind the append-only trigger of `nilam_ocr_results` (0006): every UPDATE or DELETE fails.
+APPEND_ONLY_FUNCTION = f"{TABLE_PREFIX}append_only"
+
+
+def append_only_ddl(table_name: str) -> tuple[DDL, DDL]:
+    """The function (created or replaced) and the trigger that make `table_name` append-only, as 0006 creates
+    them; run after `create_all` creates the table. `%%` is a literal `%` (DDL formats the statement)."""
+    schema, function = PIPELINE_SCHEMA, APPEND_ONLY_FUNCTION
+    return (
+        DDL(
+            f'CREATE OR REPLACE FUNCTION "{schema}"."{function}"() RETURNS trigger LANGUAGE plpgsql AS $$ '
+            "BEGIN RAISE EXCEPTION '%% is append-only: %% is not allowed', TG_TABLE_NAME, TG_OP; END $$"
+        ),
+        DDL(
+            f'CREATE TRIGGER "{table_name}_append_only" BEFORE UPDATE OR DELETE ON "{schema}"."{table_name}" '
+            f'FOR EACH ROW EXECUTE FUNCTION "{schema}"."{function}"()'
+        ),
     )
 
 

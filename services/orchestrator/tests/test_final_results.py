@@ -1,5 +1,5 @@
-"""The final answer of every request is kept in ocr_results, one row per request_id, the latest answer winning, and
-a write that fails never fails the request."""
+"""Every answer to POST /v1/extract-ocr is appended to ocr_results, one row per answer (the GET that polls is not
+logged), and a write that fails never fails the request."""
 
 import pytest
 from sqlalchemy import MetaData, select
@@ -30,24 +30,29 @@ def test_the_answer_of_the_post_is_kept(client, auth, final_results):
     response = _submit(client, auth)
 
     assert response.status_code == 200
-    assert final_results.saved[RID] == response.json()
+    assert final_results.saved[RID] == [response.json()]
 
 
 def test_a_rejection_is_kept_too(client, auth, final_results):
     rejected = _submit(client, auth, filename="notkk.jpg")
-    assert final_results.saved[RID] == rejected.json()
+    assert final_results.saved[RID] == [rejected.json()]
     assert (rejected.status_code, rejected.json()["guardrails"]) == (400, 1)
 
 
-def test_the_get_overwrites_a_202_with_the_finished_answer(client, auth, stub_waiter, final_results):
+def test_the_get_is_not_logged(client, auth, stub_waiter, final_results):
     stub_waiter.outcome = WaitOutcome("STRUCTURING", "PROCESSING")
     assert _submit(client, auth).status_code == 202
-    assert final_results.saved[RID]["status_code"] == 202
+    assert [answer["status_code"] for answer in final_results.saved[RID]] == [202]
 
-    finished = client.get(f"/v1/extract-ocr/{RID}", headers=auth)
+    assert client.get(f"/v1/extract-ocr/{RID}", headers=auth).status_code == 200
 
-    assert finished.status_code == 200
-    assert final_results.saved[RID] == finished.json()
+    assert [answer["status_code"] for answer in final_results.saved[RID]] == [202]
+
+
+def test_a_request_id_run_again_is_logged_again(client, auth, final_results):
+    first, second = _submit(client, auth), _submit(client, auth)
+
+    assert final_results.saved[RID] == [first.json(), second.json()]
 
 
 # --- the table -------------------------------------------------------------------------------------
@@ -89,30 +94,68 @@ COMPLETED = {
 }
 
 
-async def test_one_row_per_request_the_latest_answer_winning(database):
+async def test_every_answer_is_another_row_in_the_order_given(database):
     url, table = database
     results = SqlFinalResults(url)
 
     await results.save(RID, PROCESSING)
-    [first] = await _rows(url, table)
     await results.save(RID, COMPLETED)
-    [row] = await _rows(url, table)
+    first, last = await _rows(url, table)
 
-    assert (row["request_id"], row["status_code"], row["status_desc"], row["message"]) == (RID, 200, "OK", "Completed")
-    assert (row["data"], row["errors"], row["pipeline_last_stage"], row["guardrails"]) == (
+    assert (first["request_id"], first["status_code"], first["status_desc"], first["message"]) == (
+        RID,
+        202,
+        "Accepted",
+        "Processing",
+    )
+    assert (first["guardrails"], first["pipeline_last_stage"]) == (None, None)
+    assert (last["request_id"], last["status_code"], last["status_desc"], last["message"]) == (
+        RID,
+        200,
+        "OK",
+        "Completed",
+    )
+    assert (last["data"], last["errors"], last["pipeline_last_stage"], last["guardrails"]) == (
         COMPLETED["data"],
         None,
         "scoring",
         0,
     )
-    assert row["id"] == first["id"]
-    assert row["created_at"] == first["created_at"]
-    assert first["guardrails"] is None
-    assert first["pipeline_last_stage"] is None
+    assert last["id"] > first["id"]
+
+
+async def test_status_desc_follows_the_status_code(database):
+    url, table = database
+
+    await SqlFinalResults(url).save(RID, {"status_code": 500, "errors": "INTERNAL_ERROR"})
+    await SqlFinalResults(url).save(RID, {"status_code": 599})
+    first, unknown = await _rows(url, table)
+
+    assert (first["status_desc"], first["errors"]) == ("Internal Server Error", "INTERNAL_ERROR")
+    assert unknown["status_desc"] == "Error"
+
+
+def test_the_table_has_the_columns_of_the_sibling_pipeline():
+    table = final_results_table(MetaData())
+
+    assert [column.name for column in table.columns] == [
+        "id",
+        "request_id",
+        "status_code",
+        "status_desc",
+        "message",
+        "data",
+        "errors",
+        "pipeline_last_stage",
+        "guardrails",
+        "created_at",
+    ]
+    assert not table.c.request_id.unique
+    assert any(index.name == "idx_nilam_ocr_results_request_id" for index in table.indexes)
 
 
 async def test_a_write_that_fails_is_logged_and_does_not_raise(tmp_path, caplog):
-    url = f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}"  # no table: the upsert fails
+    url = f"sqlite+aiosqlite:///{tmp_path / 'empty.db'}"  # no table: the insert fails
 
     await SqlFinalResults(url).save(RID, COMPLETED)
 

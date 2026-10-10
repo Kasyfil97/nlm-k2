@@ -105,7 +105,7 @@ class Outbox(Protocol):
 class Sender(Protocol):
     """Anything that can send one message body: the orchestrator callback or the next-stage client."""
 
-    async def send(self, body: dict[str, Any], /) -> None:
+    async def send(self, body: dict[str, Any], /) -> bool | None:
         """Send `body` once; raise `ServiceError` on failure."""
         ...
 

@@ -322,9 +322,10 @@ Orchestrator memproyeksikan `decisions` ke 9 field kontrak, lalu menjawab 200:
 Dua nama berganti di sini: `nomor_kk` menjadi `no_kk`, dan `status_hubungan_dalam_keluarga` menjadi
 `status_hubungan_dalam_rumah_tangga`.
 
-Setiap envelope yang dijawab orchestrator (202, lalu 200/400/422) juga di-upsert ke
-**`nilam_ocr_kk.nilam_ocr_results`**: satu baris per `request_id` dengan `id`, `status_code`, `status_desc`,
-`message`, `data`, `errors`, `pipeline_last_stage`, `guardrails`, `created_at`.
+Setiap envelope yang dijawab `POST /v1/extract-ocr` (202, 200, 400, 422) juga ditambahkan sebagai baris baru ke
+**`nilam_ocr_kk.nilam_ocr_results`** (append-only): `id`, `request_id`, `status_code`, `status_desc`, `message`,
+`data`, `errors`, `pipeline_last_stage`, `guardrails`, `created_at`. `GET` yang memantau tidak dicatat; hasil akhir
+request yang dijawab 202 ditulis oleh tahap terakhir saat callback hasilnya terkirim.
 
 ---
 
