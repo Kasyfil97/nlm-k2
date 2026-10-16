@@ -9,6 +9,9 @@ di ruang kerja training. `values` = nilai + conf structuring per field terisi, `
 Keduanya harus sama persis: angka confidence hanya bermakna kalau service menghitung yang sama dengan
 yang diukur di laporan training.
 
+Structuring dibaca SEBELUM `app.ml.postprocess` (yang membuang label "Nama Kepala Keluarga" dari
+nilainya): pembersihan itu penyimpangan yang disengaja dari training, bukan selisih yang dicari di sini.
+
 Korpusnya OCR KK sungguhan dan tidak ada di repo (sama dengan uji baseline `kk_regex`); fixture-nya
 hanya hash. Kedua service bernama paket `app`, jadi masing-masing dijalankan di prosesnya sendiri.
 Keluar 1 bila ada yang berbeda, 2 bila korpus tidak ada.
@@ -78,12 +81,12 @@ def _stage_structuring(ids: list[str], corpus: Path, out: Path) -> None:
     from app.ml.kk_model import KKModelStructurer
     from app.services.structuring_service import StructuringService
 
-    service = StructuringService(KKModelStructurer(get_settings().structuring_model_path))
+    structurer = KKModelStructurer(get_settings().structuring_model_path)
     with out.open("w", encoding="utf-8") as handle:
         for doc_id in ids:
             page = json.loads((corpus / f"{doc_id}.json").read_text(encoding="utf-8"))["pages"][0]
-            texts = service.boxes_from_ocr(page)
-            record = {"id": doc_id, "structuring": service.structure(texts), "ocr": ocr_aggregates(texts)}
+            texts = StructuringService.boxes_from_ocr(page)
+            record = {"id": doc_id, "structuring": structurer.structure(texts), "ocr": ocr_aggregates(texts)}
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 

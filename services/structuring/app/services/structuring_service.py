@@ -4,6 +4,7 @@ from typing import Any
 from ocr_common.types import OcrBox, StructuringResult
 
 from app.ml.base import Structurer
+from app.ml.postprocess import postprocess
 
 
 class StructuringService:
@@ -37,6 +38,7 @@ class StructuringService:
         ]
 
     def structure(self, texts: list[OcrBox]) -> StructuringResult:
-        if getattr(self._structurer, "reads_blank_boxes", False):
-            return self._structurer.structure(texts)
-        return self._structurer.structure([box for box in texts if (box.get("text") or "").strip()])
+        """The structurer's answer, cleaned by `postprocess` (which is not the structurer's to change)."""
+        if not getattr(self._structurer, "reads_blank_boxes", False):
+            texts = [box for box in texts if (box.get("text") or "").strip()]
+        return postprocess(self._structurer.structure(texts))
