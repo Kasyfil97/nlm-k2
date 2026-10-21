@@ -34,9 +34,9 @@ def deployed(**overrides) -> BaseServiceSettings:
 # --- unggahan: batas dan tipe (§13.1) ------------------------------------------------------
 
 
-def test_upload_limit_is_five_megabytes():
-    assert DEFAULT_MAX_UPLOAD_BYTES == 5 * 1024 * 1024
-    assert settings().max_upload_bytes == 5 * 1024 * 1024
+def test_upload_limit_is_ten_megabytes():
+    assert DEFAULT_MAX_UPLOAD_BYTES == 10 * 1024 * 1024
+    assert settings().max_upload_bytes == 10 * 1024 * 1024
 
 
 def test_pdf_is_accepted_by_default_as_in_nilam():
@@ -63,7 +63,7 @@ def test_jpeg_and_png_pass_and_anything_else_does_not():
 
 def test_an_oversized_upload_is_413_with_an_indonesian_message():
     with pytest.raises(PayloadTooLarge, match="Kartu Keluarga"):
-        validate_image("image/jpeg", b"x" * (5 * 1024 * 1024 + 1), settings())
+        validate_image("image/jpeg", b"x" * (DEFAULT_MAX_UPLOAD_BYTES + 1), settings())
 
 
 # --- file_url: gagal-tertutup (R18a) -------------------------------------------------------

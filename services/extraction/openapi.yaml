@@ -262,7 +262,7 @@ paths:
                 errors: BAD_REQUEST
                 pipeline_last_stage: extraction
         '413':
-          description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default)
+          description: The document exceeds `MAX_UPLOAD_BYTES` (10 MB by default)
           content:
             application/json:
               schema:
@@ -270,7 +270,7 @@ paths:
               example:
                 status_code: 413
                 status_desc: Payload Too Large
-                message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                message: Ukuran dokumen melebihi batas 10 MB, pastikan hanya mengunggah foto Kartu Keluarga
                 errors: FILE_TOO_LARGE
                 pipeline_last_stage: extraction
         '401':
@@ -361,8 +361,8 @@ paths:
 
 
         **Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG, PNG or PDF (only its first
-        page is read), at most `MAX_UPLOAD_BYTES` (5 MB). `file_url` is downloaded in the background from
-        a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than `PIPELINE_JOB_LEASE_SECONDS`;
+        page is read), at most `MAX_UPLOAD_BYTES` (10 MB). `file_url` is downloaded in the background
+        from a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than `PIPELINE_JOB_LEASE_SECONDS`;
         an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.
 
 

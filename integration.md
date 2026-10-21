@@ -54,7 +54,7 @@ lalu menunggu pipeline sampai `PIPELINE_WAIT_SECONDS` (default **30 detik (KK)**
 diterima):
 
     POST :8040/v1/extract-ocr
-      file > 5 MB                -> 413  message "Ukuran dokumen melebihi batas 5 MB, ..." (sebelum model)
+      file > 10 MB               -> 413  message "Ukuran dokumen melebihi batas 10 MB, ..." (sebelum model)
       PDF > 2 halaman            -> 400  message "Jumlah halaman melebihi batas, ..."    (sebelum model)
       ditolak model guardrails   -> 400  errors = DOWNSTREAM_VALIDATION_ERROR, guardrails = 1
                                          tidak ada yang jalan, tidak ada callback
@@ -92,7 +92,7 @@ Sejak 5 Oktober 2026 (seperti nilam sejak 1 Oktober) jawaban tidak lagi membawa 
 | Field | Wajib | Keterangan |
 |---|---|---|
 | `request_id` | ya | dibuat oleh kalian, maks. 100 karakter |
-| `file` / `file_url` | salah satu | JPEG, PNG, PDF, maks. **5 MB** (413) dan maks. **2 halaman** (400). **(KK)** Dari PDF hanya halaman 1 yang dinilai dan dibaca. Tipe yang dideklarasikan tapi tidak didukung (`application/octet-stream`, kosong, `jpg`, `text/plain`, ...) dibaca dari tanda tangan berkasnya |
+| `file` / `file_url` | salah satu | JPEG, PNG, PDF, maks. **10 MB** (413) dan maks. **2 halaman** (400). **(KK)** Dari PDF hanya halaman 1 yang dinilai dan dibaca. Tipe yang dideklarasikan tapi tidak didukung (`application/octet-stream`, kosong, `jpg`, `text/plain`, ...) dibaca dari tanda tangan berkasnya |
 | `pipeline_name_sequence` | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Field berulang, string dipisah koma, atau satu string JSON array. Default (atau field kosong): keempatnya |
 | `guardrails_confidence_threshold` | tidak | `{"acc_rej": 0.8}`, nilai di antara 0 dan 1. **(KK)** Berlaku pada sisi reject: dokumen ditolak bila `probability_bad` model kualitas ≥ nilainya. **Tidak dikirim: dokumen dianggap lolos** guardrails (tidak ada ambang bawaan), `probability_bad`-nya (float) tetap diteruskan ke scoring dan tercatat di `nilam_guardrails_results`, dan `guardrails` di jawaban berisi probabilitas diterima `1 - probability_bad`. `{}`, string kosong, atau hanya nilai `null` (`{"acc_rej": null}`, `{"guardrails": null}`) sama dengan tidak dikirim. Angka di key selain `acc_rej` (mis. `{"guardrails": 0.8}`) → 422 `INVALID_THRESHOLD`. |
 | `column_confidence_threshold` | tidak | ambang per field kontrak, nilai 0–1, sisi accept. Key `all_field` untuk semua field; key per field (`no_kk`, `nama_kepala_keluarga`, `nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`, `ayah`, `ibu`) menang atas `all_field`. **Field tanpa ambang (tidak disebut, atau parameter tidak dikirim): `confidence`-nya probabilitas trust model apa adanya (float), bukan 0/1**. Nilai `null` = field itu tanpa ambang (probabilitas); `null` milik field sendiri mengalahkan `all_field` (`{"all_field": 0.8, "nik": null}`: `nik` tetap probabilitas); `{"all_field": null}` tidak mengatur apa pun. Angka di key yang tidak dikenal tetap 422, supaya ambang tidak hilang diam-diam. |

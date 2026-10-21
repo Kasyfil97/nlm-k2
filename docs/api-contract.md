@@ -10,7 +10,7 @@ Bagian [12](#12-selisih-dengan-k2orchestrator-sekarang) merinci apa yang berubah
 Mekanisme pipeline — penolakan, tabel outcome, outbox, idempotensi — **mengikuti nilam persis**, supaya
 mesin tahap (`ocr_common/pipeline`) bisa dipakai tanpa bercabang.
 
-Status: draf 17, 10 Oktober 2026.
+Status: draf 18, 21 Oktober 2026.
 
 ---
 
@@ -282,7 +282,7 @@ request tetap dijawab.
 | Field | Tipe | Wajib | Keterangan |
 |---|---|---|---|
 | `request_id` | string | ya | dibuat pemanggil, maks. 100 karakter |
-| `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 5 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
+| `file` | file | salah satu | JPEG, PNG, atau PDF, maks. `MAX_UPLOAD_BYTES` (default 10 MB). PDF maks. `MAX_DOCUMENT_PAGES` (2) halaman, lebih → 400; **hanya halaman 1 yang dinilai dan dibaca** |
 | `file_url` | string | salah satu | URL yang diunduh service ini (mis. presigned MinIO GET). Host harus terdaftar di `FILE_URL_ALLOWED_HOSTS`; redirect tidak diikuti. Di luar `local`: `https` wajib, dan host terdaftar yang me-resolve ke alamat privat atau loopback tetap ditolak |
 | `pipeline_name_sequence` | string[] | tidak | service yang dijalankan, berurutan, dari `guardrails`, `extraction`, `structuring`, `scoring`. Boleh dikirim sebagai field berulang atau satu string JSON array. Guardrails boleh ditinggalkan di depan dan ujungnya boleh dipotong; yang di tengah **tidak** boleh dilewati dan urutannya tidak boleh berubah. Tidak dikirim = keempatnya; field yang dikirim **kosong** (`""`, mis. "Send empty value" di Swagger UI atau key Postman tanpa isi) juga dihitung tidak dikirim (draf 14). Tidak sah → 422 `INVALID_PIPELINE_SEQUENCE`, tidak ada yang berjalan. Menggantikan `skip_guardrails` (draf 12) |
 | `guardrails_confidence_threshold` | string (JSON object) | tidak | ambang guardrails untuk dokumen ini: `{"acc_rej": 0.8}`, `0 < x < 1`. Berlaku pada sisi `rejected`. **Tidak dikirim = dokumen dianggap lolos** guardrails; `probability_bad` (float) tetap dihitung, diteruskan, dan dicatat (draf 16; tidak ada lagi ambang bawaan di service guardrails), dan `guardrails` di jawaban berisi probabilitas diterima `1 - probability_bad` (draf 17). `{}`, string kosong, atau hanya nilai `null` (`{"acc_rej": null}`, `{"guardrails": null}`) sama dengan tidak dikirim. Angka di key selain `acc_rej` (mis. `{"guardrails": 0.8}`) → 422 `INVALID_THRESHOLD`. |
@@ -1398,7 +1398,7 @@ di sini — ia milik Orkestrasi pusat; yang perlu disepakati dengan mereka adala
 | `ENVIRONMENT` | di laptop: `local` | `production` | di luar `local`, service menolak start kalau backend `mock` atau alamat service menunjuk localhost |
 | `LOG_FORMAT` | tidak | `json`; `local`: `text` | |
 | `LOG_LEVEL` | tidak | `INFO` | |
-| `MAX_UPLOAD_BYTES` | tidak | `5242880` | 5 MB; lebih besar → 413 |
+| `MAX_UPLOAD_BYTES` | tidak | `10485760` | 10 MB; lebih besar → 413 |
 | `ALLOWED_CONTENT_TYPES` | tidak | `image/jpeg,image/jpg,image/png,application/pdf` | satu-satunya daftar yang dibaca intake (`PDF_ENABLED` dihapus di draf 12) |
 | `MAX_DOCUMENT_PAGES` | tidak | `2` | PDF dengan halaman lebih banyak → 400; hanya halaman 1 yang dibaca |
 | `FILE_URL_ALLOWED_HOSTS` | produksi: ya | kosong | host yang boleh diunduh; **kosong = tolak semua**, bukan "hanya alamat publik". **Harus diisi di orchestrator dan extraction**, karena keduanya mengunduh, dan keduanya menolak start tanpa daftar ini di luar `ENVIRONMENT=local` |
@@ -1503,6 +1503,13 @@ Orchestrator **tidak** memerlukan `DATABASE_URL`: ia membaca status tahap lewat 
 ---
 
 ## Riwayat revisi
+
+### draf 18 — 21 Oktober 2026
+
+1. **`MAX_UPLOAD_BYTES` bawaan naik ke 10 MB** (§3.1, §13.1), dari 5 MB. Alasannya sama dengan batas
+   asalnya: foto Kartu Keluarga dari kamera ponsel modern kerap melewati 5 MB. Message 413 ikut berubah
+   mengikuti nilai aktualnya (`Ukuran dokumen melebihi batas 10 MB, ...`); nilainya tetap bisa diubah
+   lewat env var `MAX_UPLOAD_BYTES` di tiap service tanpa menyentuh kontrak ini.
 
 ### draf 17 — 10 Oktober 2026
 

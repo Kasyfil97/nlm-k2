@@ -3,6 +3,10 @@
 !.env.example
 *.env.local
 
+# Postman environment: menyimpan X-API-Key sungguhan untuk dev lokal (lihat postman/README.md).
+# Collection-nya (*.postman_collection.json) tidak berisi secret, tetap ikut repo.
+**/postman/*.postman_environment.json
+
 .venv/
 venv/
 __pycache__/

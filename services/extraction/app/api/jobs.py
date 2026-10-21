@@ -136,7 +136,7 @@ def _parse_sequence(raw: str | None) -> list[str] | None:
         "place and one channel. A document that cannot be read at all (unopenable image, model unreachable, "
         "unsupported `document_type`) becomes a `FAILED` job, which the caller sees as a 422 -- not a 4xx here.\n\n"
         "**Document.** Send `file` (multipart) or `file_url`, exactly one. JPEG, PNG or PDF (only its first "
-        "page is read), at most `MAX_UPLOAD_BYTES` (5 MB). `file_url` is downloaded in the "
+        "page is read), at most `MAX_UPLOAD_BYTES` (10 MB). `file_url` is downloaded in the "
         "background from a host listed in `FILE_URL_ALLOWED_HOSTS`, so make a presigned URL live longer than "
         "`PIPELINE_JOB_LEASE_SECONDS`; an expired or unreachable URL becomes a `FAILED` job, not a `4xx`.\n\n"
         "**Idempotency.** The same request_id again answers `202` with `duplicate: true` and does not run OCR "

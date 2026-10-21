@@ -43,8 +43,8 @@ router = APIRouter(tags=["Extraction"], dependencies=[Depends(verify_api_key)])
         400: error(400, "Bad file (empty, unsupported type) or bad intake", "Uploaded file is empty"),
         413: error(
             413,
-            "The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default)",
-            PAYLOAD_TOO_LARGE_MESSAGE.format(limit="5 MB"),
+            "The document exceeds `MAX_UPLOAD_BYTES` (10 MB by default)",
+            PAYLOAD_TOO_LARGE_MESSAGE.format(limit="10 MB"),
         ),
         401: UNAUTHORIZED,
         500: error(500, "OCR backend failed", "extraction OCR model error (500): error: OpenCV ..."),

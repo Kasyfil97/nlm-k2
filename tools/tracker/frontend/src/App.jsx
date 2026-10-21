@@ -672,8 +672,8 @@ function Tile({ k, v, s, cls }) {
   )
 }
 
-// Default MAX_UPLOAD_BYTES service (ocr_common/config.py, 5 MB); file lebih besar akan dijawab 413.
-const SERVICE_UPLOAD_LIMIT = 5 * 1024 * 1024
+// Default MAX_UPLOAD_BYTES service (ocr_common/config.py, 10 MB); file lebih besar akan dijawab 413.
+const SERVICE_UPLOAD_LIMIT = 10 * 1024 * 1024
 
 function fmtBytes(n) {
   if (n == null) return ''
@@ -750,7 +750,7 @@ function TestFiles({ config, selected, setSelected, onChanged }) {
                 {name}
               </span>
             </label>
-            <span className={size > SERVICE_UPLOAD_LIMIT ? 'fsize over' : 'fsize'} title={size > SERVICE_UPLOAD_LIMIT ? 'di atas batas 5 MB service: akan dijawab 413' : ''}>
+            <span className={size > SERVICE_UPLOAD_LIMIT ? 'fsize over' : 'fsize'} title={size > SERVICE_UPLOAD_LIMIT ? 'di atas batas 10 MB service: akan dijawab 413' : ''}>
               {fmtBytes(size)}
             </span>
             <a href={`/api/loadtest/images/${encodeURIComponent(name)}`} target="_blank" rel="noreferrer">

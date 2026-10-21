@@ -42,7 +42,7 @@ Kedua ambang opsional. Tanpa `guardrails_confidence_threshold` (atau `{}`, atau 
 probabilitas diterima `1 - probability_bad`. Tanpa `column_confidence_threshold` (atau untuk field yang tidak
 disebutnya), `confidence` setiap field adalah **probabilitas trust model apa adanya** (float), bukan 0/1.
 
-Di orchestrator: tipe dan ukuran file dicek (JPEG/PNG/PDF, maks. 5 MB, PDF maks. 2 halaman), lalu
+Di orchestrator: tipe dan ukuran file dicek (JPEG/PNG/PDF, maks. 10 MB, PDF maks. 2 halaman), lalu
 `pipeline_name_sequence` dan ambang divalidasi.
 
 ## 2. Orchestrator → Guardrails

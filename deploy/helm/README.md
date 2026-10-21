@@ -133,7 +133,7 @@ hanya me-restart pod service yang konfigurasinya berubah.
 | `services.<nama>.enabled` | matikan satu service beserta semua objeknya |
 | `existingSecret`, `secretKeys` | nama Secret dan nama key di dalamnya |
 
-Tulis angka sebagai string (`"0.8"`, `"5242880"`), karena Helm mengubah angka besar menjadi notasi ilmiah.
+Tulis angka sebagai string (`"0.8"`, `"10485760"`), karena Helm mengubah angka besar menjadi notasi ilmiah.
 
 URL antar-service memakai nama Service per komponen, bukan `localhost`. Di luar
 `ENVIRONMENT=local`, service menolak `*_SERVICE_URL` yang menunjuk ke localhost (orchestrator: keempat
