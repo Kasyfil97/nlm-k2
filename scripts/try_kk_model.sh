@@ -13,7 +13,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OCR_URL="${OCR_URL:-http://10.213.128.67:8070}"
+OCR_URL="${OCR_URL:-http://10.213.191.203:8040}"
 API_KEY="${API_KEY:-try-kk-model}"
 PREFIX=try-kk-model
 
@@ -26,7 +26,7 @@ case "${1:-}" in
     docker run -d --name "$PREFIX-extraction" -p 127.0.0.1:18042:8042 \
       -e API_KEY="$API_KEY" -e ENVIRONMENT=local -e EXTRACTION_BACKEND=paddle -e EXTRACTION_OCR_URL="$OCR_URL" \
       -e EXTRACTION_OCR_TIMEOUT_SECONDS=60 \
-      -e EXTRACTION_OCR_QUERY='{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}' \
+      -e EXTRACTION_OCR_QUERY='{"doc_orientation": true, "doc_unwarping": true, "textline_orientation": false}' \
       "$PREFIX-extraction:local" sh -c 'exec uvicorn app.main:app --host 0.0.0.0 --port $PORT' >/dev/null
     # ^ CMD image extraction mengambil bobot `.pth` (backend kk_ocr) juga untuk `paddle`, yang tidak memakainya,
     #   dan keluar 2 tanpa EXTRACTION_WEIGHTS_URI -- dilewati di sini seperti docker-compose.override.yml.

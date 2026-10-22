@@ -71,11 +71,14 @@ def _build_remote(settings: Settings) -> RemoteOcrEngine:
 
 
 def _build_paddle(settings: Settings) -> PaddleOcrEngine:
-    """The PaddleOCR server's `/ocr`. `EXTRACTION_OCR_PATH` and `EXTRACTION_OCR_PARAMS` do not apply:
+    """The shared gen-padv6 server's `/v1/ocr`. `EXTRACTION_OCR_PATH` and `EXTRACTION_OCR_PARAMS` do not apply:
     the server has one route and reads its knobs from the query string."""
     if not settings.extraction_ocr_url:
         raise RuntimeError("EXTRACTION_OCR_URL is required when EXTRACTION_BACKEND=paddle")
-    headers = {"X-API-Key": settings.extraction_ocr_api_key} if settings.extraction_ocr_api_key else None
+    # X-Client-Id only labels this caller in the OCR service's logs.
+    headers = {"X-Client-Id": "kk"}
+    if settings.extraction_ocr_api_key:
+        headers["X-API-Key"] = settings.extraction_ocr_api_key
     client = RemoteModelClient(
         settings.extraction_ocr_url,
         settings.extraction_ocr_timeout_seconds,
