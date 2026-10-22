@@ -52,6 +52,8 @@ services:
     env_file: services/guardrails/.env
     environment:
       PORT: "8061"
+      # Bobot tidak ikut git (weights/* di-gitignore), jadi unduh dari GUARDRAILS_MODEL_URI setiap start.
+      FETCH_WEIGHTS: "true"
     ports:
       - "127.0.0.1:${GUARDRAILS_HOST_PORT:-8061}:8061"
 
