@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-guardrails
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: guardrails
+spec:
+  type: ClusterIP
+  selector:
+    app: ms-bribrain-nilam-ocr-kk-guardrails
+  ports:
+  - name: http
+    port: 8061
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: None

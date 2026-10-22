@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-extraction-config
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-extraction
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-extraction
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: extraction
+data:
+  ENVIRONMENT: "production"
+  PORT: "8062"
+  STRUCTURING_SERVICE_URL: "http://ms-bribrain-nilam-ocr-kk-structuring:8063"
+  FILE_URL_ALLOWED_HOSTS: "<FILE_URL_ALLOWED_HOSTS>"
+  FILE_URL_ALLOW_HTTP: "true"
+  TESTING_ENDPOINTS: "false"
+  EXTRACTION_BACKEND: "remote"
+  EXTRACTION_OCR_URL: "http://ms-bribrain-nilam-ocr-paddle-ppocr-v6-service"
+  EXTRACTION_OCR_PATH: "/v1/ocr"
+  EXTRACTION_OCR_TIMEOUT_SECONDS: "180"
+  EXTRACTION_OCR_QUERY: "{\"doc_orientation\": true, \"doc_unwarping\": true, \"textline_orientation\": false}"
+  ORCHESTRATION_CALLBACK_ENABLED: "false"
+  PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
+  PIPELINE_OUTBOX: "true"
+  PIPELINE_HANDOFF_BY_REFERENCE: "true"

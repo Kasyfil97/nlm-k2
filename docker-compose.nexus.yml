@@ -20,20 +20,20 @@
 
 services:
   orchestrator:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/orchestrator:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-orchestrator:${TAG:-latest}
     pull_policy: always
   guardrails:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/guardrails:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-guardrails:${TAG:-latest}
     pull_policy: always
   extraction:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/extraction:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-extraction:${TAG:-latest}
     pull_policy: always
   structuring:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/structuring:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-structuring:${TAG:-latest}
     pull_policy: always
   scoring:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/scoring:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-scoring:${TAG:-latest}
     pull_policy: always
   migrate:
-    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam_ocr_kk}/migrate:${TAG:-latest}
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-migrate:${TAG:-latest}
     pull_policy: always

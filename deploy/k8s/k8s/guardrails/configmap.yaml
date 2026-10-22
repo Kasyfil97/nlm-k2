@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-guardrails-config
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: guardrails
+data:
+  ENVIRONMENT: "production"
+  PORT: "8061"
+  TESTING_ENDPOINTS: "false"
+  GUARDRAILS_BACKEND: "kk_quality"
+  GUARDRAILS_WEIGHTS_DIR: "weights"
+  GUARDRAILS_DEVICE: "cpu"
+  GUARDRAILS_TORCH_THREADS: "1"

@@ -85,9 +85,9 @@ services:
   orchestrator:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-orchestrator
+      repository: ms-bribrain-nilam-ocr-kk-orchestrator
       tag: ""
-    port: 8040
+    port: 8060
     entrypoint: true
     pipeline: false
     database: true
@@ -114,9 +114,9 @@ services:
   guardrails:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-guardrails
+      repository: ms-bribrain-nilam-ocr-kk-guardrails
       tag: ""
-    port: 8041
+    port: 8061
     entrypoint: false
     pipeline: false
     upstreams: []
@@ -150,9 +150,9 @@ services:
   extraction:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-extraction
+      repository: ms-bribrain-nilam-ocr-kk-extraction
       tag: ""
-    port: 8042
+    port: 8062
     entrypoint: false
     pipeline: true
     upstreams: [structuring]
@@ -162,7 +162,7 @@ services:
       EXTRACTION_BACKEND: paddle
       EXTRACTION_OCR_URL: ""
       EXTRACTION_OCR_TIMEOUT_SECONDS: "60"
-      EXTRACTION_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
+      EXTRACTION_OCR_QUERY: '{"doc_orientation": true, "doc_unwarping": true, "textline_orientation": false}'
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:
@@ -175,9 +175,9 @@ services:
   structuring:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-structuring
+      repository: ms-bribrain-nilam-ocr-kk-structuring
       tag: ""
-    port: 8043
+    port: 8063
     entrypoint: false
     pipeline: true
     upstreams: [scoring]
@@ -201,9 +201,9 @@ services:
   scoring:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-scoring
+      repository: ms-bribrain-nilam-ocr-kk-scoring
       tag: ""
-    port: 8044
+    port: 8064
     entrypoint: false
     pipeline: true
     upstreams: []
@@ -230,7 +230,7 @@ service:
   type: ClusterIP
   annotations: {}
   # Service gabungan bernama `<release>` yang membuka port semua service ber-entrypoint (hanya
-  # orchestrator, 8040). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
+  # orchestrator, 8060). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
   # pipeline memakai Service per komponen.
   entrypoint:
     enabled: true

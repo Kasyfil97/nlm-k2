@@ -18,13 +18,14 @@ RUN pip install --no-cache-dir google-cloud-storage
 COPY scripts/fetch_weights.py ./scripts/fetch_weights.py
 COPY scripts/gcs_wif.py ./scripts/gcs_wif.py
 COPY services/scoring/app ./app
+COPY services/scoring/weights ./weights
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p weights \
     && chown -R appuser /app
 USER appuser
 
-# Bobot TIDAK ikut image: diunduh dari SCORING_MODEL_URI setiap kali container start (lihat CMD).
+# Bobot ikut image (COPY services/scoring/weights). Unduh dari GCS hanya bila FETCH_WEIGHTS=true.
 # Default di bawah boleh ditimpa lewat env (.env, helm).
 ENV PORT=8044 \
     WEIGHTS_DIR=/app/weights \
@@ -34,5 +35,5 @@ EXPOSE 8044
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8044\")}/health', timeout=3)" || exit 1
 
-# --force: unduh ulang setiap start, supaya restart container mengambil model terbaru di GCS.
-CMD ["sh", "-c", "python scripts/fetch_weights.py scoring --force && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# FETCH_WEIGHTS=true: unduh ulang dari *_MODEL_URI setiap start (--force); default tanpa koneksi GCS.
+CMD ["sh", "-c", "if [ \"${FETCH_WEIGHTS:-false}\" = \"true\" ]; then python scripts/fetch_weights.py scoring --force; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

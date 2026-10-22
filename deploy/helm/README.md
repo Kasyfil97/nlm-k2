@@ -26,7 +26,7 @@ tidak dihapus. Untuk memeriksa hasil:
 
 ```bash
 kubectl -n nlm-k2 get deploy,pods,svc
-kubectl -n nlm-k2 port-forward svc/nilam-ocr-kk-orchestrator 8040:8040
+kubectl -n nlm-k2 port-forward svc/nilam-ocr-kk-orchestrator 8060:8060
 ```
 
 Migrasi setelah install menggunakan
@@ -60,18 +60,18 @@ Setelah deploy memakai `.env`, migrasi dari cluster mengambil Secret extraction:
 `SECRET=nilam-ocr-kk-extraction-env DB_HOST=<alamat> deploy/helm/migrate-db.sh`.
 
 Satu Deployment, Service, ConfigMap, PodDisruptionBudget, dan NetworkPolicy per service:
-`orchestrator` (8040), `guardrails` (8041), `extraction` (8042), `structuring` (8043), `scoring`
-(8044). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nlm-k2-orchestrator`, dst.
+`orchestrator` (8060), `guardrails` (8061), `extraction` (8062), `structuring` (8063), `scoring`
+(8064). Nama objeknya `<release>-<service>`, jadi di cluster dev: `nlm-k2-orchestrator`, dst.
 Tiap service bisa di-scale dan di-restart sendiri; guardrails (torch, CPU-bound) punya HPA opsional, dan
 kalau ia kehabisan memori, tahap lain tidak ikut jatuh.
 
 Service `nlm-k2` (tanpa akhiran) adalah pintu masuk yang dipublikasikan ke Orkestrasi pusat
 ([integration.md](../../integration.md)): ia membuka port semua service ber-`entrypoint`, yaitu hanya
-orchestrator (8040). Selector-nya mencakup semua pod release, tetapi port itu memakai `targetPort`
+orchestrator (8060). Selector-nya mencakup semua pod release, tetapi port itu memakai `targetPort`
 bernama (`orchestrator`), dan Kubernetes hanya memasukkan pod yang punya nama port itu ke endpoint
 port tersebut. Karena nama service dipakai sebagai nama port, nama service maksimal 15 karakter, huruf
 kecil/angka, tanpa `-`. URL antar service di dalam release memakai Service per komponen
-(`http://nlm-k2-structuring:8043`).
+(`http://nlm-k2-structuring:8063`).
 
 Ini satu-satunya jalur deploy; manifest Kustomize yang dulu ada di `deploy/k8s` sudah dihapus
 dan polanya (Deployment per service, NetworkPolicy, PDB, HPA, ExternalSecret) dibawa ke sini.
@@ -86,7 +86,7 @@ Dari pod di namespace `nlm-k2`:
 | PostgreSQL (dalam cluster) | `postgres.ocr-dev.svc.cluster.local:5432` | terjangkau |
 | PostgreSQL (LoadBalancer yang sama) | `34.50.114.49:5432` | terjangkau |
 | Orkestrasi | `ocr-orchestration.ocr-dev.svc.cluster.local:80` | terjangkau |
-| PaddleOCR | `10.213.128.67:8070` | terjangkau |
+| PaddleOCR | `10.213.191.203:8040` | terjangkau |
 
 Cluster dev memakai `LEGACY_DATAPATH` tanpa network policy enforcement: NetworkPolicy chart ini
 terpasang di sana tetapi belum ditegakkan. Di cluster dengan Dataplane V2 (atau Calico) ia
@@ -255,8 +255,8 @@ dari terminal Administrator.
 
 ```powershell
 kubectl -n nlm-k2 get deploy,pods,svc,pdb,networkpolicy
-kubectl -n nlm-k2 port-forward svc/nlm-k2-orchestrator 8040:8040
-curl http://localhost:8040/ready
+kubectl -n nlm-k2 port-forward svc/nlm-k2-orchestrator 8060:8060
+curl http://localhost:8060/ready
 ```
 
 `port-forward` harus ke Service per komponen (atau `deploy/nlm-k2-<service>`): pada Service

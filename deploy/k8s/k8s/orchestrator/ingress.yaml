@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-orchestrator-ingress
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-orchestrator
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-orchestrator
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: orchestrator
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ms-bribrain-nilam-ocr-kk-orchestrator.dev
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ms-bribrain-nilam-ocr-kk-orchestrator
+            port:
+              number: 8060

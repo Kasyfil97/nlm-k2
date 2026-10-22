@@ -37,4 +37,4 @@ networkPolicy:
 services:
   extraction:
     env:
-      EXTRACTION_OCR_URL: http://10.213.128.67:8070
+      EXTRACTION_OCR_URL: http://10.213.191.203:8040
