@@ -20,3 +20,6 @@ data:
   TESTING_ENDPOINTS: "false"
   PIPELINE_WAIT_SECONDS: "15"
   GUARDRAILS_TIMEOUT_SECONDS: "20"
+  # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
+  ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
+  ELASTIC_APM_ENVIRONMENT: "dev"

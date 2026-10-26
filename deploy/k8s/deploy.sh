@@ -52,6 +52,7 @@ API_KEY="${API_KEY:-}"
 API_KEYS="${API_KEYS:-}"
 DATABASE_URL="${DATABASE_URL:-}"
 ORCHESTRATION_API_KEY="${ORCHESTRATION_API_KEY:-}"
+ELASTIC_APM_SECRET_TOKEN="${ELASTIC_APM_SECRET_TOKEN:-}"
 EXTRACTION_OCR_API_KEY="${EXTRACTION_OCR_API_KEY:-}"
 ORCHESTRATION_CALLBACK_KEY="${ORCHESTRATION_CALLBACK_KEY:-}"
 
@@ -200,6 +201,7 @@ if [ -n "$API_KEY" ] && [ -n "$DATABASE_URL" ]; then
     [ -z "$API_KEYS" ] || SECRET_ARGS+=(--from-literal=API_KEYS="$API_KEYS")
     [ -z "$EXTRACTION_OCR_API_KEY" ] || SECRET_ARGS+=(--from-literal=EXTRACTION_OCR_API_KEY="$EXTRACTION_OCR_API_KEY")
     [ -z "$ORCHESTRATION_API_KEY" ] || SECRET_ARGS+=(--from-literal=ORCHESTRATION_API_KEY="$ORCHESTRATION_API_KEY")
+    [ -z "$ELASTIC_APM_SECRET_TOKEN" ] || SECRET_ARGS+=(--from-literal=ELASTIC_APM_SECRET_TOKEN="$ELASTIC_APM_SECRET_TOKEN")
     [ -z "$ORCHESTRATION_CALLBACK_KEY" ] || SECRET_ARGS+=(--from-literal=ORCHESTRATION_CALLBACK_KEY="$ORCHESTRATION_CALLBACK_KEY")
     kubectl create secret generic "$APP_SECRET_NAME" "${SECRET_ARGS[@]}"         --namespace="$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -         || fail "Failed to create application secret"
     ok "Secret '$APP_SECRET_NAME' is up to date (dari deploy.env)"

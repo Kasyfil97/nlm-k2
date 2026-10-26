@@ -46,12 +46,16 @@ class BaseServiceSettings(BaseSettings):
     elasticsearch_username: str | None = None
     elasticsearch_password: str | None = None
 
-    # Elastic APM (ocr_common.web.apm): on when the server URL is set. The service name defaults to
-    # `nilam-ocr-kk-<service>` and the environment to `ENVIRONMENT`; the field names are comma-separated.
+    # Elastic APM (ocr_common.web.apm): off, and the agent not even loaded, while the server URL is unset. The service
+    # name defaults to `nilam-ocr-kk-<service>` and the environment to `ENVIRONMENT`; the secret token or the API key
+    # comes from the Secret, whichever the APM server uses; the field names are comma-separated.
     elastic_apm_server_url: str | None = None
     elastic_apm_secret_token: str | None = None
+    elastic_apm_api_key: str | None = None
     elastic_apm_service_name: str | None = None
     elastic_apm_environment: str | None = None
+    elastic_apm_transaction_sample_rate: float = Field(1.0, ge=0, le=1)
+    elastic_apm_verify_server_cert: bool = True
     elastic_apm_sanitize_field_names: str = ""
 
     environment: Environment = "production"
