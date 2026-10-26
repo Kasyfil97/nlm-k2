@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 RESULT_NOT_READY = "RESULT_NOT_READY"
 NOT_READY_RETRIES = 5
 NOT_READY_DELAY_SECONDS = 1.5
+# Set by the outbox on a stored message (the job's W3C traceparent, ocr_common/web/apm.py) so its delivery joins
+# the job's trace; never sent.
+TRACE_PARENT_KEY = "traceparent"
 
 
 def not_ready(exc: ServiceError) -> bool:
@@ -124,8 +127,9 @@ def stage_callback_body(
 
 
 def _without_answer(body: dict[str, Any]) -> dict[str, Any]:
-    """A stored stage body without what is kept for the result callback only: `answer` and `guardrails`."""
-    return {key: value for key, value in body.items() if key not in ("answer", "guardrails")}
+    """A stored stage body without what is kept for us only: the result callback's `answer` and `guardrails`, the
+    trace parent."""
+    return {key: value for key, value in body.items() if key not in ("answer", "guardrails", TRACE_PARENT_KEY)}
 
 
 class OrchestrationCallback:

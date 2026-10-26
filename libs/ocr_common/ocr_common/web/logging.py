@@ -13,6 +13,7 @@ import threading
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from ocr_common.web import apm
 from ocr_common.web.request_id import current_request_id
 
 LogFormat = Literal["json", "text"]
@@ -51,6 +52,7 @@ class JsonFormatter(logging.Formatter):
         }
         if self._service:
             entry["service"] = self._service
+        entry.update(apm.trace_fields())  # `trace.id`, `transaction.id` while an APM transaction is active
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(entry, ensure_ascii=False)
@@ -104,6 +106,7 @@ class ElasticsearchHandler(logging.Handler):
         }
         if self._service:
             doc["service"] = self._service
+        doc.update(apm.trace_fields())
         if record.exc_info:
             doc["exception"] = self.formatException(record.exc_info)
         return doc
