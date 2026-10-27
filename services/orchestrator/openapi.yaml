@@ -436,8 +436,9 @@ paths:
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 pipeline_last_stage: guardrails
         '503':
-          description: The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
-            nothing was started. `pipeline_last_stage` names it
+          description: 'The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`),
+            or guardrails is full (`SERVICE_BUSY`, with `Retry-After`: send the same request again after
+            it); nothing was started. `pipeline_last_stage` names it'
           content:
             application/json:
               schema:

@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
-from ocr_common.errors import UNREADABLE_FILE
+from ocr_common.errors import SERVICE_BUSY, UNREADABLE_FILE
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
 from ocr_common.overload import retry_after_header
@@ -136,12 +136,16 @@ STAGE_ERROR_CODES = {
 def _stage_error_body(exc: StageError, *, request_id: str) -> dict[str, Any]:
     """The answer when calling a pipeline service failed (unreachable, timed out, refused the file, answered
     wrongly): the error envelope's status and message, in the extract-ocr shape, naming that service."""
-    if exc.status_code >= 500:
+    busy = exc.status_code == 503 and exc.remote_code == SERVICE_BUSY
+    if busy:
+        logger.warning("%s -> 503 busy: %s", exc.service, exc.message)
+    elif exc.status_code >= 500:
         logger.error("%s -> %d: %s", exc.service, exc.status_code, exc.message)
     return extract_body(
         exc.status_code,
         exc.message,
-        errors=STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
+        # A full guardrails pod (503 SERVICE_BUSY + Retry-After) is not an outage: the caller sends again.
+        errors=SERVICE_BUSY if busy else STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
         request_id=request_id,
         pipeline_last_stage=exc.service,
     )
@@ -334,7 +338,8 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
         ),
         503: _stage_error_response(
             503,
-            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
+            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`), "
+            "or guardrails is full (`SERVICE_BUSY`, with `Retry-After`: send the same request again after it); "
             "nothing was started. `pipeline_last_stage` names it",
             "extraction",
             "extraction service is unavailable",

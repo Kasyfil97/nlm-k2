@@ -344,6 +344,8 @@ async def test_an_unassessable_image_gives_its_slot_back():
 
 
 def test_the_bulkhead_is_configured_from_the_settings(monkeypatch):
+    from ocr_common.errors import ServiceBusy
+
     from app import dependencies
 
     monkeypatch.setattr(
@@ -357,5 +359,13 @@ def test_the_bulkhead_is_configured_from_the_settings(monkeypatch):
     try:
         bulkhead = dependencies.get_inference_bulkhead()
         assert (bulkhead.limit, bulkhead.queue, bulkhead.retry_after) == (3, 20, 4.0)
+        bulkhead.reserve()
+        bulkhead.reserve()
+        bulkhead.reserve()
+        for _ in range(20):
+            bulkhead.reserve()
+        with pytest.raises(ServiceBusy) as exc:
+            bulkhead.reserve()
+        assert exc.value.message == "Layanan KK sedang penuh, silakan kirim ulang setelah 4 detik"
     finally:
         dependencies.get_inference_bulkhead.cache_clear()

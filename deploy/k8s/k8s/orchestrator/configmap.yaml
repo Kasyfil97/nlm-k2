@@ -20,6 +20,10 @@ data:
   TESTING_ENDPOINTS: "false"
   PIPELINE_WAIT_SECONDS: "15"
   GUARDRAILS_TIMEOUT_SECONDS: "20"
+  # Tanpa rate limit, seperti NPWP: semua request Nilam datang dari Orkestrasi pusat dengan satu API key, jadi
+  # batas per API key (default 60/menit) membatasi seluruh Nilam. Beban dibatasi bulkhead guardrails (503
+  # SERVICE_BUSY + Retry-After).
+  RATE_LIMIT_ENABLED: "false"
   # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
   ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
   ELASTIC_APM_ENVIRONMENT: "dev"
