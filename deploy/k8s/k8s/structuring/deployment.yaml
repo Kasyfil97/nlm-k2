@@ -113,13 +113,15 @@ spec:
           preStop:
             exec:
               command: ["sleep", "5"]
+        # Request CPU minimal cluster 500m. 100m terlalu kecil setelah rate limit 60/menit dilepas (target ~8,8 rps);
+        # limit 1 vCPU memberi ruang saat beban naik; pantau kubectl top pod saat load test.
         resources:
           requests:
-            cpu: "50m"
-            memory: "128Mi"
+            cpu: "500m"
+            memory: "256Mi"
           limits:
-            cpu: "100m"
-            memory: "512Mi"
+            cpu: "1000m"
+            memory: "1Gi"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
