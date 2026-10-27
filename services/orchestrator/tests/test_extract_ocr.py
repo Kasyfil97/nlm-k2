@@ -187,6 +187,17 @@ def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_gua
     assert stub_extraction.submitted == []
 
 
+def test_a_busy_guardrails_pod_is_503_with_its_retry_after(client, auth, stub_guardrails, stub_extraction):
+    """GUARDRAILS_MAX_CONCURRENCY + _MAX_QUEUE full at guardrails: its Retry-After reaches the caller."""
+    stub_guardrails.error = ServiceError(503, "guardrails-inference is busy", retry_after=2.0)
+
+    response = _submit(client, auth)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "2"
+    assert stub_extraction.submitted == []
+
+
 NO_GUARDRAILS = ["extraction", "structuring", "scoring"]
 FULL = ["guardrails", "extraction", "structuring", "scoring"]
 

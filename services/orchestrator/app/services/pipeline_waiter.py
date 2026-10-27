@@ -24,7 +24,7 @@ class StageError(ServiceError):
     uncaught, it becomes the usual error envelope, naming that service. Ported from nilam."""
 
     def __init__(self, service: str, error: ServiceError):
-        super().__init__(error.status_code, error.message)
+        super().__init__(error.status_code, error.message, retry_after=error.retry_after)
         self.service = service
 
 

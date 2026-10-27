@@ -9,6 +9,7 @@ from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
 from ocr_common.errors import UNREADABLE_FILE
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
+from ocr_common.overload import retry_after_header
 from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
@@ -166,6 +167,14 @@ async def _answer(
     if log:
         await service.answered(body["request_id"], body)
     return body
+
+
+def _pass_retry_after(response: Response, exc: StageError) -> None:
+    """The stage's `Retry-After` (a busy guardrails pod: 503 `SERVICE_BUSY`) passed on, so the central orchestrator
+    knows when to send again."""
+    retry_after = retry_after_header(exc.retry_after)
+    if retry_after:
+        response.headers["Retry-After"] = retry_after
 
 
 class _InvalidThreshold(Exception):
@@ -427,6 +436,7 @@ async def extract_ocr(
             column_thresholds=column_thresholds,
         )
     except StageError as exc:
+        _pass_retry_after(response, exc)
         return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
     finally:
         reset_request_id(token)
@@ -523,6 +533,7 @@ async def get_extract_ocr(
     try:
         outcome = await service.status(request_id)
     except StageError as exc:
+        _pass_retry_after(response, exc)
         return await _answer(service, response, _stage_error_body(exc, request_id=request_id), log=False)
     finally:
         reset_request_id(token)

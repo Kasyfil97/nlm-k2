@@ -136,8 +136,13 @@ services:
       GUARDRAILS_WEIGHTS_DIR: weights
       GUARDRAILS_MODEL_URI: gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/guardrails/
       GUARDRAILS_DEVICE: cpu
-      # Samakan dengan limits.cpu; tanpa ini torch membuat thread sebanyak core node.
-      GUARDRAILS_TORCH_THREADS: "2"
+      # Tanpa ini torch membuat thread sebanyak core node. 1 thread per dokumen, beberapa dokumen paralel.
+      GUARDRAILS_TORCH_THREADS: "1"
+      # Bulkhead inference per pod: MAX_CONCURRENCY x TORCH_THREADS = limits.cpu; lebih dari itu (dan antrean
+      # penuh) 503 SERVICE_BUSY + Retry-After, diteruskan orchestrator apa adanya.
+      GUARDRAILS_MAX_CONCURRENCY: "3"
+      GUARDRAILS_MAX_QUEUE: "20"
+      GUARDRAILS_BUSY_RETRY_AFTER_SECONDS: "2"
       # Tidak ada ambang di sini: hanya `threshold` per request yang menolak; tanpa itu dokumen lolos.
     resources:
       requests:

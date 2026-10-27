@@ -6,6 +6,7 @@ Every `get_*` here is what the routes take through `Depends(...)` and what tests
 from functools import lru_cache
 
 from ocr_common.clients.remote import RemoteModelClient
+from ocr_common.overload import Bulkhead
 from ocr_common.registry import Factory, build_backend
 
 from app.config import Settings, get_settings
@@ -52,8 +53,20 @@ def get_quality_model() -> QualityBackend:
     return build_backend(QUALITY_BACKENDS, settings.guardrails_backend, settings, "guardrails")
 
 
+@lru_cache
+def get_inference_bulkhead() -> Bulkhead:
+    """The bound on documents judged at once in this process (GUARDRAILS_MAX_CONCURRENCY / _MAX_QUEUE)."""
+    settings: Settings = get_settings()
+    return Bulkhead(
+        "guardrails-inference",
+        settings.guardrails_max_concurrency,
+        settings.guardrails_max_queue,
+        retry_after=settings.guardrails_busy_retry_after_seconds,
+    )
+
+
 # --- services (cheap to build: one per request) ------------------------------------------
 
 
 def get_guardrails_service() -> GuardrailsService:
-    return GuardrailsService(get_quality_model(), get_settings())
+    return GuardrailsService(get_quality_model(), get_settings(), get_inference_bulkhead())

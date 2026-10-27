@@ -15,7 +15,17 @@ data:
   GUARDRAILS_BACKEND: "kk_quality"
   GUARDRAILS_WEIGHTS_DIR: "weights"
   GUARDRAILS_DEVICE: "cpu"
+  # Throughput per pod paling baik dengan 1 thread torch per dokumen dan beberapa dokumen paralel (benchmark
+  # 27 Okt 2026: 4 thread hanya memangkas 0,8 -> 0,5 dtk per foto, PDF malah lebih lambat).
   GUARDRAILS_TORCH_THREADS: "1"
+  # Bulkhead inference per pod; lebih dari itu 503 SERVICE_BUSY + Retry-After, diteruskan orchestrator apa adanya.
+  # Untuk resource yang diset manual di Rancher (request 0.9 CPU / 2.6Gi, limit 3 CPU / 8.5Gi), BUKAN untuk
+  # resources di deployment.yaml: MAX_CONCURRENCY x TORCH_THREADS = limit CPU (3). Antrean 20 habis dalam
+  # ~20/3 x 1,5 dtk = ~10 dtk, di bawah GUARDRAILS_TIMEOUT_SECONDS orchestrator (20). Memory ~400Mi model +
+  # ~400Mi per slot. Kalau limit CPU di Rancher diubah: MAX_CONCURRENCY = limit CPU, MAX_QUEUE ~ MAX_CONCURRENCY x 7.
+  GUARDRAILS_MAX_CONCURRENCY: "3"
+  GUARDRAILS_MAX_QUEUE: "20"
+  GUARDRAILS_BUSY_RETRY_AFTER_SECONDS: "2"
   # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
   ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
   ELASTIC_APM_ENVIRONMENT: "dev"

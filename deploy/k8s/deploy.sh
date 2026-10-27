@@ -283,6 +283,14 @@ for SERVICE in "${SERVICES[@]}"; do
     kubectl apply -f "$RENDER_DIR/$SERVICE/service.yaml"
     ok "Service applied"
 
+    # HPA opsional: hanya service yang punya hpa.yaml (guardrails, satu-satunya yang CPU-bound).
+    if [ -f "$K8S_DIR/$SERVICE/hpa.yaml" ]; then
+        step "[$SERVICE] Applying HorizontalPodAutoscaler..."
+        cp "$K8S_DIR/$SERVICE/hpa.yaml" "$RENDER_DIR/$SERVICE/hpa.yaml"
+        kubectl apply -f "$RENDER_DIR/$SERVICE/hpa.yaml"
+        ok "HPA applied"
+    fi
+
     # Ingress opsional: hanya service yang punya ingress.yaml (orchestrator) yang dibuka ke luar cluster.
     if [ -f "$K8S_DIR/$SERVICE/ingress.yaml" ]; then
         step "[$SERVICE] Applying Ingress..."
