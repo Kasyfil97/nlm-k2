@@ -10,6 +10,7 @@ from ocr_common.types import OcrResult
 
 from app.config import Settings
 from app.ml.base import OcrEngine, RemoteOcrModel
+from app.services.pdf_source import unwrap_photo_pdf
 
 
 class ExtractionService:
@@ -35,6 +36,9 @@ class ExtractionService:
 
     async def extract(self, filename: str, content_type: str | None, content: bytes) -> OcrResult:
         validate_image(content_type, content, self._settings)
+        if (photo := unwrap_photo_pdf(content)) is not None:
+            content, content_type = photo.content, photo.content_type
+            filename = f"{filename.rsplit('.', 1)[0] or 'upload'}.{photo.extension}"
 
         started = time.perf_counter()
         engine = self._engine
