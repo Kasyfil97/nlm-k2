@@ -177,6 +177,7 @@ bersamaan; perbandingan konstan-waktu. Service selain orchestrator hanya dijangk
 | 429 | `TOO_MANY_REQUESTS` | rate limit orchestrator | ya, setelah `Retry-After` |
 | 500 | `INTERNAL_SERVER_ERROR` / `DOWNSTREAM_SERVER_ERROR` | service ini / service di belakangnya gagal | ya |
 | 503 | `DOWNSTREAM_UNAVAILABLE` | dependensi tidak terjangkau | ya |
+| 503 | `SERVICE_BUSY` | guardrails penuh (`GUARDRAILS_MAX_CONCURRENCY` + `_MAX_QUEUE`); tidak ada yang dijalankan | ya, setelah `Retry-After` |
 | 504 | `DOWNSTREAM_TIMEOUT` | dependensi tidak menjawab dalam timeout | ya |
 
 Sejak draf 13 (seperti nilam) `errors` **selalu** kode stabil, tidak pernah salinan `message`; cabangkan

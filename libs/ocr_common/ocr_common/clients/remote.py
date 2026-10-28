@@ -17,8 +17,10 @@ class RemoteClientError(ServiceError):
     remote's own `errors` code in `remote_code` when its answer has one (e.g. the central orchestrator's
     `RESULT_NOT_READY`). `code` stays None, so this service's own error envelope is unchanged."""
 
-    def __init__(self, status_code: int, message: str, remote_code: str | None = None):
-        super().__init__(status_code, message)
+    def __init__(
+        self, status_code: int, message: str, remote_code: str | None = None, *, retry_after: float | None = None
+    ):
+        super().__init__(status_code, message, retry_after=retry_after)
         self.remote_code = remote_code
 
 
@@ -27,7 +29,8 @@ class RemoteModelClient:
     error status becomes 500 with the remote's message, or the same status with the remote's message
     when it is a 4xx and `passthrough_client_errors` is set (a stage relaying another stage's
     validation error), or when it is listed in `passthrough_statuses` (e.g. `(400, 413, 503, 504)`
-    to relay a model service's refusals and outages as they are, but not its 401).
+    to relay a model service's refusals and outages as they are, but not its 401). A remote's `Retry-After`
+    is kept on the passed-through error (`retry_after`).
     """
 
     def __init__(
@@ -97,12 +100,23 @@ class RemoteModelClient:
             if response.status_code in self._passthrough_statuses or (
                 self._passthrough and 400 <= response.status_code < 500
             ):
-                raise RemoteClientError(response.status_code, detail, _error_code(response))
+                raise RemoteClientError(
+                    response.status_code, detail, _error_code(response), retry_after=_retry_after(response)
+                )
             raise InternalError(f"{self.name} error ({response.status_code}): {detail}")
         try:
             return response.json()
         except ValueError as exc:
             raise InternalError(f"{self.name} returned an invalid response") from exc
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    """The remote's `Retry-After` in seconds (only the seconds form; an HTTP date is ignored)."""
+    value = response.headers.get("Retry-After")
+    try:
+        return max(float(value), 0.0) if value is not None else None
+    except ValueError:
+        return None
 
 
 def _error_code(response: httpx.Response) -> str | None:

@@ -6,9 +6,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
-from ocr_common.errors import UNREADABLE_FILE
+from ocr_common.errors import SERVICE_BUSY, UNREADABLE_FILE
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
+from ocr_common.overload import retry_after_header
 from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
@@ -135,12 +136,16 @@ STAGE_ERROR_CODES = {
 def _stage_error_body(exc: StageError, *, request_id: str) -> dict[str, Any]:
     """The answer when calling a pipeline service failed (unreachable, timed out, refused the file, answered
     wrongly): the error envelope's status and message, in the extract-ocr shape, naming that service."""
-    if exc.status_code >= 500:
+    busy = exc.status_code == 503 and exc.remote_code == SERVICE_BUSY
+    if busy:
+        logger.warning("%s -> 503 busy: %s", exc.service, exc.message)
+    elif exc.status_code >= 500:
         logger.error("%s -> %d: %s", exc.service, exc.status_code, exc.message)
     return extract_body(
         exc.status_code,
         exc.message,
-        errors=STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
+        # A full guardrails pod (503 SERVICE_BUSY + Retry-After) is not an outage: the caller sends again.
+        errors=SERVICE_BUSY if busy else STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
         request_id=request_id,
         pipeline_last_stage=exc.service,
     )
@@ -166,6 +171,14 @@ async def _answer(
     if log:
         await service.answered(body["request_id"], body)
     return body
+
+
+def _pass_retry_after(response: Response, exc: StageError) -> None:
+    """The stage's `Retry-After` (a busy guardrails pod: 503 `SERVICE_BUSY`) passed on, so the central orchestrator
+    knows when to send again."""
+    retry_after = retry_after_header(exc.retry_after)
+    if retry_after:
+        response.headers["Retry-After"] = retry_after
 
 
 class _InvalidThreshold(Exception):
@@ -325,7 +338,8 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
         ),
         503: _stage_error_response(
             503,
-            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
+            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`), "
+            "or guardrails is full (`SERVICE_BUSY`, with `Retry-After`: send the same request again after it); "
             "nothing was started. `pipeline_last_stage` names it",
             "extraction",
             "extraction service is unavailable",
@@ -427,6 +441,7 @@ async def extract_ocr(
             column_thresholds=column_thresholds,
         )
     except StageError as exc:
+        _pass_retry_after(response, exc)
         return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
     finally:
         reset_request_id(token)
@@ -523,6 +538,7 @@ async def get_extract_ocr(
     try:
         outcome = await service.status(request_id)
     except StageError as exc:
+        _pass_retry_after(response, exc)
         return await _answer(service, response, _stage_error_body(exc, request_id=request_id), log=False)
     finally:
         reset_request_id(token)

@@ -15,7 +15,13 @@ data:
   TESTING_ENDPOINTS: "false"
   STRUCTURING_BACKEND: "kk_model"
   STRUCTURING_MODEL_PATH: "weights/kk_structuring_model.joblib"
-  ORCHESTRATION_CALLBACK_ENABLED: "false"
+  # Callback hasil ke Orkestrasi pusat (namespace sama), satu POST per request dengan X-Callback-Key dari
+  # Secret (ORCHESTRATION_CALLBACK_KEY, wajib ada). Harus mengikuti mode di sisi mereka: di mode poll mereka
+  # menjawab setiap callback 409 CALLBACK_NOT_EXPECTED.
+  ORCHESTRATION_URL: "http://ms-bribrain-nilam-ocr-orchestrator.bribrain-ocr-nilam.svc.cluster.local"
+  ORCHESTRATION_CALLBACK_PATH: "/v1/ocr-callback"
+  ORCHESTRATION_CALLBACK_FORMAT: "result"
+  ORCHESTRATION_CALLBACK_ENABLED: "true"
   PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
   PIPELINE_OUTBOX: "true"
   PIPELINE_HANDOFF_BY_REFERENCE: "true"

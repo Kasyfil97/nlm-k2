@@ -306,3 +306,66 @@ def test_sending_neither_file_nor_file_url_is_400(client, auth):
     response = client.post("/v1/guardrails/check", data={"request_id": "OCR_12"}, headers=auth)
     assert response.status_code == 400
     assert response.json()["message"] == "Send exactly one of file or file_url"
+
+
+# --- the bulkhead (GUARDRAILS_MAX_CONCURRENCY / _MAX_QUEUE) --------------------------------
+
+
+async def test_inference_beyond_the_bulkhead_is_503_busy():
+    """Running and waiting both full: refused at once with Retry-After, and the model is not run."""
+    from ocr_common.errors import SERVICE_BUSY, ServiceError
+    from ocr_common.overload import Bulkhead
+
+    model = StubModel(0.01)
+    bulkhead = Bulkhead("guardrails-inference-test", 1, 0, retry_after=2.0)
+    held = bulkhead.reserve()
+    service = GuardrailsService(model, _settings(), bulkhead)
+
+    with pytest.raises(ServiceError) as exc:
+        await service.check("kk.jpg", "image/jpeg", JPEG, override=HALF)
+    assert (exc.value.status_code, exc.value.code, exc.value.retry_after) == (503, SERVICE_BUSY, 2.0)
+    assert model.seen == []
+
+    held.release()
+    report = await service.check("kk.jpg", "image/jpeg", JPEG, override=HALF)
+    assert report["passed"] is True
+    assert bulkhead.reserved == 0
+
+
+async def test_an_unassessable_image_gives_its_slot_back():
+    from ocr_common.overload import Bulkhead
+
+    bulkhead = Bulkhead("guardrails-inference-test", 1, 0)
+    service = GuardrailsService(unassessable_model(), _settings(), bulkhead)
+    for _ in range(2):
+        report = await service.check("kk.jpg", "image/jpeg", JPEG, override=HALF)
+        assert report["document"]["verdict"] == "unassessable"
+    assert bulkhead.reserved == 0
+
+
+def test_the_bulkhead_is_configured_from_the_settings(monkeypatch):
+    from ocr_common.errors import ServiceBusy
+
+    from app import dependencies
+
+    monkeypatch.setattr(
+        dependencies,
+        "get_settings",
+        lambda: _settings(
+            guardrails_max_concurrency=3, guardrails_max_queue=20, guardrails_busy_retry_after_seconds=4.0
+        ),
+    )
+    dependencies.get_inference_bulkhead.cache_clear()
+    try:
+        bulkhead = dependencies.get_inference_bulkhead()
+        assert (bulkhead.limit, bulkhead.queue, bulkhead.retry_after) == (3, 20, 4.0)
+        bulkhead.reserve()
+        bulkhead.reserve()
+        bulkhead.reserve()
+        for _ in range(20):
+            bulkhead.reserve()
+        with pytest.raises(ServiceBusy) as exc:
+            bulkhead.reserve()
+        assert exc.value.message == "Layanan KK sedang penuh, silakan kirim ulang setelah 4 detik"
+    finally:
+        dependencies.get_inference_bulkhead.cache_clear()

@@ -5,13 +5,17 @@ with pages is gone: no `render_pages`, no page list, no `_aggregate`, no `GUARDR
 `_reject_reason()` was rewritten rather than renamed -- it read `n_reject` / `n_pages`, and both
 columns were deleted from `GuardrailsDocument`, so there was nothing left of it to keep.
 
-This service judges and never refuses: §5.2 is always 200, with the verdict in `data.passed`.
+This service judges and never refuses a document: §5.2 is always 200, with the verdict in `data.passed`. The one
+exception is load: past the bulkhead (GUARDRAILS_MAX_CONCURRENCY + _MAX_QUEUE) a request is answered 503
+`SERVICE_BUSY` before the model sees it.
 """
 
 import logging
 from typing import Any
 
 from starlette.concurrency import run_in_threadpool
+
+from ocr_common.overload import Bulkhead
 
 from app.clients.reject_threshold import Threshold
 from app.config import Settings
@@ -44,9 +48,12 @@ class GuardrailsService:
     """The model's verdict on a document, and nothing else: type, size and the choice between
     `file` and `file_url` are settled before this is called."""
 
-    def __init__(self, model: Any, settings: Settings):
+    def __init__(self, model: Any, settings: Settings, bulkhead: Bulkhead | None = None):
+        """`bulkhead` bounds the documents judged at once in this process (one shared by every request); without
+        it, no bound."""
         self._model = model
         self._settings = settings
+        self._bulkhead = bulkhead or Bulkhead("guardrails-inference", 0)
 
     async def check(
         self, filename: str, content_type: str | None, content: bytes, *, override: Threshold | None = None
@@ -59,7 +66,10 @@ class GuardrailsService:
             # not apply; forcing one here would report a threshold that did not decide anything.
             document = await self._model.check_document(filename, content, content_type)
         else:
-            document = await run_in_threadpool(self._assess, filename, content_type, content, override)
+            # The model is CPU-bound: beyond the bulkhead the request is refused (503 SERVICE_BUSY) rather than
+            # queued in the threadpool, where every extra document only slows the others down.
+            async with self._bulkhead.slot():
+                document = await run_in_threadpool(self._assess, filename, content_type, content, override)
 
         verdict = document["verdict"]
         return {"passed": verdict == VERDICT_ACCEPTED, "reason": reason_for(verdict), "document": document}

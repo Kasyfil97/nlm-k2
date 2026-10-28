@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from ocr_common.config import BaseServiceSettings
 
@@ -21,6 +21,15 @@ class Settings(BaseServiceSettings):
     guardrails_weights_dir: str = "weights"
     guardrails_device: str = "cpu"
     guardrails_torch_threads: int | None = None
+
+    # Bulkhead of the in-process model (ocr_common.overload, `kk_quality` only): at most GUARDRAILS_MAX_CONCURRENCY
+    # documents judged at once (each uses GUARDRAILS_TORCH_THREADS threads; more only fight over the same CPUs) and
+    # GUARDRAILS_MAX_QUEUE more waiting; beyond that 503 SERVICE_BUSY with Retry-After. 0 = no limit.
+    # Keep MAX_CONCURRENCY x TORCH_THREADS at the CPU limit, and the queue short enough to drain inside the
+    # orchestrator's GUARDRAILS_TIMEOUT_SECONDS (queue / concurrency x seconds per document).
+    guardrails_max_concurrency: int = Field(0, ge=0)
+    guardrails_max_queue: int = Field(20, ge=0)
+    guardrails_busy_retry_after_seconds: float = Field(2.0, gt=0)
 
     # No configured threshold: only the request's `threshold` field refuses a document; without it the
     # document passes and `probability_bad` is answered (GUARDRAILS_THRESHOLD and GUARDRAILS_THRESHOLD_URL

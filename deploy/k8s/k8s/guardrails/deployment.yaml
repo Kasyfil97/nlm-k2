@@ -96,13 +96,15 @@ spec:
           preStop:
             exec:
               command: ["sleep", "5"]
+        # Pasangan configmap: GUARDRAILS_MAX_CONCURRENCY = limits.cpu (2 core) x 1 thread torch. CPU request = limit
+        # supaya 2 core itu dijamin, bukan hanya sisa CPU node. Memory ~400Mi model + ~400Mi per slot (2) = ~1,2Gi.
         resources:
           requests:
-            cpu: "100m"
-            memory: "512Mi"
+            cpu: "2000m"
+            memory: "1.5Gi"
           limits:
-            cpu: "300m"
-            memory: "1Gi"
+            cpu: "2000m"
+            memory: "2Gi"
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true

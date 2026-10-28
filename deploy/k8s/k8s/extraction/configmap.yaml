@@ -20,7 +20,13 @@ data:
   EXTRACTION_OCR_PATH: "/v1/ocr"
   EXTRACTION_OCR_TIMEOUT_SECONDS: "180"
   EXTRACTION_OCR_QUERY: "{\"doc_orientation\": true, \"doc_unwarping\": true, \"textline_orientation\": false}"
-  ORCHESTRATION_CALLBACK_ENABLED: "false"
+  # Callback hasil ke Orkestrasi pusat (namespace sama), satu POST per request dengan X-Callback-Key dari
+  # Secret (ORCHESTRATION_CALLBACK_KEY, wajib ada). Harus mengikuti mode di sisi mereka: di mode poll mereka
+  # menjawab setiap callback 409 CALLBACK_NOT_EXPECTED.
+  ORCHESTRATION_URL: "http://ms-bribrain-nilam-ocr-orchestrator.bribrain-ocr-nilam.svc.cluster.local"
+  ORCHESTRATION_CALLBACK_PATH: "/v1/ocr-callback"
+  ORCHESTRATION_CALLBACK_FORMAT: "result"
+  ORCHESTRATION_CALLBACK_ENABLED: "true"
   PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
   PIPELINE_OUTBOX: "true"
   PIPELINE_HANDOFF_BY_REFERENCE: "true"
