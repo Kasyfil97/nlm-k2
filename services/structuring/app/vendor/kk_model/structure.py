@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import joblib
@@ -201,8 +202,30 @@ def group_boxes(doc: dict, P: np.ndarray, aux: dict, fill_tau: float | None = 0.
 
 
 # ----------------------------------------------------------------- nilai & JSON
+# label form yang kadang terbaca satu kotak dengan nilainya, mis. "Nama Kepala Keluarga : MUNIR"
+LABEL_PREFIX = {"nama_kepala_keluarga": "NAMAKEPALAKELUARGA", "nama_lengkap": "NAMALENGKAP", "ayah": "NAMAAYAH",
+                "ibu": "NAMAIBU"}
+_KEPALA = re.compile(r"(?i)^\s*nam[ae]\s*kep\w*\s*kel\w*\s*:?\s*")
+
+
+def strip_label(key: str, t: str) -> str:
+    """Buang awalan label form dari nilai field nama (toleran salah baca OCR: "Nama Kepata Keluarga:")."""
+    lab = LABEL_PREFIX.get(key)
+    if not lab:
+        return t
+    if ":" in t[:32]:
+        pre, post = t.split(":", 1)
+        if post.strip() and SequenceMatcher(None, re.sub(r"[^A-Z0-9]", "", pre.upper()), lab).ratio() >= 0.75:
+            return post.strip()
+    if key == "nama_kepala_keluarga":
+        m = _KEPALA.match(t)
+        if m and t[m.end():].strip():
+            return t[m.end():].strip()
+    return t
+
+
 def clean_value(key: str, text: str) -> str:
-    t = re.sub(r"\s+", " ", text).strip().lstrip(":").strip()
+    t = strip_label(key, re.sub(r"\s+", " ", text).strip().lstrip(":").strip())
     if key in ("no_kk", "nik"):
         m = re.search(r"\d{16}", re.sub(r"[\s.\-]", "", t))
         return m.group(0) if m else re.sub(r"\D", "", t)
