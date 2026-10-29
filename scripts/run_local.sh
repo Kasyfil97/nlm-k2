@@ -30,7 +30,8 @@ SERVICES=(guardrails extraction structuring scoring orchestrator)
 declare -A PORT=([orchestrator]=8040 [guardrails]=8041 [extraction]=8042 [structuring]=8043 [scoring]=8044)
 
 service_env() {
-  local common=(API_KEY="$API_KEY" ENVIRONMENT=local DATABASE_URL= PORT="${PORT[$1]}")
+  # Tanpa DATABASE_URL tahap-tahap harus saling menyerahkan job lewat body HTTP, bukan lewat referensi DB.
+  local common=(API_KEY="$API_KEY" ENVIRONMENT=local DATABASE_URL= PIPELINE_HANDOFF_BY_REFERENCE=false PORT="${PORT[$1]}")
   case "$1" in
     orchestrator) echo "${common[@]}" PIPELINE_WAIT_SECONDS=60 ;;
     guardrails) echo "${common[@]}" GUARDRAILS_BACKEND=mock ;;

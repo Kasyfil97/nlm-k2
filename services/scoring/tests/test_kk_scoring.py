@@ -43,10 +43,20 @@ def structuring(*members: dict, nomor_kk: str = "9924187486671285") -> dict:
     return document
 
 
+#: A guardrails report that opens the claim gate: sharp (`probability_bad` below 0.0704) and whole
+#: (`probability_crop` below 0.777). Without one the gate is closed and every decision is 0.
+GUARDRAILS_PASSED = {
+    "passed": True,
+    "reason": None,
+    "document": {"verdict": "accepted", "confidence": 0.9821, "probability_bad": 0.0179, "probability_crop": 0.0123},
+}
+
+
 def job_body(request_id: str, *members: dict) -> dict:
     return {
         "request_id": request_id,
         "document_type": "kk",
+        "guardrails": GUARDRAILS_PASSED,
         "structuring": structuring(*members) if members else structuring(member("BUDI SANTOSO", "9908680101601956")),
     }
 
@@ -152,3 +162,51 @@ def test_the_sync_endpoint_scores_the_same_shape(client, auth):
     data = response.json()["data"]
     assert set(data["fields"]) == set(SCORED_DOC_FIELDS)
     assert len(data["anggota_keluarga"]) == 1
+
+
+# --- the claim gate ------------------------------------------------------------------------
+
+
+def _decisions(client, auth, request_id: str, guardrails: dict | None) -> dict:
+    body = {**job_body(request_id), "guardrails": guardrails, "column_confidence_threshold": {"all_field": 0.0}}
+    assert client.post(JOBS, json=body, headers=auth).status_code == 202
+    return wait_for_job(client, f"{JOBS}/{request_id}")["result"]
+
+
+def _confidences(decisions: dict) -> list:
+    members = [field["confidence"] for m in decisions["anggota_keluarga"] for field in m.values()]
+    return [decisions["no_kk"]["confidence"], decisions["nama_kepala_keluarga"]["confidence"], *members]
+
+
+def test_a_sharp_whole_card_opens_the_gate(client, auth):
+    result = _decisions(client, auth, "REQ_gate_open", GUARDRAILS_PASSED)
+    assert result["claim_gate"]["open"] is True
+    assert 1 in _confidences(result["decisions"])
+
+
+@pytest.mark.parametrize(
+    ("request_id", "document"),
+    [
+        ("REQ_gate_crop", {"probability_bad": 0.0179, "probability_crop": 0.9512}),
+        ("REQ_gate_blur", {"probability_bad": 0.0704, "probability_crop": 0.0123}),
+        ("REQ_gate_nocrop", {"probability_bad": 0.0179, "probability_crop": None}),
+    ],
+)
+def test_a_likely_cut_or_blurred_card_claims_nothing(client, auth, request_id, document):
+    """Even under a threshold of 0.0, which would otherwise claim every field with a value."""
+    guardrails = {**GUARDRAILS_PASSED, "document": {**GUARDRAILS_PASSED["document"], **document}}
+    result = _decisions(client, auth, request_id, guardrails)
+    assert result["claim_gate"]["open"] is False
+    assert set(_confidences(result["decisions"])) == {0}
+
+
+def test_leaving_guardrails_out_does_not_get_around_the_gate(client, auth):
+    result = _decisions(client, auth, "REQ_gate_none", None)
+    assert result["claim_gate"] == {
+        "open": False,
+        "probability_bad": None,
+        "probability_crop": None,
+        "p_bad_max": 0.0704,
+        "p_crop_max": 0.777,
+    }
+    assert set(_confidences(result["decisions"])) == {0}

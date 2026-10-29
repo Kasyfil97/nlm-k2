@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from app.ml.base import UnassessableImage
+from app.ml.crop import CropScorer
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +56,10 @@ XGB_MODEL = "xgb_model.json"
 CALIBRATION = "calibration.json"
 FEATURE_NAMES = "feature_names.json"
 MODEL_HASHES = "model_hashes.json"
+#: The separate crop model (`app/ml/crop.py`), from `quality/crop_model/runs/<run>/best.pt`.
+CROP_MODEL = "crop_model.pt"
 
-REQUIRED_ARTIFACTS = (BLUR_CNN_WEIGHTS, BLUR_CNN_META, XGB_MODEL, CALIBRATION, FEATURE_NAMES)
+REQUIRED_ARTIFACTS = (BLUR_CNN_WEIGHTS, BLUR_CNN_META, XGB_MODEL, CALIBRATION, FEATURE_NAMES, CROP_MODEL)
 
 # --- geometry of the blur CNN (must match KK/train_cnn.py) ---------------------------------
 
@@ -80,6 +83,7 @@ MAGIC_PNG = b"\x89PNG"
 MAGIC_PDF = b"%PDF"
 
 PDF_RENDER_DPI = 150  # must match the training pipeline
+CROP_PDF_RENDER_DPI = 110  # the crop model's training pipeline (quality/crop_model/common.py)
 
 CV_NORM_SHORT_SIDE = 512
 NOISE_CROP_SIZE = 512
@@ -581,6 +585,8 @@ class KKQualityModel:
         blur_cnn.eval()
         self._blur_cnn = blur_cnn.to(self._device)
 
+        self._crop = CropScorer(base / CROP_MODEL, self._device)
+
         self._xgb = xgb.Booster()
         self._xgb.load_model(str(base / XGB_MODEL))
 
@@ -620,6 +626,7 @@ class KKQualityModel:
             "n_features": len(self.feature_names),
             "n_calibration_points": len(self._iso_x),
             "reject_threshold": self.reject_threshold,
+            "crop_model": self._crop.metadata,
         }
         logger.info("guardrails model loaded from %s: %s", base, self.metadata)
 
@@ -659,10 +666,19 @@ class KKQualityModel:
 
     def assess(self, filename: str, content_type: str | None, content: bytes) -> float:
         """`probability_bad` for one document. Raises `UnassessableImage` when it cannot be judged."""
+        return self.assess_detail(filename, content_type, content)["probability_bad"]
+
+    def assess_detail(self, filename: str, content_type: str | None, content: bytes) -> dict[str, float]:
+        """`probability_bad` and `probability_crop` for one document, from one decode. Raises
+        `UnassessableImage` when it cannot be judged."""
         _validate_bytes(content)
         file_kb = len(content) / 1024.0
 
+        crop_input = content
         if content.startswith(MAGIC_PDF):
+            # Each model gets the page at the dpi it was trained on. Rendering the crop model's page at 150 dpi
+            # moved its score by up to 0.22 on the kk_eval PDFs; at 110 dpi by at most 0.04.
+            crop_input = render_pdf_first_page(content, CROP_PDF_RENDER_DPI)
             content = render_pdf_first_page(content)
 
         gray_float, image_rgb = _decode(content)
@@ -675,7 +691,7 @@ class KKQualityModel:
             logger.warning("guardrails features missing, using NaN: %s", missing)
             features.update(dict.fromkeys(missing, float("nan")))
 
-        return self._predict(features)
+        return {"probability_bad": self._predict(features), "probability_crop": self._crop.score(crop_input)}
 
     def _blur_cnn_features(self, image_rgb: Any) -> dict[str, float]:
         """The raw CNN probability and its isotonic calibration."""

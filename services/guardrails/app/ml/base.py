@@ -60,6 +60,10 @@ class QualityModel(Protocol):
         """`probability_bad` in [0, 1]. Raises `UnassessableImage` when the image cannot be judged."""
         ...
 
+    # Optional, looked up with `hasattr` like `check_document`: `assess_detail(filename, content_type, content)`
+    # answers `{"probability_bad", "probability_crop"}` from one decode. A model without it reports
+    # `probability_crop: null`, which closes the claim gate in scoring.
+
 
 class DocumentChecker(Protocol):
     """A model served elsewhere (the ML team's quality service): the document is sent whole and the

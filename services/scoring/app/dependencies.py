@@ -88,7 +88,12 @@ def get_testing_results() -> StageResults | None:
 
 
 def get_confidence_service() -> ConfidenceService:
-    return ConfidenceService(get_trust_model())
+    settings = get_settings()
+    return ConfidenceService(
+        get_trust_model(),
+        claim_gate_p_bad=settings.scoring_claim_gate_p_bad,
+        claim_gate_p_crop=settings.scoring_claim_gate_p_crop,
+    )
 
 
 def get_job_service() -> ScoringJobService:

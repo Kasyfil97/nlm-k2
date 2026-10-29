@@ -62,6 +62,17 @@ class GuardrailsDocument(_Forwarded):
         ),
         examples=[0.0287],
     )
+    probability_crop: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Raw output of the crop model. Not part of the verdict: scoring's claim gate withholds `confidence` 1 "
+            "from every field when it reaches the gate. Null when unassessable or when the backend has no crop "
+            "model, which closes the gate"
+        ),
+        examples=[0.0123],
+    )
     threshold_used: float | None = Field(
         None,
         gt=0,

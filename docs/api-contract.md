@@ -415,6 +415,12 @@ Aturan isi `data`:
     benar (kapital & spasi dirapikan) mencapai ambang itu, selain itu `0`.
   - Field **tanpa** ambang: `confidence` adalah probabilitas itu sendiri, float 0–1 apa adanya (mis.
     `0.9731`); `0` bila nilainya kosong atau tidak terskor.
+  - **Gerbang klaim** (29 Okt 2026), di atas kedua aturan itu: bila `probability_bad` guardrails tidak di
+    bawah `SCORING_CLAIM_GATE_P_BAD` (0.0704) atau `probability_crop` tidak di bawah
+    `SCORING_CLAIM_GATE_P_CROP` (0.777), **semua** field dokumen itu mendapat `confidence` 0 (atau `0.0`
+    tanpa ambang); `value` tetap dikirim. Batasnya konfigurasi service scoring dan **tidak** bisa diubah dari
+    request. Request tanpa tahap `guardrails`, gambar `unassessable`, atau backend guardrails tanpa model crop
+    tidak membawa salah satu angka itu, sehingga gerbangnya tertutup. Alasannya disimpan di `claim_gate` (8.3).
   - Ambang milik model (`thresholds`, 8.3) tetap ikut disimpan sebagai rujukan — titik di atas mana setiap
     sampel held-out field sejenis benar — tetapi tidak lagi memutuskan. `FIELD_CONFIDENCE_THRESHOLD` dihapus.
 - Keputusan itu **disimpan** tahap scoring bersama hasilnya (`decisions`, 8.3), dan respons `POST`,
@@ -487,6 +493,7 @@ Bentuknya sama untuk kedua sumber penolakan; yang membedakan hanya `message` dan
 | model guardrails | sebelum pipeline | `Kualitas gambar terlalu rendah, mohon unggah foto yang lebih jelas` |
 | aturan structuring | structuring | `Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga` |
 | aturan structuring | structuring | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap` |
+| aturan structuring | structuring | `Kolom Kartu Keluarga tidak terbaca lengkap (terpotong atau tertutup), mohon unggah foto KK utuh` |
 
 Semua `message` berbahasa Indonesia dan boleh ditampilkan langsung ke pengguna akhir. Penolakan oleh
 guardrails terjadi **sebelum** tahap mana pun berjalan, jadi tidak ada baris job. Putusannya tetap
@@ -655,6 +662,10 @@ yang dilatihkan ke checkpoint:
 - `probability_bad` adalah keluaran mentah model XGBoost `K2Quality` (`is_bad` = `probability >= threshold`,
   hanya bila request membawa `threshold`; tanpa itu tidak ada yang dibandingkan dan vonisnya `accepted`).
 - `confidence` = keyakinan pada vonis: `probability_bad` kalau `reject`, `1 - probability_bad` kalau `accepted`.
+- `probability_crop` adalah keluaran model crop terpisah (MobileNetV3-Small, `quality/crop_model` run
+  `mnv3s_v1`): peluang area field KK (No. KK + tabel anggota) terpotong di tepi atau tertutup. **Tidak pernah
+  ikut vonis**; dipakai gerbang klaim di scoring (lihat aturan isi `data` dan `claim_gate` di 8.3). Null pada `unassessable` dan pada
+  backend `remote`.
 - **`unassessable` adalah vonis, bukan galat.** §5.2 mewajibkan selalu `200`, dan inti model melempar
   di lusinan tempat pada jalur ini; memetakannya ke `500` akan melanggar aturan itu. Ia dipisahkan dari
   `reject` karena "kami menilai ini buruk" dan "kami tidak bisa menilainya" butuh alarm dan perbaikan
@@ -931,6 +942,15 @@ Ini **satu-satunya gerbang isi** di seluruh pipeline, dan mekanismenya mengikuti
 | tidak ada kotak teks sama sekali | `Gambar tidak memuat teks yang terbaca, mohon unggah foto Kartu Keluarga` |
 | `nomor_kk` kosong atau `"Not found"` | `Dokumen tidak dikenali sebagai Kartu Keluarga atau hasil extraction tidak lengkap` |
 | tidak ada anggota dengan `nik` **dan** `nama_lengkap` terisi | idem |
+| salah satu header kolom kontrak (`Jenis Pekerjaan`, `Pendidikan`, `Status Hubungan Dalam Keluarga`, `Ayah`, `Ibu`) tidak ditemukan di OCR | `Kolom Kartu Keluarga tidak terbaca lengkap (terpotong atau tertutup), mohon unggah foto KK utuh` |
+
+Aturan header (29 Okt 2026) menangkap KK yang sisi kanannya terpotong atau tertutup: No. KK dan NIK + nama
+masih terbaca sehingga dua aturan sebelumnya meloloskannya, sementara kolom yang terpotong keluar terpotong
+dengan skor tinggi ("ARIN" untuk ARING). Pencocokan header toleran terhadap salah baca OCR: header panjang
+cukup mirip (`partial_ratio >= 80`, mis. `JENIS POKERJAAN`, `PANDIDIKAN`), sedangkan `Ayah`/`Ibu` harus berupa
+kotak teks sendiri dengan selisih paling banyak satu huruf (`LBU`, `AYAN`), supaya tidak "ditemukan" di isi
+data seperti `BURUH` atau nama berakhiran `-SYAH`. Terukur di kk_eval: dokumen yang terbaca ikut ditolak
+42/370 (header `Pekerjaan` atau `Ibu` tidak terbaca OCR sama sekali), crop 13/18, potong kanan 15% 356/359.
 
 Kalau lebih dari satu kondisi terpenuhi, yang dipakai adalah yang pertama menurut urutan di atas.
 
@@ -1032,6 +1052,9 @@ pemanggil di `column_confidence_threshold`); yang memutuskan hanya ambang dari r
 kontrak disimpan bersama skornya sebagai `decisions` (`{value, confidence, threshold}`): `confidence` 0/1
 bila `threshold` dari request ada, selain itu `threshold: null` dan `confidence` = probabilitasnya. Dengan
 begitu `confidence` di respons `extract-ocr` identik dengan baris outcome secara konstruksi.
+**`claim_gate`** = `{open, probability_bad, probability_crop, p_bad_max, p_crop_max}`: keputusan gerbang klaim
+dengan angka yang memutuskannya. `open: false` membuat semua `decisions` bernilai 0. Hasil lama tanpa kunci
+ini diproyeksikan seperti sebelumnya.
 Catatan di bawah ini menjelaskan nilai ambang model, yang tetap berguna sebagai pilihan ambang request:
 Ambang harus berbeda per field: terukur, `ayah` sudah aman di 0.935 sementara `pendidikan` butuh 0.993, dan
 satu angka global menjatuhkan cakupan pada presisi 100% ke nol. Field yang **tidak ada** di sini tidak
@@ -1257,6 +1280,7 @@ supaya penambahan field di hulu tidak memecah hilir.
 | `document.verdict` | `accepted` \| `reject` \| `unassessable` | `unassessable` = gambar tidak bisa dinilai; tetap `200`, `passed: false` |
 | `document.confidence` | float 0–1 \| null | keyakinan pada vonis; null kalau `unassessable` |
 | `document.probability_bad` | float 0–1 \| null | keluaran mentah model; fitur trust model; null kalau `unassessable` |
+| `document.probability_crop` | float 0–1 \| null | keluaran model crop; hanya untuk gerbang klaim scoring; null kalau `unassessable` atau backend tanpa model crop |
 | `document.threshold_used` | float \| null | ambang dari request yang memutuskan; `null` bila request tidak membawa ambang (dokumen lolos) |
 | `document.threshold_target` | `accept` \| `reject` \| null | sisi yang dikenai ambang (orchestrator selalu mengirim `reject`); `null` tanpa ambang |
 

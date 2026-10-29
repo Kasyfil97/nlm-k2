@@ -22,6 +22,7 @@ async def test_without_a_threshold_the_document_passes_with_its_probability(prob
         "verdict": "accepted",
         "confidence": round(1.0 - probability, 4),
         "probability_bad": probability,
+        "probability_crop": None,
         "threshold_used": None,
         "threshold_target": None,
     }

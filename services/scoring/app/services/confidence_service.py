@@ -16,8 +16,10 @@ class ConfidenceService:
     is stored alongside what came out.
     """
 
-    def __init__(self, model: TrustModel):
+    def __init__(self, model: TrustModel, claim_gate_p_bad: float = 0.0704, claim_gate_p_crop: float = 0.777):
         self._model = model
+        self._claim_gate_p_bad = claim_gate_p_bad
+        self._claim_gate_p_crop = claim_gate_p_crop
 
     def predict(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return self._model.predict(payload)
@@ -52,8 +54,30 @@ class ConfidenceService:
                 stored[key] = result[key]
         # The decision per contract field, with the threshold that decided it (as nilam stores its
         # `fields`): the outcome row and the orchestrator's POST / GET all project from this one place.
+        # The claim gate is decided here, once, and stored: every projection of `decisions` reads it from the
+        # stored result (`scored_fields`), so no reader can come to a different answer.
+        stored["claim_gate"] = self.claim_gate(guardrails)
         stored["decisions"] = scored_fields(structuring, stored, column_thresholds)
         return cast(ScoringResult, stored)
+
+    def claim_gate(self, guardrails: dict[str, Any] | None) -> dict[str, Any]:
+        """Whether this document's fields may be claimed at all (`confidence` 1), with the numbers that decided.
+
+        Open only when both guardrails probabilities are there and below their limits. A missing one closes it:
+        a run without guardrails, an unassessable image or a backend without the crop model gives no evidence
+        that the card is sharp and whole, and leaving guardrails out of the request must not be a way around it.
+        """
+        document = (guardrails or {}).get("document") or {}
+        p_bad, p_crop = _number(document.get("probability_bad")), _number(document.get("probability_crop"))
+        is_open = p_bad is not None and p_crop is not None
+        is_open = is_open and p_bad < self._claim_gate_p_bad and p_crop < self._claim_gate_p_crop
+        return {
+            "open": is_open,
+            "probability_bad": p_bad,
+            "probability_crop": p_crop,
+            "p_bad_max": self._claim_gate_p_bad,
+            "p_crop_max": self._claim_gate_p_crop,
+        }
 
     @staticmethod
     def payload_from_chain(
@@ -77,3 +101,7 @@ class ConfidenceService:
             "min_doc_score": ocr_result.get("min_doc_score"),
             "text_regions_count": ocr_result.get("text_regions_count"),
         }
+
+
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None

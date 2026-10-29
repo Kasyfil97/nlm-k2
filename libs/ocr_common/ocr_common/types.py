@@ -126,6 +126,9 @@ class ScoringResult(TypedDict):
     # The 0/1 decision per contract field with the threshold that decided it (`kk.scored_fields`): what the
     # outcome row and the `extract-ocr` answer are projected from, so both say the same for one request.
     decisions: NotRequired["ScoredData"]
+    # Whether the document's fields may be claimed at all, with the guardrails numbers and limits that decided:
+    # `{open, probability_bad, probability_crop, p_bad_max, p_crop_max}`. Closed, every decision is 0.
+    claim_gate: NotRequired[dict[str, Any]]
 
 
 class FinalResult(TypedDict):

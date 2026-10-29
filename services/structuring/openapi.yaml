@@ -988,6 +988,18 @@ components:
             Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number
           examples:
           - 0.0287
+        probability_crop:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability Crop
+          description: 'Raw output of the crop model. Not part of the verdict: scoring''s claim gate withholds
+            `confidence` 1 from every field when it reaches the gate. Null when unassessable or when the
+            backend has no crop model, which closes the gate'
+          examples:
+          - 0.0123
         threshold_used:
           anyOf:
           - type: number

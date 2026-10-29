@@ -387,6 +387,11 @@ def scored_fields(
     is, a float (0.0 when there is no value or no score). The trust model's own `scoring["thresholds"]` travel
     in the result for reference but no longer decide.
 
+    The claim gate comes first: when the scoring stage stored `claim_gate.open` false (the image is likely
+    blurred or cut, see the scoring service's `claim_gate`), every field gets `confidence` 0 whatever its
+    threshold, and 0.0 without one. A stored result from before the gate existed has no `claim_gate` and is
+    projected as it always was.
+
     The member lists of `structuring` and `scoring` are **positionally aligned**. A length mismatch is a
     defect in this pipeline, not a property of the document, so it raises rather than truncating or
     padding: an off-by-one would otherwise produce a 200 carrying another person's confidence.
@@ -399,6 +404,14 @@ def scored_fields(
         )
 
     columns = column_thresholds or {}
+    gate = scoring.get("claim_gate")
+    gated = isinstance(gate, Mapping) and gate.get("open") is False
+
+    def decide(field: Mapping[str, Any] | None, score: Any, threshold: float | None) -> ScoredField:
+        decided = _field(field, score, threshold)
+        if gated:
+            decided["confidence"] = 0 if threshold is not None else 0.0
+        return decided
 
     def limit(out: str) -> float | None:
         candidate = columns.get(out)
@@ -408,10 +421,10 @@ def scored_fields(
 
     doc_scores = scoring.get("fields") or {}
     data: dict[str, Any] = {
-        out: _field(structuring.get(internal), doc_scores.get(internal), limit(out)) for out, internal in DOC_PROJECTION
+        out: decide(structuring.get(internal), doc_scores.get(internal), limit(out)) for out, internal in DOC_PROJECTION
     }
     data["anggota_keluarga"] = [
-        {out: _field(member.get(internal), scores.get(internal), limit(out)) for out, internal in MEMBER_PROJECTION}
+        {out: decide(member.get(internal), scores.get(internal), limit(out)) for out, internal in MEMBER_PROJECTION}
         for member, scores in zip(members, scored_members, strict=True)
     ]
     return cast(ScoredData, data)

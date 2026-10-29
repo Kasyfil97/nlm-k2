@@ -20,6 +20,12 @@ REJECT_TRIGGERS = ("blur", "invalid", "notkk")
 PROBABILITY_BAD_REJECT = 0.8821
 PROBABILITY_BAD_ACCEPT = 0.0179
 
+#: A file name containing this gets the high crop probability (the claim gate in scoring closes; the
+#: verdict is unaffected). Every other file gets the low one.
+CROP_TRIGGER = "crop"
+PROBABILITY_CROP_HIGH = 0.9512
+PROBABILITY_CROP_LOW = 0.0123
+
 
 class MockQualityModel:
     name = "mock"
@@ -30,3 +36,10 @@ class MockQualityModel:
         name = (filename or "").lower()
         rejected = any(trigger in name for trigger in REJECT_TRIGGERS)
         return PROBABILITY_BAD_REJECT if rejected else PROBABILITY_BAD_ACCEPT
+
+    def assess_detail(self, filename: str, content_type: str | None, content: bytes) -> dict[str, float]:
+        cropped = CROP_TRIGGER in (filename or "").lower()
+        return {
+            "probability_bad": self.assess(filename, content_type, content),
+            "probability_crop": PROBABILITY_CROP_HIGH if cropped else PROBABILITY_CROP_LOW,
+        }
