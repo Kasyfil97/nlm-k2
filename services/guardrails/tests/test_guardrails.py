@@ -7,7 +7,7 @@ from ocr_common.testing import image_upload
 
 from app.clients.reject_threshold import Threshold
 from app.config import Settings
-from app.ml.mock import PROBABILITY_BAD_ACCEPT, PROBABILITY_BAD_REJECT, REJECT_TRIGGERS
+from app.ml.mock import PROBABILITY_BAD_ACCEPT, PROBABILITY_BAD_REJECT, PROBABILITY_CROP_LOW, REJECT_TRIGGERS
 from app.services.guardrails_service import (
     REASON_REJECT,
     REASON_UNASSESSABLE,
@@ -39,6 +39,7 @@ async def test_a_good_image_is_accepted_and_confidence_is_the_complement():
         "verdict": "accepted",
         "confidence": 0.9713,
         "probability_bad": 0.0287,
+        "probability_crop": None,
         "threshold_used": 0.5,
         "threshold_target": "reject",
     }
@@ -53,6 +54,7 @@ async def test_a_bad_image_is_rejected_with_an_indonesian_reason():
         "verdict": "reject",
         "confidence": 0.8821,
         "probability_bad": 0.8821,
+        "probability_crop": None,
         "threshold_used": 0.5,
         "threshold_target": "reject",
     }
@@ -73,6 +75,7 @@ async def test_without_a_threshold_even_a_bad_image_passes_with_its_probability(
         "verdict": "accepted",
         "confidence": 0.1179,
         "probability_bad": 0.8821,
+        "probability_crop": None,
         "threshold_used": None,
         "threshold_target": None,
     }
@@ -206,6 +209,7 @@ def test_check_returns_the_report_in_the_envelope(client, auth):
             "verdict": "accepted",
             "confidence": round(1 - PROBABILITY_BAD_ACCEPT, 4),
             "probability_bad": PROBABILITY_BAD_ACCEPT,
+            "probability_crop": PROBABILITY_CROP_LOW,
             "threshold_used": None,
             "threshold_target": None,
         },

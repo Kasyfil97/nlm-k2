@@ -58,6 +58,8 @@ class GuardrailsService:
             # The remote service judges under its own threshold, so the per-request override does
             # not apply; forcing one here would report a threshold that did not decide anything.
             document = await self._model.check_document(filename, content, content_type)
+            # The remote service has no crop model; null closes the claim gate in scoring.
+            document.setdefault("probability_crop", None)
         else:
             document = await run_in_threadpool(self._assess, filename, content_type, content, override)
 
@@ -70,7 +72,14 @@ class GuardrailsService:
         """Runs the in-process model and turns its one probability into the document block. Without a
         threshold the document is accepted whatever the probability, and `threshold_used` is null."""
         try:
-            probability_bad = round(float(self._model.assess(filename, content_type, content)), 4)
+            if hasattr(self._model, "assess_detail"):
+                scores = self._model.assess_detail(filename, content_type, content)
+                probability_bad = round(float(scores["probability_bad"]), 4)
+                crop = scores.get("probability_crop")
+                probability_crop = None if crop is None else round(float(crop), 4)
+            else:
+                probability_bad = round(float(self._model.assess(filename, content_type, content)), 4)
+                probability_crop = None
         except UnassessableImage as exc:
             # `exc` describes the file, not its contents, so it is safe to log -- but the message
             # is for an operator, never for the caller, who gets REASON_UNASSESSABLE instead.
@@ -79,6 +88,7 @@ class GuardrailsService:
                 "verdict": VERDICT_UNASSESSABLE,
                 "confidence": None,
                 "probability_bad": None,
+                "probability_crop": None,
                 # The threshold that was in force, even though nothing was compared against it:
                 # the field records the configuration the request ran under.
                 "threshold_used": threshold.value if threshold else None,
@@ -92,6 +102,8 @@ class GuardrailsService:
             # probability, the acceptance is as confident as its complement.
             "confidence": probability_bad if rejected else round(1.0 - probability_bad, 4),
             "probability_bad": probability_bad,
+            # Never part of the verdict: it feeds the claim gate in scoring only.
+            "probability_crop": probability_crop,
             "threshold_used": threshold.value if threshold else None,
             "threshold_target": threshold.target if threshold else None,
         }

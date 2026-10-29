@@ -36,13 +36,14 @@ def _png(width: int, height: int) -> bytes:
 # --- the artifacts ------------------------------------------------------------------------------
 
 
-def test_the_six_artifacts_are_the_ones_the_migration_script_produces():
+def test_the_artifacts_are_the_k2quality_export_plus_the_crop_model():
     assert REQUIRED_ARTIFACTS == (
         "blur_cnn_weights.pt",
         "blur_cnn_meta.json",
         "xgb_model.json",
         "calibration.json",
         "feature_names.json",
+        "crop_model.pt",
     )
 
 

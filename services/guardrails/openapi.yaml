@@ -428,6 +428,19 @@ components:
             scoring as the `guardrail_probability` feature. Null when the verdict is `unassessable`'
           examples:
           - 0.0287
+        probability_crop:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability Crop
+          description: 'Raw output of the separate crop model: the probability that the field area of
+            the card (No. KK and the member table) is cut off at the edge or covered. Never part of the
+            verdict; scoring uses it to withhold `confidence` 1 from every field of a likely cut document
+            (the claim gate). Null when unassessable, and with a backend that has no crop model'
+          examples:
+          - 0.0123
         threshold_used:
           anyOf:
           - type: number

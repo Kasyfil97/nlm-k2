@@ -48,6 +48,18 @@ class DocumentResult(BaseModel):
         ),
         examples=[0.0287],
     )
+    probability_crop: float | None = Field(
+        None,
+        ge=0,
+        le=1,
+        description=(
+            "Raw output of the separate crop model: the probability that the field area of the card (No. KK and "
+            "the member table) is cut off at the edge or covered. Never part of the verdict; scoring uses it to "
+            "withhold `confidence` 1 from every field of a likely cut document (the claim gate). Null when "
+            "unassessable, and with a backend that has no crop model"
+        ),
+        examples=[0.0123],
+    )
     threshold_used: float | None = Field(
         None,
         gt=0,

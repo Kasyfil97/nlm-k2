@@ -24,6 +24,16 @@ class Settings(PipelineSettings):
     scoring_approve_threshold: float = 0.8
     scoring_review_threshold: float = 0.5
 
+    #: Gate klaim: sebuah field hanya boleh `confidence` 1 bila dokumennya lolos KEDUANYA -- `probability_bad`
+    #: guardrails di bawah `scoring_claim_gate_p_bad` dan `probability_crop` di bawah `scoring_claim_gate_p_crop`.
+    #: Konfigurasi service, sengaja TIDAK bisa diubah dari request: `column_confidence_threshold` hanya
+    #: mengatur ambang per field di dalam gate. Nilai dari kk_eval (28 Okt 2026): 0,777 = ambang calib model crop
+    #: mnv3s_v1 (ok salah tolak <= 1%); 0,0704 = batas p_bad tertinggi dengan 0 klaim salah bersama syarat crop
+    #: itu (dipilih di test, jadi deskriptif). Dokumen tanpa salah satu angka (guardrails dilewati, unassessable,
+    #: backend tanpa model crop) tidak lolos gate.
+    scoring_claim_gate_p_bad: float = 0.0704
+    scoring_claim_gate_p_crop: float = 0.777
+
     @model_validator(mode="after")
     def _guard_scoring(self) -> Self:
         self.reject_mock_backend_outside_local(scoring_backend=self.scoring_backend)

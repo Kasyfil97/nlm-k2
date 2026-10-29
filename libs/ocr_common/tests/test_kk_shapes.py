@@ -285,6 +285,22 @@ def test_scored_fields_keep_the_threshold_that_decided(structuring, scoring):
     assert contract_data(decided) == contract_fields(structuring, scoring, {"no_kk": 0.5})
 
 
+def test_a_closed_claim_gate_zeroes_every_decision(structuring, scoring):
+    """A likely blurred or cut card: no field is claimed, whatever threshold the request sent."""
+    gated = {**scoring, "claim_gate": {"open": False}}
+    with_threshold = _all(scored_fields(structuring, gated, parse_column_thresholds({"all_field": 0.0})))
+    assert with_threshold and all(field["confidence"] == 0 for field in with_threshold)
+    without = _all(scored_fields(structuring, gated))
+    assert all(field["confidence"] == 0.0 and isinstance(field["confidence"], float) for field in without)
+    values = [field["value"] for field in _all(scored_fields(structuring, scoring))]
+    assert [field["value"] for field in without] == values, "the values are kept, only the claim is withheld"
+
+
+def test_an_open_gate_or_a_result_from_before_the_gate_decides_as_before(structuring, scoring):
+    before = scored_fields(structuring, scoring, {"no_kk": 0.5})
+    assert scored_fields(structuring, {**scoring, "claim_gate": {"open": True}}, {"no_kk": 0.5}) == before
+
+
 def test_member_scores_are_positional_not_shared(structuring, scoring):
     """Salah geser satu indeks menghasilkan 200 yang tampak benar dengan confidence milik anggota lain,
     jadi skor tiap anggota sengaja dibuat berbeda di fixture."""

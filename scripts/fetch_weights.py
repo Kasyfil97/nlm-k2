@@ -46,6 +46,9 @@ K2QUALITY_FILES = (
     "xgb_model.json",
     "calibration.json",
     "feature_names.json",
+    # Model crop terpisah (quality/crop_model, run mnv3s_v1 -> best.pt), diunggah ke URI yang sama dan
+    # hash-nya ditambahkan ke model_hashes.json.
+    "crop_model.pt",
     "model_hashes.json",
 )
 MANIFEST = "model_hashes.json"

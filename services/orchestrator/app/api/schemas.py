@@ -18,7 +18,9 @@ class ContractField(BaseModel):
             "With a threshold for this field in the request's `column_confidence_threshold` (its own key or "
             "`all_field`): 1 when the trust model's probability that this value is exactly correct reaches it, "
             "else 0 (also when there is no value), as in nilam. **Without a threshold**: that probability itself, "
-            "a float from 0 to 1 as the model gave it (0 when there is no value)"
+            "a float from 0 to 1 as the model gave it (0 when there is no value). Always 0 when the document fails "
+            "the claim gate (guardrails `probability_bad` or `probability_crop` at or above the scoring service's "
+            "limits, or missing)"
         ),
         examples=[1, 0.9731],
     )

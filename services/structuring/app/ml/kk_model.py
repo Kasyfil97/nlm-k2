@@ -137,7 +137,7 @@ class KKModelStructurer:
                     member[INTERNAL[model_name]] = _field(row, member=True)
             members.append(member)
         document["anggota_keluarga"] = members
-        document["reject_reason"] = reject_reason(cast(dict, document["nomor_kk"])["value"], members)
+        document["reject_reason"] = reject_reason(cast(dict, document["nomor_kk"])["value"], members, boxes)
         return cast(StructuringResult, document)
 
 

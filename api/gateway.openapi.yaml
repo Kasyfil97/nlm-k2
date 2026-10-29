@@ -118,14 +118,17 @@ paths:
         trust model''s probability that the value is exactly correct reaches the field''s threshold, else
         `0`. The threshold is `column_confidence_threshold` for that field when sent, else the trust model''s
         own (the point above which every held-out sample of the field was correct); `no_kk` has none,
-        so it is `0` unless the request gives it one. An unreadable threshold is `422` `INVALID_THRESHOLD`
-        and nothing runs.
+        so it is `0` unless the request gives it one. **Claim gate**: when the guardrails `probability_bad`
+        or `probability_crop` is not below the scoring service''s own limits (0.0704 / 0.777, not settable
+        per request), or is missing, every field gets `confidence` 0. An unreadable threshold is `422`
+        `INVALID_THRESHOLD` and nothing runs.
 
 
         **Rejected by the KK validity gate**: the only content gate in the pipeline, and it lives at structuring.
-        Three rules, first match wins: no readable text boxes at all; the KK number missing; or no member
-        with both a NIK and a name. `message` is the gate''s Indonesian reason. A rejected document is
-        still a `DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.
+        Four rules, first match wins: no readable text boxes at all; the KK number missing; no member
+        with both a NIK and a name; or a contract column header (Jenis Pekerjaan, Pendidikan, Status Hubungan,
+        Ayah, Ibu) not found, i.e. the card is cut off or covered. `message` is the gate''s Indonesian
+        reason. A rejected document is still a `DONE` job whose result stays readable at `GET /v1/structuring/jobs/{request_id}`.
 
 
         **Refused before anything runs** (plain error envelope, no `guardrails`): a document above `MAX_UPLOAD_BYTES`
@@ -800,7 +803,9 @@ components:
           description: 'With a threshold for this field in the request''s `column_confidence_threshold`
             (its own key or `all_field`): 1 when the trust model''s probability that this value is exactly
             correct reaches it, else 0 (also when there is no value), as in nilam. **Without a threshold**:
-            that probability itself, a float from 0 to 1 as the model gave it (0 when there is no value)'
+            that probability itself, a float from 0 to 1 as the model gave it (0 when there is no value).
+            Always 0 when the document fails the claim gate (guardrails `probability_bad` or `probability_crop`
+            at or above the scoring service''s limits, or missing)'
           examples:
           - 1
           - 0.9731
@@ -1011,6 +1016,18 @@ components:
             Null when `verdict` is `unassessable`, which scoring must handle rather than assume a number
           examples:
           - 0.0287
+        probability_crop:
+          anyOf:
+          - type: number
+            maximum: 1.0
+            minimum: 0.0
+          - type: 'null'
+          title: Probability Crop
+          description: 'Raw output of the crop model. Not part of the verdict: scoring''s claim gate withholds
+            `confidence` 1 from every field when it reaches the gate. Null when unassessable or when the
+            backend has no crop model, which closes the gate'
+          examples:
+          - 0.0123
         threshold_used:
           anyOf:
           - type: number

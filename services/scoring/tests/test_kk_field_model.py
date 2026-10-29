@@ -26,6 +26,7 @@ from ocr_common.kk import (
 )
 
 from app.ml.kk_field import FieldTrustModel
+from tests.test_kk_scoring import GUARDRAILS_PASSED
 
 ARTIFACT = Path(__file__).resolve().parent.parent / "weights" / "kk_trust_model.joblib"
 
@@ -269,7 +270,12 @@ def test_the_job_stores_the_scores_thresholds_and_decisions(client, auth, model)
         submitted = client.post(
             "/v1/scoring/jobs",
             headers=auth,
-            json={"request_id": "REQ_kk_field", "document_type": "kk", "structuring": full_document()},
+            json={
+                "request_id": "REQ_kk_field",
+                "document_type": "kk",
+                "guardrails": GUARDRAILS_PASSED,
+                "structuring": full_document(),
+            },
         )
         assert submitted.status_code == 202, submitted.text
         result = wait_for_job(client, "/v1/scoring/jobs/REQ_kk_field")["result"]

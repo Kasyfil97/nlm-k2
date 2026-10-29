@@ -159,7 +159,7 @@ class KKRegexStructurer:
             for index, member in enumerate(parsed.get("anggota_keluarga") or [])
         ]
         document["anggota_keluarga"] = members
-        document["reject_reason"] = reject_reason(_text(parsed.get("nomor_kk")), members)
+        document["reject_reason"] = reject_reason(_text(parsed.get("nomor_kk")), members, texts)
         _log_repairs(meta)
         _log_missing_vectors(cast(dict[str, StructuredField], document), members)
         return cast(StructuringResult, document)
