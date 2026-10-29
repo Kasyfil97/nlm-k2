@@ -96,7 +96,8 @@ def _stage_scoring(source: Path, out: Path) -> None:
     with source.open(encoding="utf-8") as handle, out.open("w", encoding="utf-8") as sink:
         for line in handle:
             record = json.loads(line)
-            scored = service.score("kk", None, record["ocr"], record["structuring"], 0.5)
+            # ambang kolom tidak dipakai di hash (skor mentah); argumen ini sekarang dict per kolom, bukan float
+            scored = service.score("kk", None, record["ocr"], record["structuring"], None)
             sink.write(json.dumps({"id": record["id"], "scoring": scored}, ensure_ascii=False) + "\n")
 
 

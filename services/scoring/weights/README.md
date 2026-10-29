@@ -1,7 +1,9 @@
 # `kk_trust_model.joblib`
 
 Trust model KK yang dimuat `SCORING_BACKEND=kk_field`: **s11_blend_lr_hgb** (rata-rata probabilitas
-Logistic Regression dan HistGradientBoosting), dilatih di atas keluaran structuring **m04_06102026**.
+Logistic Regression dan HistGradientBoosting), versi **s11_27102026_m0406**: dilatih pada dataset 27102026
+(GT 06102026 + koreksi kk_eval + kanonisasi field tertutup, dan `clean_value` yang membuang label form seperti
+"Nama Kepala Keluarga :") di atas keluaran structuring **m04_06102026**.
 Bukan dilatih di repo ini — repo ini hanya menyajikannya. Pelatihannya di ruang kerja OCR KK,
 `scoring/training/` (laporan lengkap: `MODEL.md` di sana).
 
@@ -28,27 +30,27 @@ yang dihitung di structuring, ditambah model teks n-gram karakter atas `"<field>
 ## Isinya
 
 ```
-{"versi": "kk-trust-s11_blend_lr_hgb", "structuring_versi": "kk-structuring-m04_06102026",
+{"versi": "kk-trust-s11_27102026_m0406", "structuring_versi": "kk-structuring-m04_06102026",
  "dataset", "fields", "ambang": {nama internal: ambang},
  "spec": {"model": "blend", ...}, "est": {"parts": [{"spec", "est": {"main", "text"}, "names"}, ...]}, "names"}
 ```
 
 `names` tiap part = kolom yang dipakai saat fit; service membangunnya ulang dari `spec` dan menolak start
-kalau berbeda. **`ambang` bukan konfigurasi**: ambang CV untuk presisi 98% (0,9592, sama untuk sembilan
+kalau berbeda. **`ambang` bukan konfigurasi**: ambang CV untuk presisi 98% (0,9031, sama untuk sembilan
 field), berpindah bersama bobotnya dan ikut keluar di hasil scoring sebagai `thresholds`.
 
-## Angka yang terukur (dataset 06102026)
+## Angka yang terukur (dataset 27102026_m0406)
 
 Train 318 dokumen (out-of-fold, GroupKFold 5 per dokumen), test 100 dokumen (2.428 field terisi).
 
 | | CV | test |
 |---|---|---|
-| AUROC | 0,892 | 0,937 |
-| ECE | 0,008 | 0,018 |
-| cakupan @ presisi 98% | 58,4% | 59,9% (presisi 99,4%) pada ambang CV 0,9592 |
+| AUROC | 0,908 | 0,939 |
+| ECE | 0,008 | 0,015 |
+| cakupan @ presisi 98% | 82,2% | 84,8% (presisi 99,0%) pada ambang CV 0,9031 |
 
-Per field (test, ambang 0,9592): cakupan `no_kk` 89%, `nama_kepala_keluarga` 87%, `status_hubungan` 89%,
-`nik` 62%, `pekerjaan` 54%, `ayah` 54%, `nama_lengkap` 52%, `pendidikan` 46%, `ibu` 44%.
+Versi sebelumnya (`kk-trust-s11_blend_lr_hgb`, dataset 06102026): AUROC test 0,937, cakupan 59,9% pada ambang
+0,9592.
 
 Di service, ukuran halaman diambil dari jangkauan poligon (§7.1 tidak membawanya): pada 100 dokumen test,
 4 dari 2.428 field berubah dan AUROC 0,9374 → 0,9360. `make kk-model-parity` memeriksa 418 dokumen

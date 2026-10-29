@@ -80,7 +80,7 @@ def test_every_scored_field_gets_a_probability(model):
     assert len(out["anggota_keluarga"]) == 2
     for scores in [out["fields"], *out["anggota_keluarga"]]:
         assert all(isinstance(p, float) and 0.0 <= p <= 1.0 for p in scores.values()), scores
-    assert out["model"] == "kk-trust-s11_blend_lr_hgb"
+    assert out["model"] == "kk-trust-s11_27102026_m0406"
 
 
 def test_the_member_list_is_positionally_aligned(model):
@@ -250,7 +250,7 @@ def test_the_sync_endpoint_serves_the_kk_field_model(client, auth, model):
 
     assert response.status_code == 200, response.text
     data = response.json()["data"]
-    assert data["model"] == "kk-trust-s11_blend_lr_hgb"
+    assert data["model"] == "kk-trust-s11_27102026_m0406"
     assert set(data["thresholds"]) == set(SCORED_DOC_FIELDS) | set(SCORED_MEMBER_FIELDS)
     assert all(isinstance(v, float) for v in data["anggota_keluarga"][0].values())
 
@@ -282,7 +282,7 @@ def test_the_job_stores_the_scores_thresholds_and_decisions(client, auth, model)
     finally:
         fastapi_app.dependency_overrides.pop(get_job_service, None)
 
-    assert result["model"] == "kk-trust-s11_blend_lr_hgb"
+    assert result["model"] == "kk-trust-s11_27102026_m0406"
     assert result["thresholds"]["nik"] > 0.5, "kept with the scores, for reference"
     nik = result["decisions"]["anggota_keluarga"][0]["nik"]
     assert nik["threshold"] is None, "the request sent none"
