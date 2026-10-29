@@ -130,3 +130,33 @@ async def test_a_threshold_from_the_central_orchestrator_is_sent_with_the_docume
 
     fields, _ = _form(handler.requests[0])
     assert fields == {"request_id": RID, "threshold": "0.3", "threshold_target": "accept"}
+
+
+async def test_every_check_opens_its_own_connection():
+    """A Kubernetes Service balances per connection: a reused one stays on one guardrails pod."""
+    import asyncio
+
+    accepted: list[int] = []
+
+    async def serve(reader, writer):
+        accepted.append(1)
+        try:
+            while await reader.readuntil(b"\r\n\r\n"):
+                writer.write(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}")
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionResetError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(serve, "127.0.0.1", 0)
+    url = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}"
+    client = build_guardrails_client(get_settings().model_copy(update={"guardrails_service_url": url}))
+    try:
+        for _ in range(3):
+            await client._client.get_json("/health")
+    finally:
+        await client.aclose()
+        server.close()
+        await server.wait_closed()
+    assert len(accepted) == 3

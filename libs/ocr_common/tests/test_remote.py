@@ -196,3 +196,44 @@ async def test_post_form_sends_fields_without_a_file():
     [request] = seen
     assert request.headers["content-type"] == "application/x-www-form-urlencoded"
     assert b"file_url=http%3A%2F%2Fminio%2Fa.jpg" in request.content
+
+
+async def _connection_counting_server():
+    """A real HTTP/1.1 server on 127.0.0.1 that answers every request with `{}` and counts the TCP
+    connections it accepted: MockTransport has no connection pool, so keep-alive needs a socket."""
+    import asyncio
+
+    accepted: list[int] = []
+
+    async def serve(reader, writer):
+        accepted.append(1)
+        try:
+            while await reader.readuntil(b"\r\n\r\n"):
+                body = b"{}"
+                writer.write(b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n" + body)
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionResetError):
+            pass
+        finally:
+            writer.close()
+
+    server = await asyncio.start_server(serve, "127.0.0.1", 0)
+    return server, f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}", accepted
+
+
+@pytest.mark.parametrize(
+    ("limits", "connections"),
+    [(None, 1), (httpx.Limits(max_keepalive_connections=0), 3)],
+    ids=["default-pool-reuses-one-connection", "no-keepalive-opens-one-per-request"],
+)
+async def test_limits_set_the_connection_pool(limits, connections):
+    server, url, accepted = await _connection_counting_server()
+    client = RemoteModelClient(url, 5.0, name="svc", limits=limits)
+    try:
+        for _ in range(3):
+            assert await client.get_json("/health") == {}
+    finally:
+        await client.aclose()
+        server.close()
+        await server.wait_closed()
+    assert len(accepted) == connections

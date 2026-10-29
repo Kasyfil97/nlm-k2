@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any, Literal
 
+import httpx
+
 from ocr_common.clients.remote import RemoteModelClient
 from ocr_common.errors import InternalError
 
@@ -12,6 +14,12 @@ GUARDRAILS_CHECK_PATH = "/v1/guardrails/check"
 # and page count are checked here before it is called) and the outages of its model (503, 504).
 # Anything else (401 wrong key, 422, 500) is a fault on our side and becomes 500.
 PASSTHROUGH_STATUSES = (400, 503, 504)
+
+# No keep-alive: a Kubernetes Service balances per TCP connection, not per request, so the pooled connections
+# of this process-wide client stayed pinned to one guardrails pod while a second replica idled (29 Oct 2026
+# load test: ~2.3 vs ~0.5 cores). A new connection per check spreads them; it costs about a millisecond in
+# the cluster against a check of a second or more.
+GUARDRAILS_LIMITS = httpx.Limits(max_keepalive_connections=0)
 
 
 @dataclass(frozen=True)
@@ -67,5 +75,6 @@ def build_guardrails_client(settings: Settings) -> GuardrailsClient:
             name="guardrails service",
             headers={"X-API-Key": settings.guardrails_api_key or settings.api_key},
             passthrough_statuses=PASSTHROUGH_STATUSES,
+            limits=GUARDRAILS_LIMITS,
         )
     )

@@ -43,14 +43,20 @@ class RemoteModelClient:
         passthrough_client_errors: bool = False,
         passthrough_statuses: Collection[int] = (),
         transport: httpx.AsyncBaseTransport | None = None,
+        limits: httpx.Limits | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.name = name
         self._passthrough = passthrough_client_errors
         self._passthrough_statuses = frozenset(passthrough_statuses)
+        # `limits` is the connection pool (httpx's default when None); httpx ignores it with a `transport`.
         self._client = httpx.AsyncClient(
-            base_url=self.base_url, timeout=timeout, headers=headers or {}, transport=transport
+            base_url=self.base_url,
+            timeout=timeout,
+            headers=headers or {},
+            transport=transport,
+            **({"limits": limits} if limits is not None else {}),
         )
 
     async def get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
