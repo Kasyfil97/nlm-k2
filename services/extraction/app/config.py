@@ -12,11 +12,11 @@ class Settings(PipelineSettings):
 
     #: `mock` | `kk_ocr` | `paddle` | `remote`. `kk_ocr` is the in-process PP-OCRv5 det + rec path;
     #: see `app/ml/kk_ocr.py` for why it is the torch backend of K2Extractor's two and not the default
-    #: one. `paddle` is the ML team's PaddleOCR server on `POST /ocr` (as in nilam).
+    #: one. `paddle` is the ML team's PaddleOCR server on `POST /v1/ocr` (gen-padv6).
     extraction_backend: str = "mock"
 
     # --- `paddle` and `remote`: an OCR model served by another process ----------------------
-    # `paddle` uses the URL, key, timeout and query below; the path is fixed to `/ocr` and it
+    # `paddle` uses the URL, key, timeout and query below; the path is fixed to `/v1/ocr` and it
     # sends no form fields.
     extraction_ocr_url: str | None = None
     extraction_ocr_api_key: str | None = None
@@ -29,7 +29,7 @@ class Settings(PipelineSettings):
     extraction_ocr_params: dict[str, Any] = {}
     # Extra QUERY parameters (JSON object). Separate from the form fields because the two services
     # differ on where the knobs go: the PP-OCRv6 VM reads
-    # `use_doc_orientation_classify` / `use_doc_unwarping` / `use_textline_orientation` from the
+    # `doc_orientation` / `doc_unwarping` / `textline_orientation` from the
     # query string and ignores form fields entirely. Booleans are sent as `true` / `false`.
     extraction_ocr_query: dict[str, Any] = {}
 

@@ -23,7 +23,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$ROOT/.venv"
 RUN_DIR="${RUN_DIR:-/tmp/nlm-k2-local}"
 API_KEY="${API_KEY:-local-test}"
-OCR_URL="${OCR_URL:-http://10.213.128.67:8070}"
+OCR_URL="${OCR_URL:-http://10.213.191.203:8040}"
 # 0.0.0.0: terjangkau dari luar VM. Antar-service tetap lewat 127.0.0.1 (bawaan *_SERVICE_URL).
 HOST="${HOST:-0.0.0.0}"
 SERVICES=(guardrails extraction structuring scoring orchestrator)

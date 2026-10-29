@@ -1,0 +1,1177 @@
+{
+  "info": {
+    "_postman_id": "nilam-ocr-kk-orchestrator-collection",
+    "name": "nilam-ocr-kk Orchestrator (OCR Kartu Keluarga)",
+    "description": "Orchestrator service only (port 8040). Derived from services/orchestrator/openapi.yaml. The API key lives in the environment (secret `apiKey`), not in this file.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://10.213.191.200:8060",
+      "type": "string"
+    },
+    {
+      "key": "requestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "unknownRequestId",
+      "value": "OCR_does-not-exist",
+      "type": "string"
+    },
+    {
+      "key": "fileUrl",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "No API key required: /health, /ready, /metrics.",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness. Never touches a dependency.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 healthy', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.eql('healthy');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ready"
+              ]
+            },
+            "description": "Readiness. 503 takes the pod out of the Service.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 ready or 503 not_ready', () => {",
+                  "  pm.expect([200, 503]).to.include(pm.response.code);",
+                  "  pm.expect(pm.response.json().status).to.be.oneOf(['ready', 'not_ready']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/metrics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Prometheus exposition. Scraped inside the cluster.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Prometheus text', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.text()).to.include('http_requests_total');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Extract OCR",
+      "description": "Happy paths. Set `apiKey` in the environment. Attach a Kartu Keluarga JPEG/PNG/PDF (<= 10 MB, <= 2 pages) to `file`. Run POST before GET: GET reads the `requestId` the POST set.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('envelope has all keys', () => {",
+              "  const b = pm.response.json();",
+              "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+              "});",
+              "pm.test('status_code equals HTTP status', () => {",
+              "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "POST /v1/extract-ocr (file upload)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "The call the central orchestrator makes. Full pipeline; waits up to PIPELINE_WAIT_SECONDS (30 s default).",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished or 202 still running', () => {",
+                  "  pm.expect([200, 202]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('200: nine fields as {value, confidence}; 202: data is null', () => {",
+                  "  const b = pm.response.json();",
+                  "  if (pm.response.code === 202) { pm.expect(b.data).to.eql(null); return; }",
+                  "  const d = b.data;",
+                  "  pm.expect(d).to.have.keys(['no_kk','nama_kepala_keluarga','anggota_keluarga']);",
+                  "  ['no_kk','nama_kepala_keluarga'].forEach(k => pm.expect(d[k]).to.have.keys(['value','confidence']));",
+                  "  pm.expect(d.anggota_keluarga).to.be.an('array');",
+                  "  d.anggota_keluarga.forEach(m => pm.expect(m).to.have.keys(['nama_lengkap','nik','pendidikan','jenis_pekerjaan','status_hubungan_dalam_rumah_tangga','ayah','ibu']));",
+                  "});",
+                  "pm.test('pipeline_last_stage is null on success', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/extract-ocr (file_url)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Orchestrator downloads the photo from `fileUrl`. Host must be in FILE_URL_ALLOWED_HOSTS; https only.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file_url",
+                  "value": "{{fileUrl}}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished or 202 still running', () => {",
+                  "  pm.expect([200, 202]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('200: nine fields as {value, confidence}; 202: data is null', () => {",
+                  "  const b = pm.response.json();",
+                  "  if (pm.response.code === 202) { pm.expect(b.data).to.eql(null); return; }",
+                  "  const d = b.data;",
+                  "  pm.expect(d).to.have.keys(['no_kk','nama_kepala_keluarga','anggota_keluarga']);",
+                  "  ['no_kk','nama_kepala_keluarga'].forEach(k => pm.expect(d[k]).to.have.keys(['value','confidence']));",
+                  "  pm.expect(d.anggota_keluarga).to.be.an('array');",
+                  "  d.anggota_keluarga.forEach(m => pm.expect(m).to.have.keys(['nama_lengkap','nik','pendidikan','jenis_pekerjaan','status_hubungan_dalam_rumah_tangga','ayah','ibu']));",
+                  "});",
+                  "pm.test('pipeline_last_stage is null on success', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/extract-ocr (guardrails + extraction only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Partial pipeline. Valid order, nothing skipped in the middle.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "pipeline_name_sequence",
+                  "value": "guardrails,extraction",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished or 202 still running', () => {",
+                  "  pm.expect([200, 202]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('200: nine fields as {value, confidence}; 202: data is null', () => {",
+                  "  const b = pm.response.json();",
+                  "  if (pm.response.code === 202) { pm.expect(b.data).to.eql(null); return; }",
+                  "  const d = b.data;",
+                  "  pm.expect(d).to.have.keys(['no_kk','nama_kepala_keluarga','anggota_keluarga']);",
+                  "  ['no_kk','nama_kepala_keluarga'].forEach(k => pm.expect(d[k]).to.have.keys(['value','confidence']));",
+                  "  pm.expect(d.anggota_keluarga).to.be.an('array');",
+                  "  d.anggota_keluarga.forEach(m => pm.expect(m).to.have.keys(['nama_lengkap','nik','pendidikan','jenis_pekerjaan','status_hubungan_dalam_rumah_tangga','ayah','ibu']));",
+                  "});",
+                  "pm.test('pipeline_last_stage is null on success', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/extract-ocr (column thresholds)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "confidence is 1/0 against 0.8 for each field; `nik` is null, so it stays a probability.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "column_confidence_threshold",
+                  "value": "{\"all_field\": 0.8, \"nik\": null}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished or 202 still running', () => {",
+                  "  pm.expect([200, 202]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('200: nine fields as {value, confidence}; 202: data is null', () => {",
+                  "  const b = pm.response.json();",
+                  "  if (pm.response.code === 202) { pm.expect(b.data).to.eql(null); return; }",
+                  "  const d = b.data;",
+                  "  pm.expect(d).to.have.keys(['no_kk','nama_kepala_keluarga','anggota_keluarga']);",
+                  "  ['no_kk','nama_kepala_keluarga'].forEach(k => pm.expect(d[k]).to.have.keys(['value','confidence']));",
+                  "  pm.expect(d.anggota_keluarga).to.be.an('array');",
+                  "  d.anggota_keluarga.forEach(m => pm.expect(m).to.have.keys(['nama_lengkap','nik','pendidikan','jenis_pekerjaan','status_hubungan_dalam_rumah_tangga','ayah','ibu']));",
+                  "});",
+                  "pm.test('pipeline_last_stage is null on success', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /v1/extract-ocr (guardrails threshold)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Rejects when guardrails probability_bad >= 0.8. Without this field the document passes guardrails.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "guardrails_confidence_threshold",
+                  "value": "{\"acc_rej\": 0.8}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished or 202 still running', () => {",
+                  "  pm.expect([200, 202]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('200: nine fields as {value, confidence}; 202: data is null', () => {",
+                  "  const b = pm.response.json();",
+                  "  if (pm.response.code === 202) { pm.expect(b.data).to.eql(null); return; }",
+                  "  const d = b.data;",
+                  "  pm.expect(d).to.have.keys(['no_kk','nama_kepala_keluarga','anggota_keluarga']);",
+                  "  ['no_kk','nama_kepala_keluarga'].forEach(k => pm.expect(d[k]).to.have.keys(['value','confidence']));",
+                  "  pm.expect(d.anggota_keluarga).to.be.an('array');",
+                  "  d.anggota_keluarga.forEach(m => pm.expect(m).to.have.keys(['nama_lengkap','nik','pendidikan','jenis_pekerjaan','status_hubungan_dalam_rumah_tangga','ayah','ibu']));",
+                  "});",
+                  "pm.test('pipeline_last_stage is null on success', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/extract-ocr/{requestId}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr/{{requestId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr",
+                "{{requestId}}"
+              ]
+            },
+            "description": "Where the request is now, without waiting. Uses the last `requestId` set by a POST."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('200 finished, 202 running, or a 4xx/5xx failure', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 202, 400, 422, 500, 503, 504]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error contract",
+      "description": "Each request is expected to fail with the documented code. Set `apiKey` first; the 400 case needs a non-photo file attached.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('envelope has all keys', () => {",
+              "  const b = pm.response.json();",
+              "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+              "});",
+              "pm.test('status_code equals HTTP status', () => {",
+              "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "401 missing X-API-Key",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "No X-API-Key header sent.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('401 UNAUTHORIZED', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().errors).to.eql('UNAUTHORIZED');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 wrong X-API-Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "definitely-wrong"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Wrong key value.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('401 UNAUTHORIZED', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().errors).to.eql('UNAUTHORIZED');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 invalid pipeline_name_sequence (skips extraction)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Middle stage skipped. Refused before anything runs.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "pipeline_name_sequence",
+                  "value": "guardrails,structuring",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('422 INVALID_PIPELINE_SEQUENCE', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().errors).to.eql('INVALID_PIPELINE_SEQUENCE');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 guardrails_confidence_threshold with a non-acc_rej key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Only `acc_rej` may carry a number.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "guardrails_confidence_threshold",
+                  "value": "{\"guardrails\": 0.8}",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('422 INVALID_THRESHOLD', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().errors).to.eql('INVALID_THRESHOLD');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 unreadable column_confidence_threshold",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Threshold string is not a JSON object.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "column_confidence_threshold",
+                  "value": "not json",
+                  "type": "text"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('422 INVALID_THRESHOLD', () => {",
+                  "  pm.response.to.have.status(422);",
+                  "  pm.expect(pm.response.json().errors).to.eql('INVALID_THRESHOLD');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 unsupported file type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr"
+              ]
+            },
+            "description": "Attach a non-JPEG/PNG/PDF file (e.g. .txt) to `file` before running.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "request_id",
+                  "value": "{{requestId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Each POST gets a fresh request_id; the GET requests read it back via {{requestId}}.",
+                  "pm.collectionVariables.set('requestId', 'OCR_' + pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('400 UNSUPPORTED_FILE_TYPE', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().errors).to.eql('UNSUPPORTED_FILE_TYPE');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 unknown request_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/extract-ocr/{{unknownRequestId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "extract-ocr",
+                "{{unknownRequestId}}"
+              ]
+            },
+            "description": "Uses the `unknownRequestId` variable."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('envelope has all keys', () => {",
+                  "  const b = pm.response.json();",
+                  "  ['status_code','status_desc','message','data','errors','request_id'].forEach(k => pm.expect(b).to.have.property(k));",
+                  "});",
+                  "pm.test('status_code equals HTTP status', () => {",
+                  "  pm.expect(pm.response.json().status_code).to.eql(pm.response.code);",
+                  "});",
+                  "pm.test('404 REQUEST_ID_NOT_FOUND', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().errors).to.eql('REQUEST_ID_NOT_FOUND');",
+                  "});",
+                  "pm.test('pipeline_last_stage = orchestrator', () => {",
+                  "  pm.expect(pm.response.json().pipeline_last_stage).to.eql('orchestrator');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

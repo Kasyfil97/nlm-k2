@@ -57,7 +57,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     **Per proses, bukan per deployment.** Dengan N replika batas efektifnya N x nilai yang disetel, dan
     dua request dari klien yang sama bisa mendarat di replika berbeda. Ini disengaja: penghitung bersama
-    menuntut Redis, dan satu-satunya yang dilindungi di sini adalah proses ini sendiri -- unggahan 5 MB
+    menuntut Redis, dan satu-satunya yang dilindungi di sini adalah proses ini sendiri -- unggahan 10 MB
     yang dibaca ke memori lalu diteruskan ke model guardrails. Kuota lintas tenant adalah pekerjaan
     gateway di depan, bukan pekerjaan ini.
 

@@ -393,3 +393,25 @@ async def test_the_record_carries_the_column_thresholds_stored_in_the_input(repo
 
     assert record is not None and record["column_confidence_threshold"] == {"no_kk": 0.9, "nik": 0.5}
     assert plain is not None and plain["column_confidence_threshold"] is None
+
+
+async def test_the_answers_guardrails_rides_on_the_final_callback_only(repository):
+    pipeline, callback = _pipeline(repository)
+    report = {"passed": True, "document": {"probability_bad": 0.0287, "threshold_used": None}}
+
+    async def work():
+        return {"texts": []}
+
+    await pipeline.submit("REQ_gr", work, guardrails=0.9713, input={"guardrails": report})
+    await pipeline.runner.drain(5)
+
+    [done] = callback.calls
+    assert (done["final"], done["guardrails"]) == (True, 0.9713)
+    assert (await repository.get("REQ_gr"))["guardrails"] == 0.9713  # read back by the orchestrator's GET
+
+    handing_on, calls = _pipeline(repository, RecordingNextStage())
+    await handing_on.submit(
+        "REQ_gr2", work, handoff_payload=lambda result: result, next_stage=STAGE_STRUCTURING, guardrails=0.9713
+    )
+    await handing_on.runner.drain(5)
+    assert "guardrails" not in calls.calls[0]

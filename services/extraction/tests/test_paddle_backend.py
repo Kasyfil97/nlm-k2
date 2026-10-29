@@ -69,7 +69,7 @@ async def test_the_paddle_engine_posts_multipart_to_ocr_and_keeps_the_polygon():
 
     result = await _engine(handler).extract("kk.jpg", b"\xff\xd8jpeg", "image/jpeg")
 
-    assert seen["url"] == "http://ocr.test/ocr"
+    assert seen["url"] == "http://ocr.test/v1/ocr"
     assert seen["content_type"].startswith("multipart/form-data")
     assert b'name="file"; filename="kk.jpg"' in seen["body"]
     assert b"Content-Type: image/jpeg" in seen["body"]
@@ -92,8 +92,8 @@ async def test_the_query_goes_on_the_wire_and_no_form_fields_do():
         seen["body"] = request.read()
         return httpx.Response(200, json=PADDLE_RESPONSE)
 
-    await _engine(handler, query={"use_doc_orientation_classify": True}).extract("kk.jpg", b"x", "image/jpeg")
-    assert seen["query"] == {"use_doc_orientation_classify": "true"}
+    await _engine(handler, query={"doc_orientation": True, "doc_unwarping": True}).extract("kk.jpg", b"x", "image/jpeg")
+    assert seen["query"] == {"doc_orientation": "true", "doc_unwarping": "true"}
     assert seen["body"].count(b"Content-Disposition") == 1, "only the file part, no form fields"
 
 
@@ -159,3 +159,17 @@ def test_paddle_is_a_registered_async_backend_and_needs_a_url():
 
     with pytest.raises(RuntimeError, match="EXTRACTION_OCR_URL is required when EXTRACTION_BACKEND=paddle"):
         OCR_BACKENDS["paddle"](settings.model_copy(update={"extraction_ocr_url": None}))
+
+
+def test_the_paddle_client_sends_the_api_key_and_client_id():
+    settings = Settings(
+        api_key="x",
+        extraction_backend="paddle",
+        extraction_ocr_url="http://ocr.test",
+        extraction_ocr_api_key="secret",
+        _env_file=None,
+    )
+    engine = OCR_BACKENDS["paddle"](settings)
+    headers = engine._client._client.headers
+    assert headers["X-API-Key"] == "secret"
+    assert headers["X-Client-Id"] == "kk"

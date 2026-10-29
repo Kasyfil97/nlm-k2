@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-structuring-config
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-structuring
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-structuring
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: structuring
+data:
+  ENVIRONMENT: "production"
+  PORT: "8063"
+  SCORING_SERVICE_URL: "http://ms-bribrain-nilam-ocr-kk-scoring:8064"
+  TESTING_ENDPOINTS: "false"
+  STRUCTURING_BACKEND: "kk_model"
+  STRUCTURING_MODEL_PATH: "weights/kk_structuring_model.joblib"
+  # Callback hasil ke Orkestrasi pusat (namespace sama), satu POST per request dengan X-Callback-Key dari
+  # Secret (ORCHESTRATION_CALLBACK_KEY, wajib ada). Harus mengikuti mode di sisi mereka: di mode poll mereka
+  # menjawab setiap callback 409 CALLBACK_NOT_EXPECTED.
+  ORCHESTRATION_URL: "http://ms-bribrain-nilam-ocr-orchestrator.bribrain-ocr-nilam.svc.cluster.local"
+  ORCHESTRATION_CALLBACK_PATH: "/v1/ocr-callback"
+  ORCHESTRATION_CALLBACK_FORMAT: "result"
+  ORCHESTRATION_CALLBACK_ENABLED: "true"
+  PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
+  PIPELINE_OUTBOX: "true"
+  PIPELINE_HANDOFF_BY_REFERENCE: "true"
+  # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
+  ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
+  ELASTIC_APM_ENVIRONMENT: "dev"

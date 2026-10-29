@@ -187,6 +187,17 @@ def test_guardrails_unreachable_is_503_and_nothing_starts(client, auth, stub_gua
     assert stub_extraction.submitted == []
 
 
+def test_a_busy_guardrails_pod_is_503_with_its_retry_after(client, auth, stub_guardrails, stub_extraction):
+    """GUARDRAILS_MAX_CONCURRENCY + _MAX_QUEUE full at guardrails: its Retry-After reaches the caller."""
+    stub_guardrails.error = ServiceError(503, "guardrails-inference is busy", retry_after=2.0)
+
+    response = _submit(client, auth)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "2"
+    assert stub_extraction.submitted == []
+
+
 NO_GUARDRAILS = ["extraction", "structuring", "scoring"]
 FULL = ["guardrails", "extraction", "structuring", "scoring"]
 
@@ -445,3 +456,21 @@ def test_an_unreachable_service_is_named_in_the_error(client, auth, stub_guardra
         "DOWNSTREAM_UNAVAILABLE",
     )
     assert body["request_id"] == "OCR_1"
+
+
+def test_a_busy_guardrails_pod_keeps_its_service_busy_code(client, auth, stub_guardrails, stub_extraction):
+    """The central orchestrator branches on `errors`: a full guardrails pod is SERVICE_BUSY, not an outage."""
+    from ocr_common.clients.remote import RemoteClientError
+
+    stub_guardrails.error = RemoteClientError(
+        503, "Layanan KK sedang penuh, silakan kirim ulang setelah 5 detik", "SERVICE_BUSY", retry_after=5.0
+    )
+
+    response = _submit(client, auth)
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "5"
+    body = response.json()
+    assert (body["errors"], body["pipeline_last_stage"]) == ("SERVICE_BUSY", "guardrails")
+    assert body["message"] == "Layanan KK sedang penuh, silakan kirim ulang setelah 5 detik"
+    assert stub_extraction.submitted == []

@@ -33,7 +33,7 @@ def generate(root, release):
         for upstream in UPSTREAMS.get(name, ()):
             key = f"{upstream.upper()}_SERVICE_URL"
             if not env.get(key) or urlsplit(env[key]).hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
-                env[key] = f"http://{release}-{upstream}:{8040 + SERVICES.index(upstream)}"
+                env[key] = f"http://{release}-{upstream}:{8060 + SERVICES.index(upstream)}"
         result["services"][name] = {
             "dotenv": {
                 "enabled": True,

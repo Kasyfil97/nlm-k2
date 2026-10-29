@@ -3,9 +3,12 @@
 Every `get_*` here is what the routes take through `Depends(...)` and what tests replace through
 `app.dependency_overrides[...]`. Nothing else in the service builds these objects."""
 
+import logging
 from functools import lru_cache
 
 from ocr_common.clients.remote import RemoteModelClient
+from ocr_common.errors import ServiceBusy
+from ocr_common.overload import Bulkhead, retry_after_header
 from ocr_common.registry import Factory, build_backend
 
 from app.config import Settings, get_settings
@@ -14,6 +17,8 @@ from app.ml.kk_quality import KKQualityModel
 from app.ml.mock import MockQualityModel
 from app.ml.remote import RemoteGuardrailsModel
 from app.services.guardrails_service import GuardrailsService
+
+logger = logging.getLogger(__name__)
 
 
 def _build_remote(settings: Settings) -> RemoteGuardrailsModel:
@@ -52,8 +57,31 @@ def get_quality_model() -> QualityBackend:
     return build_backend(QUALITY_BACKENDS, settings.guardrails_backend, settings, "guardrails")
 
 
+@lru_cache
+def get_inference_bulkhead() -> Bulkhead:
+    """The bound on documents judged at once in this process (GUARDRAILS_MAX_CONCURRENCY / _MAX_QUEUE)."""
+    settings: Settings = get_settings()
+    return Bulkhead(
+        "guardrails-inference",
+        settings.guardrails_max_concurrency,
+        settings.guardrails_max_queue,
+        retry_after=settings.guardrails_busy_retry_after_seconds,
+        error=_busy,
+    )
+
+
+def _busy(message: str, retry_after: float) -> ServiceBusy:
+    """The refusal the orchestrator relays to the caller as it is, so it says plainly that the service is full and
+    when to send again; the counts in `message` are for an operator (the bulkhead_* metrics carry them too)."""
+    logger.warning("guardrails refused a document: %s", message)
+    return ServiceBusy(
+        f"Layanan KK sedang penuh, silakan kirim ulang setelah {retry_after_header(retry_after)} detik",
+        retry_after=retry_after,
+    )
+
+
 # --- services (cheap to build: one per request) ------------------------------------------
 
 
 def get_guardrails_service() -> GuardrailsService:
-    return GuardrailsService(get_quality_model(), get_settings())
+    return GuardrailsService(get_quality_model(), get_settings(), get_inference_bulkhead())

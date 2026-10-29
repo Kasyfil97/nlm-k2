@@ -2,7 +2,8 @@
 ends up with every table and every row in `nilam_ocr_kk` under the `nilam_` names, keeps counting its ids where it
 left off, and survives a downgrade and an upgrade again. Ported from nilam. 0004: the OCR stage's tables, rows
 included, become `nilam_ocr_extraction_*`, the new final-result tables take `nilam_ocr_results`, and the database
-matches `tables.py` (`alembic check`); back to 0003 and up again.
+matches `tables.py` (`alembic check`, at head: 0005 gives the final-result tables their envelope shape); back to 0003
+and up again.
 
     DATABASE_URL=postgresql+asyncpg://... python db/check_schema_move.py   # an EMPTY database: it is rebuilt
 """
@@ -38,6 +39,19 @@ OCR_RENAMES = {
     for kind in ("jobs", "results")
 }
 FINAL_TABLES = {f"{PREFIX}{lane}ocr_results" for lane in ("", "testing_")}
+# 0005: the final-result tables in the shape of the extract-ocr envelope.
+FINAL_COLUMNS = {
+    "id",
+    "request_id",
+    "status_code",
+    "status_desc",
+    "message",
+    "data",
+    "errors",
+    "pipeline_last_stage",
+    "guardrails",
+    "created_at",
+}
 HEAD_TABLES = {OCR_RENAMES.get(table, table) for table in NEW_TABLES} | FINAL_TABLES
 
 
@@ -147,6 +161,12 @@ async def check_ocr_extraction(before: dict[str, int]) -> None:
             assert rows == before[table], (new, rows, before[table])
         for table in FINAL_TABLES:
             assert await conn.fetchval(f'SELECT count(*) FROM "{SCHEMA}"."{table}"') == 0, table
+            columns = await conn.fetch(
+                "SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2",
+                SCHEMA,
+                table,
+            )
+            assert {row["column_name"] for row in columns} == FINAL_COLUMNS, (table, columns)
         names = await conn.fetch(
             "SELECT relname AS name FROM pg_class WHERE relnamespace = $1::regnamespace AND relkind = 'i' "
             "UNION ALL SELECT conname FROM pg_constraint WHERE connamespace = $1::regnamespace",
@@ -157,7 +177,7 @@ async def check_ocr_extraction(before: dict[str, int]) -> None:
             row["name"]
             for row in names
             if any(old in row["name"] for old in OCR_RENAMES)
-            and not any(row["name"] in (f"{t}_pkey", f"idx_{t}_ds") for t in FINAL_TABLES)
+            and not any(row["name"] in (f"{t}_pkey", f"uq_{t}_request_id") for t in FINAL_TABLES)
         ]
         assert not stale, stale
         try:

@@ -85,9 +85,9 @@ services:
   orchestrator:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-orchestrator
+      repository: ms-bribrain-nilam-ocr-kk-orchestrator
       tag: ""
-    port: 8040
+    port: 8060
     entrypoint: true
     pipeline: false
     database: true
@@ -101,7 +101,10 @@ services:
       # Tunggu pipeline sampai selesai (200 + hasil) sebelum menjawab 202; 0 = tidak menunggu.
       PIPELINE_WAIT_SECONDS: "15"
       GUARDRAILS_TIMEOUT_SECONDS: "20"
-    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 5 MB) selama menunggu pipeline.
+      # Tanpa rate limit, seperti NPWP: Orkestrasi pusat memakai satu API key untuk semua Nilam. Beban dibatasi
+      # bulkhead guardrails (503 SERVICE_BUSY + Retry-After).
+      RATE_LIMIT_ENABLED: "false"
+    # Tiap request menahan dokumennya (maks. MAX_UPLOAD_BYTES, 10 MB) selama menunggu pipeline.
     resources:
       requests:
         cpu: 250m
@@ -114,9 +117,9 @@ services:
   guardrails:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-guardrails
+      repository: ms-bribrain-nilam-ocr-kk-guardrails
       tag: ""
-    port: 8041
+    port: 8061
     entrypoint: false
     pipeline: false
     upstreams: []
@@ -136,8 +139,13 @@ services:
       GUARDRAILS_WEIGHTS_DIR: weights
       GUARDRAILS_MODEL_URI: gs://gc-bribrain-dev-gcs-ocr-nilam-01/nilam-ocr-kk/guardrails/
       GUARDRAILS_DEVICE: cpu
-      # Samakan dengan limits.cpu; tanpa ini torch membuat thread sebanyak core node.
-      GUARDRAILS_TORCH_THREADS: "2"
+      # Tanpa ini torch membuat thread sebanyak core node. 1 thread per dokumen, beberapa dokumen paralel.
+      GUARDRAILS_TORCH_THREADS: "1"
+      # Bulkhead inference per pod: MAX_CONCURRENCY x TORCH_THREADS = limits.cpu; lebih dari itu (dan antrean
+      # penuh) 503 SERVICE_BUSY + Retry-After, diteruskan orchestrator apa adanya.
+      GUARDRAILS_MAX_CONCURRENCY: "2"
+      GUARDRAILS_MAX_QUEUE: "5"
+      GUARDRAILS_BUSY_RETRY_AFTER_SECONDS: "5"
       # Tidak ada ambang di sini: hanya `threshold` per request yang menolak; tanpa itu dokumen lolos.
     resources:
       requests:
@@ -150,9 +158,9 @@ services:
   extraction:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-extraction
+      repository: ms-bribrain-nilam-ocr-kk-extraction
       tag: ""
-    port: 8042
+    port: 8062
     entrypoint: false
     pipeline: true
     upstreams: [structuring]
@@ -162,7 +170,7 @@ services:
       EXTRACTION_BACKEND: paddle
       EXTRACTION_OCR_URL: ""
       EXTRACTION_OCR_TIMEOUT_SECONDS: "60"
-      EXTRACTION_OCR_QUERY: '{"use_doc_orientation_classify": true, "use_doc_unwarping": false, "use_textline_orientation": false}'
+      EXTRACTION_OCR_QUERY: '{"doc_orientation": true, "doc_unwarping": true, "textline_orientation": false}'
       PIPELINE_DRAIN_TIMEOUT_SECONDS: "30"
     resources:
       requests:
@@ -175,9 +183,9 @@ services:
   structuring:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-structuring
+      repository: ms-bribrain-nilam-ocr-kk-structuring
       tag: ""
-    port: 8043
+    port: 8063
     entrypoint: false
     pipeline: true
     upstreams: [scoring]
@@ -201,9 +209,9 @@ services:
   scoring:
     enabled: true
     image:
-      repository: ms-bribrain-nlm-k2-scoring
+      repository: ms-bribrain-nilam-ocr-kk-scoring
       tag: ""
-    port: 8044
+    port: 8064
     entrypoint: false
     pipeline: true
     upstreams: []
@@ -230,7 +238,7 @@ service:
   type: ClusterIP
   annotations: {}
   # Service gabungan bernama `<release>` yang membuka port semua service ber-entrypoint (hanya
-  # orchestrator, 8040). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
+  # orchestrator, 8060). Ini alamat yang dipublikasikan ke Orkestrasi pusat (integration.md); internal
   # pipeline memakai Service per komponen.
   entrypoint:
     enabled: true

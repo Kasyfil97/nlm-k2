@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-structuring
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-structuring
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-structuring
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: structuring
+    version: "<IMAGE_VERSION>"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: ms-bribrain-nilam-ocr-kk-structuring
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: ms-bribrain-nilam-ocr-kk-structuring
+        app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-structuring
+        app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+        app.kubernetes.io/component: structuring
+        version: "<IMAGE_VERSION>"
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      imagePullSecrets:
+        - name: nexus-registry-secret
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: structuring
+        # <NEXUS_REGISTRY_URL> dan <IMAGE_VERSION> diisi oleh deploy.sh
+        image: <NEXUS_REGISTRY_URL>/bribrain/dev/nilam/nilam-ocr-kk/ms-bribrain-nilam-ocr-kk-structuring:<IMAGE_VERSION>
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8063
+          name: http
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: ms-bribrain-nilam-ocr-kk-structuring-config
+        env:
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: API_KEY
+        - name: API_KEYS
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: API_KEYS
+              optional: true
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: DATABASE_URL
+        - name: ORCHESTRATION_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: ORCHESTRATION_API_KEY
+              optional: true
+        - name: ORCHESTRATION_CALLBACK_KEY
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: ORCHESTRATION_CALLBACK_KEY
+              optional: true
+        - name: ELASTIC_APM_SECRET_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: ms-bribrain-nilam-ocr-kk-secrets
+              key: ELASTIC_APM_SECRET_TOKEN
+              optional: true
+        - name: HOME
+          value: /tmp
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 2
+          failureThreshold: 15
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "5"]
+        # Request CPU minimal cluster 500m. 100m terlalu kecil setelah rate limit 60/menit dilepas (target ~8,8 rps);
+        # limit 1 vCPU memberi ruang saat beban naik; pantau kubectl top pod saat load test.
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        # Bobot model sudah ada di image (/app/weights); jangan mount volume di path itu.
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir: {}

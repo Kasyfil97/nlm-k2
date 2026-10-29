@@ -16,7 +16,7 @@ from ocr_common.clients.fetch_url import UrlPolicy
 Environment = Literal["local", "dev", "staging", "production"]
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 DEFAULT_JOB_LEASE_SECONDS = 300.0
-DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 # Two rules, because "placeholder" has two shapes. A name blocklist catches the values that travel
 # in `.env.example` and in copied deployment manifests; a minimum length catches everything else,
 # including the one-character keys that are obviously stand-ins but belong to no list. The length
@@ -46,11 +46,23 @@ class BaseServiceSettings(BaseSettings):
     elasticsearch_username: str | None = None
     elasticsearch_password: str | None = None
 
+    # Elastic APM (ocr_common.web.apm): off, and the agent not even loaded, while the server URL is unset. The service
+    # name defaults to `nilam-ocr-kk-<service>` and the environment to `ENVIRONMENT`; the secret token or the API key
+    # comes from the Secret, whichever the APM server uses; the field names are comma-separated.
+    elastic_apm_server_url: str | None = None
+    elastic_apm_secret_token: str | None = None
+    elastic_apm_api_key: str | None = None
+    elastic_apm_service_name: str | None = None
+    elastic_apm_environment: str | None = None
+    elastic_apm_transaction_sample_rate: float = Field(1.0, ge=0, le=1)
+    elastic_apm_verify_server_cert: bool = True
+    elastic_apm_sanitize_field_names: str = ""
+
     environment: Environment = "production"
     service_base_url: str | None = None
     port: int = 8000
 
-    # 5 MB (§13.1): a Kartu Keluarga photo is larger than a tax card. Anything above is refused
+    # 10 MB (§13.1): a Kartu Keluarga photo is larger than a tax card. Anything above is refused
     # with 413 before any model runs.
     max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
     # §13.1, as in nilam: JPEG, PNG or PDF. Of a PDF only the first page is read -- guardrails

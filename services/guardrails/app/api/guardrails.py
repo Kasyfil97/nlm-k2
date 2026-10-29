@@ -115,7 +115,12 @@ def _given_threshold(threshold: float | None, target: str | None) -> Threshold |
             errors="VALIDATION_ERROR",
         ),
         500: error(500, "The guardrails model failed", "guardrails model returned an unexpected response"),
-        503: error(503, "The guardrails model service (`remote`) is unreachable", "guardrails model is unavailable"),
+        503: error(
+            503,
+            "The guardrails model service (`remote`) is unreachable, or this pod is at its limit of documents "
+            "judged and waiting (`errors: SERVICE_BUSY`, with `Retry-After`; nothing was started, send again)",
+            "guardrails model is unavailable",
+        ),
         504: error(
             504,
             "The guardrails model service (`remote`) did not answer in time",

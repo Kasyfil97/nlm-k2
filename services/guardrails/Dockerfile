@@ -27,14 +27,15 @@ RUN pip install --no-cache-dir google-cloud-storage
 COPY scripts/fetch_weights.py ./scripts/fetch_weights.py
 COPY scripts/gcs_wif.py ./scripts/gcs_wif.py
 COPY services/guardrails/app ./app
+COPY services/guardrails/weights ./weights
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && mkdir -p weights \
     && chown -R appuser /app
 USER appuser
 
-# Bobot TIDAK ikut image: keenam artefak K2Quality diunduh dari awalan GUARDRAILS_MODEL_URI setiap kali
-# container start (lihat CMD). Default di bawah boleh ditimpa lewat env (.env, helm).
+# Bobot ikut image (COPY services/guardrails/weights). Unduh dari GCS hanya bila FETCH_WEIGHTS=true.
+# Default di bawah boleh ditimpa lewat env (.env, helm).
 ENV PORT=8041 \
     GUARDRAILS_BACKEND=kk_quality \
     GUARDRAILS_WEIGHTS_DIR=weights \
@@ -46,6 +47,6 @@ EXPOSE 8041
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8041\")}/health', timeout=3)" || exit 1
 
-# Hanya `kk_quality` butuh bobot (`remote`/`mock` tidak). --force: unduh ulang setiap start, supaya restart
+# Hanya `kk_quality` butuh bobot (`remote`/`mock` tidak). FETCH_WEIGHTS=true: unduh ulang (--force) setiap start, supaya restart
 # container mengambil artefak terbaru di GCS; diverifikasi terhadap model_hashes.json.
-CMD ["sh", "-c", "if [ \"${GUARDRAILS_BACKEND:-}\" = \"kk_quality\" ]; then python scripts/fetch_weights.py guardrails --force; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "if [ \"${FETCH_WEIGHTS:-false}\" = \"true\" ] && [ \"${GUARDRAILS_BACKEND:-}\" = \"kk_quality\" ]; then python scripts/fetch_weights.py guardrails --force; fi && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

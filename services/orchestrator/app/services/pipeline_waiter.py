@@ -24,8 +24,10 @@ class StageError(ServiceError):
     uncaught, it becomes the usual error envelope, naming that service. Ported from nilam."""
 
     def __init__(self, service: str, error: ServiceError):
-        super().__init__(error.status_code, error.message)
+        super().__init__(error.status_code, error.message, retry_after=error.retry_after)
         self.service = service
+        #: The stage's own `errors` code (a passed-through answer's `remote_code`), e.g. guardrails' SERVICE_BUSY.
+        self.remote_code: str | None = getattr(error, "remote_code", None) or error.code
 
 
 # The pipeline stopped because a stage rejected the document (a rejecting check of the structuring
@@ -48,6 +50,9 @@ class WaitOutcome:
     # column_confidence_threshold stored with the first stage's job, so the GET decides each field's 0/1 with
     # the same thresholds as the POST did; None: the trust model's own thresholds for every field.
     column_thresholds: dict[str, float] | None = None
+    # The answer's `guardrails` stored with the first stage's job (the GET answers with the same value as the
+    # POST); None: guardrails did not run, or a job from before it was kept.
+    guardrails: int | float | None = None
 
 
 class PipelineWait(Protocol):
@@ -99,8 +104,13 @@ class PipelineWaiter:
         if first is None:
             return None
         columns = first.get("column_confidence_threshold")
+        guardrails = first.get("guardrails")
         outcome = await self._snapshot(request_id, first)
-        return replace(outcome, column_thresholds=columns if isinstance(columns, dict) and columns else None)
+        return replace(
+            outcome,
+            column_thresholds=columns if isinstance(columns, dict) and columns else None,
+            guardrails=guardrails if isinstance(guardrails, int | float) and not isinstance(guardrails, bool) else None,
+        )
 
     async def _snapshot(self, request_id: str, first: dict[str, Any]) -> WaitOutcome:
         results: dict[str, dict[str, Any]] = {}

@@ -16,6 +16,8 @@ from starlette.exceptions import HTTPException
 
 from ocr_common.config import BaseServiceSettings
 from ocr_common.errors import ServiceError, error_code
+from ocr_common.overload import retry_after_header
+from ocr_common.web.apm import install_apm
 from ocr_common.web.envelope import envelope
 from ocr_common.web.logging import configure_logging
 from ocr_common.web.metrics import MetricsMiddleware, metrics_response
@@ -137,6 +139,8 @@ def create_app(
 
     app.add_middleware(MetricsMiddleware, service=service_name or title)
     app.add_middleware(RequestIdMiddleware)
+    # Outermost, so a transaction spans the whole request.
+    install_apm(app, settings, service_name)
     _register_exception_handlers(app)
     app.include_router(
         _health_router(version, backends or {}, readiness or {}, backends_example or {}, readiness_example or {})
@@ -369,9 +373,11 @@ def _register_exception_handlers(app: FastAPI) -> None:
         routes raise and never translate."""
         if exc.status_code >= 500:
             logger.error("%s %s -> %d: %s", request.method, request.url.path, exc.status_code, exc.message)
+        retry_after = retry_after_header(exc.retry_after)
         return JSONResponse(
             status_code=exc.status_code,
             content=_error_body(request, exc.status_code, exc.message, error_code(exc.status_code, exc.code), exc),
+            headers={"Retry-After": retry_after} if retry_after else None,
         )
 
     @app.exception_handler(HTTPException)

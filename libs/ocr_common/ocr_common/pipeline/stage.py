@@ -16,6 +16,7 @@ from ocr_common.pipeline.callbacks import NextStage, StageCallback
 from ocr_common.pipeline.outbox import Outbox, OutboxMessage, OutboxRelay, callback_message, handoff_message
 from ocr_common.pipeline.repository import STATUS_DONE, STATUS_FAILED, STATUS_PROCESSING, JobRepository
 from ocr_common.pipeline.runner import BackgroundRunner
+from ocr_common.web import apm
 from ocr_common.web.request_id import bind_request_id, reset_request_id
 
 logger = logging.getLogger(__name__)
@@ -92,14 +93,19 @@ class StagePipeline:
         outcome_data: CallbackResult | None = None,
         rejection: Rejection | None = None,
         input: dict[str, Any] | None = None,
+        guardrails: int | float | None = None,
     ) -> dict[str, Any]:
         """`input` is what a later run of this job needs besides the earlier stages' stored results
-        (document_type, guardrails report, file_url); the stale-job reaper hands it back to `resume`."""
+        (document_type, guardrails report, file_url); the stale-job reaper hands it back to `resume`. `guardrails`
+        is the answer's `guardrails` (`kk.guardrails_value` of the request's report), carried by the final
+        callback."""
         claimed = await self.repository.claim(request_id, input=input)
         status = STATUS_PROCESSING
         if claimed:
             self.runner.spawn(
-                self._run(request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection)
+                self._run(
+                    request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection, guardrails
+                )
             )
         else:
             record = await self.repository.get(request_id)
@@ -116,10 +122,13 @@ class StagePipeline:
         callback_result: CallbackResult | None = None,
         outcome_data: CallbackResult | None = None,
         rejection: Rejection | None = None,
+        guardrails: int | float | None = None,
     ) -> None:
         """Run a job that is already claimed (by the stale-job reaper) without claiming it again."""
         self.runner.spawn(
-            self._run(request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection)
+            self._run(
+                request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection, guardrails
+            )
         )
 
     async def get(self, request_id: str) -> dict[str, Any]:
@@ -146,14 +155,17 @@ class StagePipeline:
         callback_result: CallbackResult | None,
         outcome_data: CallbackResult | None = None,
         rejection: Rejection | None = None,
+        guardrails: int | float | None = None,
     ) -> None:
-        token = bind_request_id(request_id)  # log lines and downstream calls of this job carry its id
-        try:
-            await self._run_bound(
-                request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection
-            )
-        finally:
-            reset_request_id(token)
+        # One APM transaction per job: it runs after the 202, outside the HTTP request's transaction.
+        with apm.job_transaction(self.stage, request_id):
+            token = bind_request_id(request_id)  # log lines and downstream calls of this job carry its id
+            try:
+                await self._run_bound(
+                    request_id, work, handoff_payload, next_stage, callback_result, outcome_data, rejection, guardrails
+                )
+            finally:
+                reset_request_id(token)
 
     async def _run_bound(
         self,
@@ -164,6 +176,7 @@ class StagePipeline:
         callback_result: CallbackResult | None,
         outcome_data: CallbackResult | None,
         rejection: Rejection | None = None,
+        guardrails: int | float | None = None,
     ) -> None:
         payload: dict[str, Any] | None = None
         final: dict[str, Any] | None = None
@@ -183,7 +196,7 @@ class StagePipeline:
                 result,
                 outcome_data=answer,
                 rejection=reason,
-                messages=self._messages(request_id, final, payload, next_stage, reason, answer),
+                messages=self._messages(request_id, final, payload, next_stage, reason, answer, guardrails),
             )
             metrics.JOB_DURATION.labels(self.metrics_stage).observe(time.perf_counter() - started)
             metrics.JOBS.labels(self.metrics_stage, metrics.OUTCOME_REJECTED if reason else metrics.OUTCOME_DONE).inc()
@@ -200,6 +213,7 @@ class StagePipeline:
             return
         except Exception:
             logger.exception("%s job %s crashed", self.stage, request_id)
+            apm.job_failed(crashed=True)
             metrics.JOBS.labels(self.metrics_stage, metrics.OUTCOME_CRASHED).inc()
             await self._failed(request_id, f"Internal error in {self.stage} stage")
             return
@@ -223,6 +237,7 @@ class StagePipeline:
                     result=final,
                     final=next_stage is None,
                     answer=answer if next_stage is None else None,
+                    guardrails=guardrails if next_stage is None else None,
                 )
             if payload is not None:
                 await self._hand_off(payload)
@@ -282,6 +297,7 @@ class StagePipeline:
         next_stage: str | None,
         reason: str | None = None,
         answer: dict[str, Any] | None = None,
+        guardrails: int | float | None = None,
     ) -> list[OutboxMessage]:
         if self.outbox is None:
             return []
@@ -299,6 +315,7 @@ class StagePipeline:
                     result=final,
                     final=next_stage is None,
                     answer=answer if next_stage is None else None,
+                    guardrails=guardrails if next_stage is None else None,
                 )
             )
         if payload is not None and next_stage is not None:
@@ -321,6 +338,7 @@ class StagePipeline:
             await self.callback.notify(request_id, next_stage or self.stage, STATUS_FAILED, error_message=message)
 
     async def _failed(self, request_id: str, error_message: str) -> None:
+        apm.job_failed()
         reported = self.outbox is not None
         try:
             await self.repository.fail(

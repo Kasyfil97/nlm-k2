@@ -47,7 +47,7 @@ K6_TARGET = os.environ.get("K6_TARGET", "http://orchestrator:8040")
 K6_TRACKER = os.environ.get("K6_TRACKER") or f"http://host.docker.internal:{os.environ.get('PORT', '8090')}"
 K6_API_KEY = os.environ.get("K6_API_KEY", "")
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".pdf")
-# Batas tracker sendiri, sengaja di atas MAX_UPLOAD_BYTES service (5 MB) supaya file besar tetap
+# Batas tracker sendiri, sengaja di atas MAX_UPLOAD_BYTES service (10 MB) supaya file besar tetap
 # bisa diunggah untuk menguji jawaban 413.
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_RATE = 50.0
@@ -616,7 +616,8 @@ async def _cleanup_db(run: str) -> dict[str, int] | None:
         return None
     pattern = f"LT_{run}\\_%"
     tables = [f"{t}_jobs" for t in ctx["tables"].values()] + [f"{t}_results" for t in ctx["tables"].values()]
-    tables += ["nilam_pipeline_outbox", "nilam_guardrails_results", "nilam_ocr_results", "orchestration_extract_ocr"]
+    # nilam_ocr_results sengaja tidak dibersihkan: append-only (0006), trigger-nya menolak DELETE.
+    tables += ["nilam_pipeline_outbox", "nilam_guardrails_results", "orchestration_extract_ocr"]
     deleted: dict[str, int] = {}
     async with pool.acquire() as conn:
         for table in tables:

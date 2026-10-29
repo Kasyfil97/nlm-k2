@@ -6,9 +6,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request, Response, UploadFile
 
 from ocr_common.config import DEFAULT_MAX_UPLOAD_BYTES
-from ocr_common.errors import UNREADABLE_FILE
+from ocr_common.errors import SERVICE_BUSY, UNREADABLE_FILE
 from ocr_common.image_validation import PAYLOAD_TOO_LARGE_MESSAGE, upload_limit_label
 from ocr_common.kk import COLUMN_THRESHOLD_DESCRIPTION, DOCUMENT_TYPE, column_thresholds_from_json
+from ocr_common.overload import retry_after_header
 from ocr_common.pipeline import DEFAULT_SEQUENCE, InvalidSequence, validate_sequence
 from ocr_common.web.intake import FileField, FileUrlField, read_image
 from ocr_common.web.request_id import adopt_request_id, reset_request_id
@@ -97,11 +98,12 @@ _FAILED = extract_body(
 _CONTRACT_TABLE = (
     "| Outcome | HTTP | `data` | `guardrails` | `errors` | `pipeline_last_stage` |\n"
     "|---|---|---|---|---|---|\n"
-    "| Finished | 200 | the fields | `0` | null | null |\n"
+    "| Finished | 200 | the fields | `0`, or the accepted probability without a guardrails threshold "
+    "| null | null |\n"
     "| Still running | 202 | null | null | null | null |\n"
     f"| Rejected by the guardrails model | 400 | null | `1` | `{REJECTED_CODE}` | `guardrails` |\n"
     f"| Rejected by the KK validity gate | 400 | null | `1` | `{REJECTED_CODE}` | `structuring` |\n"
-    "| A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or "
+    "| A stage failed | 422 | null | as on 200 | `OCR_FAILED`, `STRUCTURING_FAILED` or "
     "`SCORING_FAILED` | the service that failed |\n\n"
     "The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running, "
     "4xx / 5xx failed or refused.\n\n"
@@ -134,12 +136,16 @@ STAGE_ERROR_CODES = {
 def _stage_error_body(exc: StageError, *, request_id: str) -> dict[str, Any]:
     """The answer when calling a pipeline service failed (unreachable, timed out, refused the file, answered
     wrongly): the error envelope's status and message, in the extract-ocr shape, naming that service."""
-    if exc.status_code >= 500:
+    busy = exc.status_code == 503 and exc.remote_code == SERVICE_BUSY
+    if busy:
+        logger.warning("%s -> 503 busy: %s", exc.service, exc.message)
+    elif exc.status_code >= 500:
         logger.error("%s -> %d: %s", exc.service, exc.status_code, exc.message)
     return extract_body(
         exc.status_code,
         exc.message,
-        errors=STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
+        # A full guardrails pod (503 SERVICE_BUSY + Retry-After) is not an outage: the caller sends again.
+        errors=SERVICE_BUSY if busy else STAGE_ERROR_CODES.get(exc.status_code, "DOWNSTREAM_BAD_REQUEST"),
         request_id=request_id,
         pipeline_last_stage=exc.service,
     )
@@ -154,13 +160,25 @@ def _stage_error_response(code: int, description: str, service: str, message: st
     }
 
 
-async def _answer(service: ExtractOcrService, response: Response, body: dict[str, Any]) -> dict[str, Any]:
-    """Gives `body` as the answer, with its `status_code` as the HTTP status, and keeps it as the request's final
-    result (`nilam_ocr_results`). Errors raised out of the routes (a bad or too large file, 404) are answered by
-    the exception handlers and not kept: no envelope of this service exists for them."""
+async def _answer(
+    service: ExtractOcrService, response: Response, body: dict[str, Any], *, log: bool = True
+) -> dict[str, Any]:
+    """Gives `body` as the answer, with its `status_code` as the HTTP status, and logs it in `nilam_ocr_results`
+    when `log` (the answers to the POST; the GET that polls is not logged). Errors raised out of the routes (a bad
+    or too large file, 404) are answered by the exception handlers and not logged: no envelope of this service
+    exists for them."""
     response.status_code = body["status_code"]
-    await service.answered(body["request_id"], body)
+    if log:
+        await service.answered(body["request_id"], body)
     return body
+
+
+def _pass_retry_after(response: Response, exc: StageError) -> None:
+    """The stage's `Retry-After` (a busy guardrails pod: 503 `SERVICE_BUSY`) passed on, so the central orchestrator
+    knows when to send again."""
+    retry_after = retry_after_header(exc.retry_after)
+    if retry_after:
+        response.headers["Retry-After"] = retry_after
 
 
 class _InvalidThreshold(Exception):
@@ -169,8 +187,12 @@ class _InvalidThreshold(Exception):
 
 def _parse_guardrails_threshold(value: str | None) -> GuardrailsThreshold | None:
     """`guardrails_confidence_threshold`, a JSON object `{"acc_rej": 0.8}` with the value between 0 and 1.
-    Always applies to the `rejected` side. None (nothing sent) leaves the guardrails service's own threshold in
-    force. Raises `_InvalidThreshold`."""
+    Always applies to the `rejected` side. None (nothing sent, `{}`, or only null values): no threshold, so the
+    document is accepted whatever the model says. Raises `_InvalidThreshold`.
+
+    A null value is no threshold, whatever its key (central orchestrator rule of 9 Oct 2026): it sends
+    `{"guardrails": null}` when its client gave none. A number under any key but `acc_rej` is still refused, so a
+    threshold the central orchestrator thinks it applied is never dropped silently."""
     value = (value or "").strip()
     if not value:
         return None
@@ -180,7 +202,12 @@ def _parse_guardrails_threshold(value: str | None) -> GuardrailsThreshold | None
         parsed = json.loads(value)
     except ValueError:
         parsed = None
-    if not isinstance(parsed, dict) or set(parsed) != {"acc_rej"}:
+    if not isinstance(parsed, dict):
+        raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
+    parsed = {name: threshold for name, threshold in parsed.items() if threshold is not None}
+    if not parsed:
+        return None
+    if set(parsed) != {"acc_rej"}:
         raise _InvalidThreshold('guardrails_confidence_threshold must be a JSON object like {"acc_rej": 0.8}')
     raw: Any = parsed["acc_rej"]
     try:
@@ -316,7 +343,8 @@ def _parse_sequence(values: list[str] | None) -> tuple[str, ...]:
         ),
         503: _stage_error_response(
             503,
-            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`); "
+            "The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`), "
+            "or guardrails is full (`SERVICE_BUSY`, with `Retry-After`: send the same request again after it); "
             "nothing was started. `pipeline_last_stage` names it",
             "extraction",
             "extraction service is unavailable",
@@ -351,8 +379,10 @@ async def extract_ocr(
         description=(
             'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}` with the value '
             "between 0 and 1 (exclusive). Applies to the rejected side. "
-            "Omitted: no threshold applies -- the document passes guardrails and its `probability_bad` travels "
-            "on to scoring"
+            'Omitted, empty, `{}`, or only null values (`{"acc_rej": null}`, `{"guardrails": null}`): no '
+            "threshold applies -- the document passes guardrails, the answer's `guardrails` is the accepted "
+            "probability (`1 - probability_bad`), and `probability_bad` travels on to scoring. A number under any "
+            "key but `acc_rej` answers 422"
         ),
         examples=['{"acc_rej": 0.8}'],
     ),
@@ -416,6 +446,7 @@ async def extract_ocr(
             column_thresholds=column_thresholds,
         )
     except StageError as exc:
+        _pass_retry_after(response, exc)
         return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
     finally:
         reset_request_id(token)
@@ -512,7 +543,8 @@ async def get_extract_ocr(
     try:
         outcome = await service.status(request_id)
     except StageError as exc:
-        return await _answer(service, response, _stage_error_body(exc, request_id=request_id))
+        _pass_retry_after(response, exc)
+        return await _answer(service, response, _stage_error_body(exc, request_id=request_id), log=False)
     finally:
         reset_request_id(token)
     _, body = extract_response(
@@ -520,4 +552,4 @@ async def get_extract_ocr(
         request_id=request_id,
         column_thresholds=outcome.get("column_thresholds"),
     )
-    return await _answer(service, response, body)
+    return await _answer(service, response, body, log=False)

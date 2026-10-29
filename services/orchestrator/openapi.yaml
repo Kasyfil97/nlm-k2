@@ -190,7 +190,8 @@ paths:
 
         |---|---|---|---|---|---|
 
-        | Finished | 200 | the fields | `0` | null | null |
+        | Finished | 200 | the fields | `0`, or the accepted probability without a guardrails threshold
+        | null | null |
 
         | Still running | 202 | null | null | null | null |
 
@@ -200,8 +201,8 @@ paths:
         | Rejected by the KK validity gate | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring`
         |
 
-        | A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED` |
-        the service that failed |
+        | A stage failed | 422 | null | as on 200 | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
+        | the service that failed |
 
 
         The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running,
@@ -236,7 +237,7 @@ paths:
 
 
         **Refused before anything runs** (plain error envelope, no `guardrails`): a document above `MAX_UPLOAD_BYTES`
-        (5 MB by default) answers `413`, and a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers
+        (10 MB by default) answers `413`, and a PDF with more than `MAX_DOCUMENT_PAGES` (2) pages answers
         `400`. Both carry an Indonesian `message` the client can show as is. JPEG, PNG and PDF are accepted;
         of a PDF only the first page is judged and read.
 
@@ -397,7 +398,7 @@ paths:
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 pipeline_last_stage: orchestrator
         '413':
-          description: The document exceeds `MAX_UPLOAD_BYTES` (5 MB by default); nothing was started
+          description: The document exceeds `MAX_UPLOAD_BYTES` (10 MB by default); nothing was started
           content:
             application/json:
               schema:
@@ -405,7 +406,7 @@ paths:
               example:
                 status_code: 413
                 status_desc: Payload Too Large
-                message: Ukuran dokumen melebihi batas 5 MB, pastikan hanya mengunggah foto Kartu Keluarga
+                message: Ukuran dokumen melebihi batas 10 MB, pastikan hanya mengunggah foto Kartu Keluarga
                 errors: FILE_TOO_LARGE
                 pipeline_last_stage: orchestrator
         '422':
@@ -439,8 +440,9 @@ paths:
                 request_id: OCR_9cb01af2-493d-446d-b191-af120333f6d0
                 pipeline_last_stage: guardrails
         '503':
-          description: The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`);
-            nothing was started. `pipeline_last_stage` names it
+          description: 'The guardrails service, its model, or the extraction service is unreachable (`DOWNSTREAM_UNAVAILABLE`),
+            or guardrails is full (`SERVICE_BUSY`, with `Retry-After`: send the same request again after
+            it); nothing was started. `pipeline_last_stage` names it'
           content:
             application/json:
               schema:
@@ -482,7 +484,8 @@ paths:
 
         |---|---|---|---|---|---|
 
-        | Finished | 200 | the fields | `0` | null | null |
+        | Finished | 200 | the fields | `0`, or the accepted probability without a guardrails threshold
+        | null | null |
 
         | Still running | 202 | null | null | null | null |
 
@@ -492,8 +495,8 @@ paths:
         | Rejected by the KK validity gate | 400 | null | `1` | `DOWNSTREAM_VALIDATION_ERROR` | `structuring`
         |
 
-        | A stage failed | 422 | null | `0` | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED` |
-        the service that failed |
+        | A stage failed | 422 | null | as on 200 | `OCR_FAILED`, `STRUCTURING_FAILED` or `SCORING_FAILED`
+        | the service that failed |
 
 
         The HTTP status (also in `status_code`) says where the request is: 200 finished, 202 still running,
@@ -768,8 +771,11 @@ components:
           - type: 'null'
           title: Guardrails Confidence Threshold
           description: 'Guardrails threshold for this document, a JSON object string `{"acc_rej": 0.8}`
-            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted: no threshold
-            applies -- the document passes guardrails and its `probability_bad` travels on to scoring'
+            with the value between 0 and 1 (exclusive). Applies to the rejected side. Omitted, empty,
+            `{}`, or only null values (`{"acc_rej": null}`, `{"guardrails": null}`): no threshold applies
+            -- the document passes guardrails, the answer''s `guardrails` is the accepted probability
+            (`1 - probability_bad`), and `probability_bad` travels on to scoring. A number under any key
+            but `acc_rej` answers 422'
           examples:
           - '{"acc_rej": 0.8}'
         column_confidence_threshold:
@@ -783,8 +789,9 @@ components:
             (`nama_lengkap`, `nik`, `pendidikan`, `jenis_pekerjaan`, `status_hubungan_dalam_rumah_tangga`,
             `ayah`, `ibu`), a member field''s threshold applying to every member. `all_field` sets one
             threshold for every field; a key for a single field overrides it. A field without a threshold
-            (left out, or the whole map omitted) gets the trust model''s probability itself as `confidence`,
-            a float from 0 to 1 (0 when there is no value). A JSON object string'
+            (left out or null, the whole map omitted, or `all_field` null) gets the trust model''s probability
+            itself as `confidence`, a float from 0 to 1 (0 when there is no value); a field''s own null
+            wins over `all_field`. A number under an unknown key is refused. A JSON object string'
           examples:
           - '{"all_field": 0.8}'
       type: object
@@ -942,16 +949,18 @@ components:
         guardrails:
           anyOf:
           - type: integer
-            enum:
-            - 0
-            - 1
+          - type: number
           - type: 'null'
           title: Guardrails
-          description: '0: the document passed the guardrails model (and the pipeline ran); 1: it was
-            rejected by the guardrails model or by the KK validity gate. Null on 202, and when the request
+          description: 'With `guardrails_confidence_threshold`: 0 the document passed the guardrails model
+            (and the pipeline ran). Without it (left out, `{}`, or only null values) the document is accepted
+            whatever the model says, and this is the model''s accepted probability, `1 - probability_bad`,
+            a float from 0 to 1 (4 decimals). 1: rejected, by the guardrails model (with a threshold,
+            or an image it could not assess) or by the KK validity gate. Null on 202, and when the request
             was refused before the check'
           examples:
           - 0
+          - 0.9713
       type: object
       required:
       - status_code

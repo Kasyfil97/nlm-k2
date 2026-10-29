@@ -1,0 +1,39 @@
+# Override: jalankan image dari Nexus, bukan hasil build lokal.
+#
+# Dipakai BERSAMA docker-compose.vm.yml (yang memuat env_file, port, dan jaringan):
+#
+#   export TAG=1.0.0
+#   docker login new-nexus.gcp.bri.co.id
+#   docker compose -f docker-compose.vm.yml -f docker-compose.nexus.yml pull
+#   docker compose -f docker-compose.vm.yml -f docker-compose.nexus.yml up -d --no-build
+#
+# Migrasi DB (image `migrate`, profile "migrate"):
+#   docker compose -f docker-compose.vm.yml -f docker-compose.nexus.yml --profile migrate \
+#     run --rm --no-deps migrate python -m alembic -c db/alembic.ini upgrade head
+#
+# Catatan:
+#   - Image TIDAK memuat .env. Konfigurasi dan rahasia dibaca dari services/<nama>/.env di host
+#     lewat `env_file` di docker-compose.vm.yml; berkas itu tidak ikut git dan harus ada di VM.
+#   - `build:` dari docker-compose.vm.yml tetap ada setelah merge, jadi selalu pakai `--no-build`
+#     pada `up`, supaya compose tidak membangun image lokal dan mengabaikan hasil pull.
+#   - TAG wajib versi tetap (mis. 1.0.0 atau commit SHA); bawaannya `latest` hanya untuk uji coba.
+
+services:
+  orchestrator:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-orchestrator:${TAG:-latest}
+    pull_policy: always
+  guardrails:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-guardrails:${TAG:-latest}
+    pull_policy: always
+  extraction:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-extraction:${TAG:-latest}
+    pull_policy: always
+  structuring:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-structuring:${TAG:-latest}
+    pull_policy: always
+  scoring:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-scoring:${TAG:-latest}
+    pull_policy: always
+  migrate:
+    image: ${NEXUS_REGISTRY:-new-nexus.gcp.bri.co.id/bribrain/dev/nilam/nilam-ocr-kk}/ms-bribrain-nilam-ocr-kk-migrate:${TAG:-latest}
+    pull_policy: always

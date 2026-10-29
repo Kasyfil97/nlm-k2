@@ -3,7 +3,7 @@
 from ocr_common.config import BaseServiceSettings
 from ocr_common.errors import EMPTY_FILE, FILE_TOO_LARGE, UNSUPPORTED_FILE_TYPE, BadRequest, PayloadTooLarge
 
-# A Kartu Keluarga photo is typically larger than a tax card, so the cap is 5 MB (§13.1); anything
+# A Kartu Keluarga photo is typically larger than a tax card, so the cap is 10 MB (§13.1); anything
 # larger than the limit is refused before any model runs, with a message the client can show as is.
 PAYLOAD_TOO_LARGE_MESSAGE = "Ukuran dokumen melebihi batas {limit}, pastikan hanya mengunggah foto Kartu Keluarga"
 

@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-bribrain-nilam-ocr-kk-guardrails-config
+  namespace: bribrain-ocr-nilam
+  labels:
+    app: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/name: ms-bribrain-nilam-ocr-kk-guardrails
+    app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
+    app.kubernetes.io/component: guardrails
+data:
+  ENVIRONMENT: "production"
+  PORT: "8061"
+  TESTING_ENDPOINTS: "false"
+  GUARDRAILS_BACKEND: "kk_quality"
+  GUARDRAILS_WEIGHTS_DIR: "weights"
+  GUARDRAILS_DEVICE: "cpu"
+  # Throughput per pod paling baik dengan 1 thread torch per dokumen dan beberapa dokumen paralel (benchmark
+  # 27 Okt 2026: 4 thread hanya memangkas 0,8 -> 0,5 dtk per foto, PDF malah lebih lambat).
+  GUARDRAILS_TORCH_THREADS: "1"
+  # Bulkhead inference per pod; lebih dari itu 503 SERVICE_BUSY + Retry-After, diteruskan orchestrator apa adanya.
+  # Untuk resource yang diset manual di Rancher (limit 2 CPU), BUKAN untuk resources di deployment.yaml:
+  # MAX_CONCURRENCY x TORCH_THREADS = limit CPU (2). Antrean pendek seperti NPWP: request di ujung antrean
+  # menunggu ~(5/2 + 1) x 1,5 dtk = ~5 dtk, jauh di bawah GUARDRAILS_TIMEOUT_SECONDS orchestrator (20).
+  # Memory ~400Mi model + ~400Mi per slot: 2 slot butuh ~1,2Gi, beri limit >= 2Gi.
+  # Kalau limit CPU di Rancher diubah, ubah MAX_CONCURRENCY ikut sama.
+  GUARDRAILS_MAX_CONCURRENCY: "2"
+  GUARDRAILS_MAX_QUEUE: "5"
+  # Orkestrasi pusat mengirim ulang setelah Retry-After; 5 kali 503 berturut-turut membuka circuit breaker KK.
+  GUARDRAILS_BUSY_RETRY_AFTER_SECONDS: "5"
+  # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
+  ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
+  ELASTIC_APM_ENVIRONMENT: "dev"

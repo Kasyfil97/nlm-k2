@@ -180,9 +180,10 @@ def _parity():
 
 
 @pytest.mark.skipif(not CORPUS_DIR.is_dir(), reason=f"corpus raw_ocr_v6 absent at {CORPUS_DIR} (real KK)")
-def test_the_service_reproduces_the_training_values_exactly(service):
+def test_the_service_reproduces_the_training_values_exactly(service, structurer):
     """Nilai dan conf structuring = rantai training, per dokumen. 60 dokumen dari 418 (urutan fixture:
-    test dulu); seluruhnya, plus skornya, lewat scripts/check_kk_model_parity.py."""
+    test dulu); seluruhnya, plus skornya, lewat scripts/check_kk_model_parity.py. Yang dibandingkan
+    keluaran structurer SEBELUM `postprocess` -- pembersihan itu penyimpangan yang disengaja dari training."""
     values_hash = _parity().values_hash
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))["hashes"]
     checked = 0
@@ -191,7 +192,7 @@ def test_the_service_reproduces_the_training_values_exactly(service):
         if not source.is_file():
             continue
         page = json.loads(source.read_text(encoding="utf-8"))["pages"][0]
-        result = json.loads(json.dumps(service.structure(service.boxes_from_ocr(page))))
+        result = json.loads(json.dumps(structurer.structure(service.boxes_from_ocr(page))))
         assert values_hash(result) == expected["values"], doc_id
         checked += 1
     assert checked

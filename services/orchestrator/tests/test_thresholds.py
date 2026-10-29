@@ -6,23 +6,24 @@ itself. It travels with the job so the GET decides with the same numbers as the 
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
 from ocr_common.kk import contract_fields, scored_fields
 
 from app.services.pipeline_waiter import WaitOutcome
-from tests.conftest import JPEG, OCR_RESULT, SCORING_RESULT, STRUCTURING_RESULT
+from tests.conftest import AUTO_ACCEPTED_REPORT, JPEG, OCR_RESULT, SCORING_RESULT, STRUCTURING_RESULT
 
 RID = "REQ_thresholds"
 
 
-def _submit(client, auth, **form):
+def _submit(client, auth, filename="kk.jpg", **form):
     return client.post(
         "/v1/extract-ocr",
         headers=auth,
         data={"request_id": RID, **form},
-        files={"file": ("kk.jpg", JPEG, "image/jpeg")},
+        files={"file": (filename, JPEG, "image/jpeg")},
     )
 
 
@@ -151,3 +152,61 @@ def test_a_guardrails_threshold_that_cannot_be_read_is_422_and_nothing_runs(
     body = response.json()
     assert body["errors"] == "INVALID_THRESHOLD" and reason in body["message"]
     assert stub_guardrails.checked == [] and stub_extraction.submitted == []
+
+
+# --- null is no threshold (central orchestrator rule of 9 Oct 2026) ---------------------------------
+
+
+@pytest.mark.parametrize("raw", ["", "{}", '{"guardrails": null}', '{"acc_rej": null}'])
+def test_a_guardrails_threshold_with_nothing_in_it_is_auto_accept(client, auth, stub_guardrails, raw):
+    response = _submit(client, auth, guardrails_confidence_threshold=raw)
+
+    assert response.status_code == 200
+    assert stub_guardrails.thresholds == [None]
+
+
+def test_a_number_under_another_key_than_acc_rej_is_still_422(client, auth, stub_guardrails):
+    response = _submit(client, auth, guardrails_confidence_threshold='{"guardrails": 0.8}')
+
+    assert (response.status_code, response.json()["errors"]) == (422, "INVALID_THRESHOLD")
+    assert stub_guardrails.checked == []
+
+
+def test_without_a_guardrails_threshold_the_answer_carries_the_accepted_probability(client, auth, stub_guardrails):
+    stub_guardrails.accepted = AUTO_ACCEPTED_REPORT
+
+    response = _submit(client, auth)
+
+    assert response.status_code == 200
+    assert response.json()["guardrails"] == 0.9713  # 1 - probability_bad
+
+
+def test_with_a_guardrails_threshold_the_answer_stays_0(client, auth):
+    response = _submit(client, auth, guardrails_confidence_threshold='{"acc_rej": 0.8}')
+
+    assert response.json()["guardrails"] == 0
+
+
+def test_a_rejection_stays_1_also_without_a_threshold(client, auth):
+    response = _submit(client, auth, guardrails_confidence_threshold='{"acc_rej": null}', filename="notkk.jpg")
+
+    assert (response.status_code, response.json()["guardrails"]) == (400, 1)
+
+
+def test_the_get_answers_with_the_guardrails_stored_with_the_job(client, auth, stub_waiter):
+    stub_waiter.snapshot_outcome = replace(_done(SCORING_RESULT), guardrails=0.9713)
+
+    response = client.get(f"/v1/extract-ocr/{RID}", headers=auth)
+
+    assert (response.status_code, response.json()["guardrails"]) == (200, 0.9713)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ['{"all_field": null}', '{"no_kk": null, "nama_kepala_keluarga": null}'],
+)
+def test_a_null_column_threshold_keeps_the_probability(client, auth, stub_extraction, raw):
+    response = _submit(client, auth, column_confidence_threshold=raw)
+
+    assert response.status_code == 200
+    assert stub_extraction.submitted[0]["column_thresholds"] is None

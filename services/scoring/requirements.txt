@@ -10,3 +10,5 @@ scikit-learn==1.7.2
 joblib==1.5.2
 numpy==2.2.6
 elasticsearch==8.19.3
+# Elastic APM (ocr_common.web.apm), aktif bila ELASTIC_APM_SERVER_URL di-set.
+elastic-apm==6.26.2
