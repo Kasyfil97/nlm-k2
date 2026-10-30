@@ -28,6 +28,11 @@ spec:
         {{- if dig "dotenv" "enabled" false $svc }}
         checksum/dotenv: {{ toJson $svc.dotenv.data | sha256sum }}
         {{- end }}
+        {{- if $.Values.prometheusAnnotations }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.port | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
         {{- with $.Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -97,7 +102,26 @@ spec:
                   key: {{ $.Values.secretKeys.callbackKey }}
                   optional: true
             {{- end }}
+            {{- if $.Values.apm.serverUrl }}
+            - name: ELASTIC_APM_SECRET_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.existingSecret }}
+                  key: {{ $.Values.secretKeys.apmSecretToken }}
+                  optional: true
+            - name: ELASTIC_APM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.existingSecret }}
+                  key: {{ $.Values.secretKeys.apmApiKey }}
+                  optional: true
             {{- end }}
+            {{- end }}
+            # Node tempat pod berjalan, ikut di setiap log yang dikirim ke APM (k8s.node.name).
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
             - name: HOME
               value: /tmp
           startupProbe:

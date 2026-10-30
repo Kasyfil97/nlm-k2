@@ -24,6 +24,9 @@ secretKeys:
   orchestrationApiKey: ORCHESTRATION_API_KEY
   # Nilai X-Callback-Key untuk callback hasil Orkestrasi (orchestration.callbackFormat: result).
   callbackKey: ORCHESTRATION_CALLBACK_KEY
+  # Opsional: kredensial server Elastic APM, salah satu sesuai server APM-nya (lihat apm di bawah).
+  apmSecretToken: ELASTIC_APM_SECRET_TOKEN
+  apmApiKey: ELASTIC_APM_API_KEY
 
 # Buat Secret di atas dari GCP Secret Manager lewat External Secrets Operator.
 # Mati = Secret dibuat manual (lihat README). Butuh CRD ESO dan ClusterSecretStore di cluster.
@@ -61,6 +64,32 @@ orchestration:
   # menunggu sejumlah detik setelah menjawab 202 (OCR_CALLBACK_DEADLINE_SECONDS di sisi mereka) dan menolak
   # callback sesudahnya dengan 409 RESULT_CONFLICT; samakan dengan nilai itu.
   callbackMaxAgeSeconds: "600"
+
+# Elastic APM di kelima service (libs/ocr_common/ocr_common/web/apm.py). serverUrl kosong = mati: agen tidak dimuat
+# dan tidak ada yang dikirim. Token/API key dibaca dari Secret (secretKeys.apmSecretToken / apmApiKey), opsional.
+# Body, header, dan variabel lokal request tidak pernah dikirim (upload KK, 26 field hasil ekstraksi), dan service
+# menolak start kalau variabel ELASTIC_APM_* menyalakannya lagi (docs/decisions/2026-09-26-keputusan-fase-0.md §4).
+# Nama service APM bawaan kode: nilam-ocr-kk-<service>; satu service bisa menimpanya lewat
+# services.<nama>.env.ELASTIC_APM_SERVICE_NAME.
+apm:
+  serverUrl: ""
+  # Kosong = nilai `environment` di atas.
+  environment: ""
+  # 1.0 = setiap request dan job dilacak; turunkan kalau volumenya besar.
+  transactionSampleRate: "1.0"
+  verifyServerCert: true
+  # Nama field yang disamarkan, dipisah koma, boleh wildcard (`*token`). Kosong = daftar bawaan agen.
+  sanitizeFieldNames: ""
+  # Log aplikasi juga dikirim ke server APM ini (OpenTelemetry, OTLP/HTTP /v1/logs; web/log_shipping.py) dan masuk
+  # Elasticsearch (logs-apm.app.<service>-default), di bawah service name APM yang sama. Log stderr tetap ada.
+  # Hanya berlaku dengan serverUrl.
+  logSending: false
+  # Level minimum yang dikirim, tidak bisa di bawah LOG_LEVEL. Kosong = INFO.
+  logLevel: ""
+
+# Anotasi prometheus.io/scrape|port|path di pod, untuk Prometheus yang menemukan target lewat anotasi. Tiap service
+# membuka GET /metrics di port-nya (http_requests_total, pipeline_*). false = tanpa anotasi (mis. ServiceMonitor).
+prometheusAnnotations: true
 
 commonEnv:
   # Host yang boleh dipakai file_url (presigned MinIO), dipisah koma; ".example.internal" = semua subdomain.

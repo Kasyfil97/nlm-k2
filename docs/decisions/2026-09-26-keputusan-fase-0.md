@@ -57,6 +57,16 @@ Keputusan, terbelah karena risikonya berbeda:
   Ia baru boleh masuk setelah penangkapan badan dimatikan dan retensi kolektornya disepakati.
   Mengirimnya salah lebih buruk daripada mengirimnya belakangan.
 
+  *Pembaruan:* syarat pertama sudah dipenuhi di kode (`ocr_common/web/apm.py`: body, header, variabel
+  lokal, dan central config dimatikan; service menolak start kalau variabel `ELASTIC_APM_*` menyalakannya
+  lagi). Pengiriman **log** ke kolektor yang sama lewat OTLP (`ocr_common/web/log_shipping.py`,
+  `ELASTIC_APM_LOG_SENDING`, mati secara bawaan) tunduk pada aturan yang sama: atribut yang keluar
+  hanya `logger`, `request_id`, `service`, jejak trace, dan field `log_event` yang sengaja diisi pemanggil
+  (tidak ada yang memakainya di sini); isi unggahan dan field hasil ekstraksi tidak boleh masuk ke sana.
+  Syarat kedua, **retensi kolektor yang disepakati, belum terpenuhi**: nyalakan log sending di luar dev
+  hanya setelah pemilik kolektor menyetujuinya. Menggantikan `ElasticsearchHandler` (index `ocr-logs`)
+  berarti dashboard atau alert yang membaca index itu harus pindah ke `logs-apm.app.<service>-default`.
+
 ---
 
 ## R27 — audit PII §8.5: bentuk diputuskan, tabelnya **tidak** dibuat sekarang

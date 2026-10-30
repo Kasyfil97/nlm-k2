@@ -75,6 +75,23 @@ URL antar service menunjuk ke Service per komponen (<release>-<nama>).
 {{- $host := include "nlm-k2.componentName" (dict "root" $root "name" .) }}
 {{- $_ := set $env (printf "%s_SERVICE_URL" (upper .)) (printf "http://%s:%v" $host $upstream.port) }}
 {{- end }}
+{{- with $root.Values.apm }}
+{{- if .serverUrl }}
+{{- $_ := set $env "ELASTIC_APM_SERVER_URL" .serverUrl }}
+{{- $_ := set $env "ELASTIC_APM_ENVIRONMENT" (.environment | default $root.Values.environment) }}
+{{- $_ := set $env "ELASTIC_APM_TRANSACTION_SAMPLE_RATE" (.transactionSampleRate | default "1.0" | toString) }}
+{{- $_ := set $env "ELASTIC_APM_VERIFY_SERVER_CERT" (ternary "false" "true" (eq (toString .verifyServerCert) "false")) }}
+{{- if .sanitizeFieldNames }}
+{{- $_ := set $env "ELASTIC_APM_SANITIZE_FIELD_NAMES" .sanitizeFieldNames }}
+{{- end }}
+{{- if .logSending }}
+{{- $_ := set $env "ELASTIC_APM_LOG_SENDING" "true" }}
+{{- end }}
+{{- if .logLevel }}
+{{- $_ := set $env "ELASTIC_APM_LOG_LEVEL" .logLevel }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- range $key, $value := $root.Values.commonEnv }}
 {{- $_ := set $env $key ($value | toString) }}
 {{- end }}

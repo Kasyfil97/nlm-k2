@@ -28,6 +28,10 @@ spec:
         app.kubernetes.io/part-of: ms-bribrain-nilam-ocr-kk
         app.kubernetes.io/component: extraction
         version: "<IMAGE_VERSION>"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8062"
+        prometheus.io/path: "/metrics"
     spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 45
@@ -92,6 +96,10 @@ spec:
               name: ms-bribrain-nilam-ocr-kk-secrets
               key: ELASTIC_APM_SECRET_TOKEN
               optional: true
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
         - name: HOME
           value: /tmp
         startupProbe:

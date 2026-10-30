@@ -31,3 +31,7 @@ data:
   # Elastic APM (ocr_common/web/apm.py); tokennya dari Secret, bukan di sini
   ELASTIC_APM_SERVER_URL: "http://ms-bribrain-nilam-elastic-apm-server.bribrain-ocr-nilam.svc.cluster.local:8200"
   ELASTIC_APM_ENVIRONMENT: "dev"
+  # Log aplikasi ikut ke Elasticsearch lewat server APM yang sama (OTLP, ocr_common/web/log_shipping.py):
+  # Kibana, halaman service APM tab Logs. Isi upload dan field hasil ekstraksi tidak pernah ikut.
+  ELASTIC_APM_LOG_SENDING: "true"
+  ELASTIC_APM_LOG_LEVEL: "INFO"

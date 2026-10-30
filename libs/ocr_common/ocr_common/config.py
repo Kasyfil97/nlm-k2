@@ -39,13 +39,6 @@ class BaseServiceSettings(BaseSettings):
     log_format: Literal["json", "text"] | None = None
     log_level: str = "INFO"
 
-    elasticsearch_enabled: bool = False
-    elasticsearch_url: str | None = None
-    elasticsearch_index: str = "ocr-logs"
-    elasticsearch_api_key: str | None = None
-    elasticsearch_username: str | None = None
-    elasticsearch_password: str | None = None
-
     # Elastic APM (ocr_common.web.apm): off, and the agent not even loaded, while the server URL is unset. The service
     # name defaults to `nilam-ocr-kk-<service>` and the environment to `ENVIRONMENT`; the secret token or the API key
     # comes from the Secret, whichever the APM server uses; the field names are comma-separated.
@@ -57,6 +50,12 @@ class BaseServiceSettings(BaseSettings):
     elastic_apm_transaction_sample_rate: float = Field(1.0, ge=0, le=1)
     elastic_apm_verify_server_cert: bool = True
     elastic_apm_sanitize_field_names: str = ""
+    # The application log to the same APM server too, over OpenTelemetry (ocr_common/web/log_shipping.py), from
+    # ELASTIC_APM_LOG_LEVEL up (and never below LOG_LEVEL); stderr keeps every line either way.
+    elastic_apm_log_sending: bool = False
+    elastic_apm_log_level: str = "INFO"
+    # The node the pod runs on (downward API), put on every log record sent to APM as `k8s.node.name`.
+    k8s_node_name: str | None = None
 
     environment: Environment = "production"
     service_base_url: str | None = None
@@ -185,14 +184,6 @@ class BaseServiceSettings(BaseSettings):
                     f"characters ({shown}), which is how a shared example secret reaches a deployed "
                     f"environment. Set a real key when ENVIRONMENT={self.environment}"
                 )
-        return self
-
-    @model_validator(mode="after")
-    def _guard_elasticsearch(self) -> Self:
-        if self.elasticsearch_enabled and not self.elasticsearch_url:
-            raise ValueError(
-                "ELASTICSEARCH_URL must be set when ELASTICSEARCH_ENABLED=true"
-            )
         return self
 
     @model_validator(mode="after")

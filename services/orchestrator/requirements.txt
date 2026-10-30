@@ -9,6 +9,8 @@ PyMuPDF==1.28.2
 sqlalchemy==2.0.52
 greenlet==3.2.4
 asyncpg==0.31.0
-elasticsearch==8.19.3
 # Elastic APM (ocr_common.web.apm), aktif bila ELASTIC_APM_SERVER_URL di-set.
 elastic-apm==6.26.2
+# Log ke server APM lewat OTLP (ocr_common.web.log_shipping), aktif bila ELASTIC_APM_LOG_SENDING=true.
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1

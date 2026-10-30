@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException
 from ocr_common.config import BaseServiceSettings
 from ocr_common.errors import ServiceError, error_code
 from ocr_common.overload import retry_after_header
+from ocr_common.web import apm, log_shipping
 from ocr_common.web.apm import install_apm
 from ocr_common.web.envelope import envelope
 from ocr_common.web.logging import configure_logging
@@ -101,16 +102,7 @@ def create_app(
     `entrypoint=True` marks the one service reachable from other namespaces (the orchestrator): its
     OpenAPI `servers` then start with the release's entry Service, the address the central orchestrator
     uses."""
-    configure_logging(
-        fmt=settings.effective_log_format,
-        level=settings.log_level,
-        service=service_name,
-        elasticsearch_url=settings.elasticsearch_url if settings.elasticsearch_enabled else None,
-        elasticsearch_index=settings.elasticsearch_index,
-        elasticsearch_api_key=settings.elasticsearch_api_key,
-        elasticsearch_username=settings.elasticsearch_username,
-        elasticsearch_password=settings.elasticsearch_password,
-    )
+    configure_logging(fmt=settings.effective_log_format, level=settings.log_level, service=service_name)
 
     servers: list[dict[str, Any]] = [{"url": "/", "description": "This host (where this page is served)"}]
     if settings.service_base_url:
@@ -141,6 +133,7 @@ def create_app(
     app.add_middleware(RequestIdMiddleware)
     # Outermost, so a transaction spans the whole request.
     install_apm(app, settings, service_name)
+    log_shipping.start(settings, apm.service_name(settings, service_name), version, service_name)
     _register_exception_handlers(app)
     app.include_router(
         _health_router(version, backends or {}, readiness or {}, backends_example or {}, readiness_example or {})
